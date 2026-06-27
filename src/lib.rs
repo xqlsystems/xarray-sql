@@ -60,21 +60,27 @@ use datafusion::common::stats::Precision;
 use datafusion::common::{
     ColumnStatistics, DataFusionError, Result as DFResult, ScalarValue, Statistics,
 };
+use datafusion::datasource::empty::EmptyTable;
 use datafusion::datasource::TableProvider;
 use datafusion::execution::TaskContext;
 use datafusion::logical_expr::expr::InList;
 use datafusion::logical_expr::{
-    BinaryExpr, Expr, Operator, TableProviderFilterPushDown, TableType,
+    BinaryExpr, Expr, Operator, ScalarUDF, TableProviderFilterPushDown, TableType,
 };
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
 use datafusion::physical_plan::streaming::PartitionStream;
 use datafusion::physical_plan::{
     DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties, SendableRecordBatchStream,
 };
+use datafusion::prelude::SessionContext;
 use datafusion_ffi::proto::logical_extension_codec::FFI_LogicalExtensionCodec;
 use datafusion_ffi::table_provider::FFI_TableProvider;
+use datafusion_substrait::logical_plan::consumer::from_substrait_plan;
+use datafusion_substrait::logical_plan::producer::to_substrait_plan;
+use datafusion_substrait::substrait::proto::Plan;
+use prost::Message;
 use pyo3::prelude::*;
-use pyo3::types::{PyCapsule, PyList};
+use pyo3::types::{PyBytes, PyCapsule, PyList};
 
 // ============================================================================
 // Partition Metadata Types for Filter Pushdown
@@ -1270,9 +1276,104 @@ impl LazyArrowStreamTable {
     }
 }
 
+// ============================================================================
+// Autograd: Substrait-level grad() rewrite
+// ============================================================================
+
+/// Rewrite `grad(expr, column)` calls in a Substrait plan into their symbolic
+/// derivatives.
+///
+/// The autograd engine operates on DataFusion logical `Expr` trees. To apply it
+/// inside the datafusion-python `SessionContext` (which links its own copy of
+/// DataFusion), we move the plan across the boundary as Substrait protobuf:
+/// Python produces the plan, this function consumes it into a DataFusion
+/// `LogicalPlan`, rewrites every `grad(...)` into the differentiated
+/// expression, and re-produces Substrait bytes for Python to consume and
+/// execute.
+///
+/// Args:
+///     plan_bytes: A Substrait `Plan` protobuf, as produced by
+///         datafusion-python's
+///         ``Producer.to_substrait_plan(plan, ctx).encode()``.
+///     tables: A list of ``(name, pyarrow.Schema)`` pairs for every table the
+///         plan scans. The consumer resolves table references by name, so each
+///         referenced table must be registered here with a matching schema
+///         (the data itself is never read — an empty table suffices).
+///
+/// Returns:
+///     The rewritten Substrait `Plan` protobuf bytes, ready for
+///     ``Consumer.from_substrait_plan(ctx, plan)``.
+#[pyfunction]
+fn grad_rewrite<'py>(
+    py: Python<'py>,
+    plan_bytes: &[u8],
+    tables: Vec<(String, Bound<'py, PyAny>)>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    // A fresh, data-free context purely for the rewrite. It needs the grad
+    // marker UDF (so the consumer can resolve the function) and an empty table
+    // per referenced name (so the consumer can resolve table scans).
+    let ctx = SessionContext::new();
+    ctx.register_udf(ScalarUDF::from(autograd::GradMarker::new()));
+
+    for (name, schema_obj) in &tables {
+        let schema = Schema::from_pyarrow_bound(schema_obj).map_err(|e| {
+            pyo3::exceptions::PyTypeError::new_err(format!(
+                "grad_rewrite: failed to convert schema for table '{name}': {e}"
+            ))
+        })?;
+        let provider = Arc::new(EmptyTable::new(Arc::new(schema)));
+        ctx.register_table(name.as_str(), provider).map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!(
+                "grad_rewrite: failed to register table '{name}': {e}"
+            ))
+        })?;
+    }
+
+    let state = ctx.state();
+
+    let plan = Plan::decode(plan_bytes).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "grad_rewrite: failed to decode Substrait plan: {e}"
+        ))
+    })?;
+
+    // from_substrait_plan is async but does no real I/O here (empty tables
+    // resolve immediately), so a minimal current-thread runtime suffices.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "grad_rewrite: failed to build runtime: {e}"
+            ))
+        })?;
+
+    let logical = runtime
+        .block_on(from_substrait_plan(&state, &plan))
+        .map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!(
+                "grad_rewrite: failed to consume Substrait plan: {e}"
+            ))
+        })?;
+
+    let rewritten = autograd::rewrite_grad_calls(logical).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "grad_rewrite: failed to rewrite grad() calls: {e}"
+        ))
+    })?;
+
+    let out_plan = to_substrait_plan(&rewritten, &state).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "grad_rewrite: failed to produce Substrait plan: {e}"
+        ))
+    })?;
+
+    Ok(PyBytes::new(py, &out_plan.encode_to_vec()))
+}
+
 /// Python module initialization
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<LazyArrowStreamTable>()?;
+    m.add_function(wrap_pyfunction!(grad_rewrite, m)?)?;
     Ok(())
 }

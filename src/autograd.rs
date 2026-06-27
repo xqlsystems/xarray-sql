@@ -30,12 +30,18 @@
 
 #![allow(dead_code)]
 
+use std::any::Any;
 use std::f64::consts::{LN_10, LN_2};
 
+use datafusion::arrow::datatypes::DataType;
+use datafusion::common::tree_node::{Transformed, TreeNode};
 use datafusion::common::{DataFusionError, Result, ScalarValue};
 use datafusion::functions::math::expr_fn;
 use datafusion::logical_expr::expr::ScalarFunction;
-use datafusion::logical_expr::{lit, BinaryExpr, Cast, Expr, Operator};
+use datafusion::logical_expr::{
+    lit, BinaryExpr, Cast, ColumnarValue, Expr, LogicalPlan, Operator, ScalarFunctionArgs,
+    ScalarUDFImpl, Signature, Volatility,
+};
 
 // ---------------------------------------------------------------------------
 // Constant helpers and the 0/1-folding builders
@@ -208,9 +214,7 @@ fn diff_binary(be: &BinaryExpr, wrt: &str) -> Result<Expr> {
         // d/dx (a - b) = da - db
         Operator::Minus => Ok(sub(da, db)),
         // d/dx (a * b) = da*b + a*db   (product rule)
-        Operator::Multiply => {
-            Ok(add(mul(da, b.clone()), mul(a.clone(), db)))
-        }
+        Operator::Multiply => Ok(add(mul(da, b.clone()), mul(a.clone(), db))),
         // d/dx (a / b) = (da*b - a*db) / b^2   (quotient rule)
         Operator::Divide => {
             let numerator = sub(mul(da, b.clone()), mul(a.clone(), db));
@@ -302,8 +306,7 @@ fn diff_power(args: &[Expr], wrt: &str) -> Result<Expr> {
             if is_zero(&dbase) {
                 return Ok(zero());
             }
-            let outer =
-                mul(lit(c), expr_fn::power(base.clone(), lit(c - 1.0)));
+            let outer = mul(lit(c), expr_fn::power(base.clone(), lit(c - 1.0)));
             Ok(mul(outer, dbase))
         }
         // Constant base, variable exponent.
@@ -312,10 +315,7 @@ fn diff_power(args: &[Expr], wrt: &str) -> Result<Expr> {
             if is_zero(&dexp) {
                 return Ok(zero());
             }
-            let outer = mul(
-                expr_fn::power(base.clone(), exponent.clone()),
-                lit(a.ln()),
-            );
+            let outer = mul(expr_fn::power(base.clone(), exponent.clone()), lit(a.ln()));
             Ok(mul(outer, dexp))
         }
         // General u^v requires the exp/log trick; deferred past the MVP.
@@ -328,13 +328,111 @@ fn diff_power(args: &[Expr], wrt: &str) -> Result<Expr> {
 }
 
 // ---------------------------------------------------------------------------
+// The `grad` marker UDF and the plan-level rewrite
+// ---------------------------------------------------------------------------
+
+/// A no-op placeholder UDF for `grad(expr, column)`.
+///
+/// `grad` is a *marker*: it carries the differentiation request intact through
+/// SQL parsing, logical planning, and Substrait serialization. It is always
+/// rewritten away by [`rewrite_grad_calls`] before execution, so its `invoke`
+/// is never reached in normal use (and deliberately errors if it somehow is,
+/// rather than silently returning a wrong value).
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub struct GradMarker {
+    signature: Signature,
+}
+
+impl GradMarker {
+    pub fn new() -> Self {
+        // grad(expr, column): two arguments of any (numeric) type.
+        Self {
+            signature: Signature::any(2, Volatility::Immutable),
+        }
+    }
+}
+
+impl Default for GradMarker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ScalarUDFImpl for GradMarker {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn name(&self) -> &str {
+        "grad"
+    }
+
+    fn signature(&self) -> &Signature {
+        &self.signature
+    }
+
+    fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType> {
+        Ok(DataType::Float64)
+    }
+
+    fn invoke_with_args(&self, _args: ScalarFunctionArgs) -> Result<ColumnarValue> {
+        Err(DataFusionError::Execution(
+            "grad() marker reached execution without being rewritten; this is \
+             an internal xarray-sql autograd error"
+                .to_string(),
+        ))
+    }
+}
+
+/// Rewrite every `grad(expr, column)` call anywhere in a logical plan into the
+/// symbolic derivative of `expr` with respect to `column`, leaving everything
+/// else untouched. The plan's schema is recomputed afterwards because replacing
+/// a `grad` call can change an expression's name or type.
+pub fn rewrite_grad_calls(plan: LogicalPlan) -> Result<LogicalPlan> {
+    let rewritten = plan
+        .transform_up(|node| node.map_expressions(rewrite_grad_in_expr))?
+        .data;
+    rewritten.recompute_schema()
+}
+
+/// Replace any `grad(...)` calls nested anywhere inside a single expression.
+fn rewrite_grad_in_expr(expr: Expr) -> Result<Transformed<Expr>> {
+    expr.transform_up(|e| {
+        let Expr::ScalarFunction(sf) = &e else {
+            return Ok(Transformed::no(e));
+        };
+        if sf.func.name() != "grad" {
+            return Ok(Transformed::no(e));
+        }
+        if sf.args.len() != 2 {
+            return Err(DataFusionError::Plan(format!(
+                "grad() expects two arguments grad(expr, column), got {}",
+                sf.args.len()
+            )));
+        }
+        let wrt = match &sf.args[1] {
+            Expr::Column(c) => c.name.clone(),
+            other => {
+                return Err(DataFusionError::Plan(format!(
+                    "grad(): the second argument must be a bare column to \
+                     differentiate with respect to, got: {other}"
+                )))
+            }
+        };
+        let derivative = differentiate(&sf.args[0], &wrt)?;
+        Ok(Transformed::yes(derivative))
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use datafusion::logical_expr::col;
+
+    use super::*;
 
     #[test]
     fn constant_has_zero_derivative() {
@@ -386,8 +484,7 @@ mod tests {
     #[test]
     fn composite_sin_times_x() {
         // d/dx (sin(x) * x) = cos(x)*x + sin(x)
-        let e =
-            binary(expr_fn::sin(col("x")), Operator::Multiply, col("x"));
+        let e = binary(expr_fn::sin(col("x")), Operator::Multiply, col("x"));
         let d = differentiate(&e, "x").unwrap();
         assert_eq!(d.to_string(), "cos(x) * x + sin(x)");
     }
@@ -396,8 +493,7 @@ mod tests {
     fn power_constant_exponent() {
         // d/dx power(x, 2) = 2 * power(x, 1) * 1 = 2 * power(x, 1)
         let e = expr_fn::power(col("x"), lit(2.0_f64));
-        let expected =
-            mul(lit(2.0_f64), expr_fn::power(col("x"), lit(1.0_f64)));
+        let expected = mul(lit(2.0_f64), expr_fn::power(col("x"), lit(1.0_f64)));
         assert_eq!(differentiate(&e, "x").unwrap(), expected);
     }
 
