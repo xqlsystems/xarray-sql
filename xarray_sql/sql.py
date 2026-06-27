@@ -1,12 +1,21 @@
+import re
+
+import pyarrow as pa
 import xarray as xr
-from datafusion import SessionContext
+from datafusion import SessionContext, udf
 from datafusion.catalog import Schema
+from datafusion.substrait import Consumer, Producer, Serde
 from collections import defaultdict
 
+from . import _native
 from . import cftime as cft
 from .df import Chunks
 from .ds import XarrayDataFrame
 from .reader import read_xarray_table
+
+# Matches a call to the autograd marker function ``grad(`` (case-insensitive),
+# used as a cheap gate so ordinary queries skip the Substrait round-trip.
+_GRAD_CALL = re.compile(r"\bgrad\s*\(", re.IGNORECASE)
 
 
 class XarrayContext(SessionContext):
@@ -21,6 +30,24 @@ class XarrayContext(SessionContext):
         # in SQL (e.g. ``"air"`` for a uniform-dim Dataset, or
         # ``"era5.surface"`` for one entry from a multi-dim-group split).
         self._registered_datasets: dict[str, xr.Dataset] = {}
+        self._register_autograd_udfs()
+
+    def _register_autograd_udfs(self) -> None:
+        """Register the ``grad`` marker UDF used by the autograd rewrite.
+
+        ``grad(expr, column)`` is a *marker*: it lets queries parse and plan
+        with the differentiation request intact. It is never executed — the
+        Substrait rewrite in :meth:`sql` replaces every ``grad(...)`` with the
+        symbolic derivative of ``expr`` before execution.
+        """
+        marker = udf(
+            lambda expr, column: expr,
+            [pa.float64(), pa.float64()],
+            pa.float64(),
+            "immutable",
+            "grad",
+        )
+        self.register_udf(marker)
 
     def from_dataset(
         self,
@@ -174,8 +201,49 @@ class XarrayContext(SessionContext):
         Returns:
             An :class:`XarrayDataFrame` wrapping the DataFusion DataFrame.
         """
-        inner = super().sql(query, *args, **kwargs)
+        if _GRAD_CALL.search(query):
+            inner = self._sql_with_autograd(query, *args, **kwargs)
+        else:
+            inner = super().sql(query, *args, **kwargs)
         return XarrayDataFrame(inner, templates=self._registered_datasets)
+
+    def _sql_with_autograd(self, query: str, *args, **kwargs):
+        """Plan ``query``, rewrite ``grad(...)`` calls, return a DataFrame.
+
+        The differentiation engine lives in the native (Rust) extension and
+        operates on DataFusion logical expressions. Since that extension links
+        its own copy of DataFusion, the plan crosses the boundary as Substrait:
+        we produce the logical plan as Substrait, hand it to ``grad_rewrite``
+        (which differentiates every ``grad(expr, column)`` symbolically), then
+        consume the rewritten Substrait back into an executable DataFrame.
+        """
+        plan = super().sql(query, *args, **kwargs).logical_plan()
+        substrait_plan = Producer.to_substrait_plan(plan, self)
+        rewritten = _native.grad_rewrite(
+            substrait_plan.encode(), self._table_schemas()
+        )
+        new_plan = Consumer.from_substrait_plan(
+            self, Serde.deserialize_bytes(rewritten)
+        )
+        return self.create_dataframe_from_logical_plan(new_plan)
+
+    def _table_schemas(self) -> list[tuple[str, pa.Schema]]:
+        """Return ``(name, schema)`` for each registered table.
+
+        The Substrait consumer in ``grad_rewrite`` resolves table scans by
+        name, so it needs the schema of every table the plan might reference.
+        Only metadata is read here — never the underlying data.
+        """
+        schemas = []
+        for name in self._registered_datasets:
+            try:
+                schemas.append((name, self.table(name).schema()))
+            except Exception:
+                # Schema-qualified tables (mixed-dimension datasets) aren't
+                # resolvable by a bare name yet; skip rather than fail the
+                # whole query. grad() over those is a follow-up.
+                continue
+        return schemas
 
 
 def _group_vars_by_dims(ds: xr.Dataset) -> dict[tuple[str, ...], list[str]]:
