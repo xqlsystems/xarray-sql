@@ -41,6 +41,9 @@
 //! Will skip loading partitions whose time ranges are entirely before 2020-02-01.
 //! Supported operators: `=`, `<`, `>`, `<=`, `>=`, `BETWEEN`, `IN`, `AND`, `OR`.
 
+mod autograd;
+
+use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::ffi::CString;
 use std::fmt::Debug;
