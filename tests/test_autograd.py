@@ -105,25 +105,42 @@ def test_multi_input_grad_columns(ctx_xy):
     np.testing.assert_allclose(res["dfdy"], ds["x"].values)
 
 
-def test_jacobian_array(ctx_xy):
-    # jacobian(f, [x, y]) returns the gradient row [df/dx, df/dy] per row.
-    context, ds = ctx_xy
-    res = _ordered(
-        context.sql("SELECT i, jacobian(x * y, [x, y]) AS jac FROM g")
-    )
-    jac = np.stack([np.asarray(v, dtype=float) for v in res["jac"]])
-    # column 0 is df/dx = y, column 1 is df/dy = x
-    np.testing.assert_allclose(jac[:, 0], ds["y"].values)
-    np.testing.assert_allclose(jac[:, 1], ds["x"].values)
-
-
-def test_jacobian_array_nonlinear(ctx_xy):
-    # jacobian(sin(x) * y, [x, y]) = [cos(x)*y, sin(x)]
+def test_jvp_forward_directional_derivative(ctx_xy):
+    # jvp(f, x, dx) = df/dx * dx. With f = sin(x)*y and a constant tangent.
     context, ds = ctx_xy
     x, y = ds["x"].values, ds["y"].values
+    res = _ordered(context.sql("SELECT i, jvp(sin(x) * y, x, 2.0) AS t FROM g"))
+    np.testing.assert_allclose(res["t"], (np.cos(x) * y) * 2.0)
+
+
+def test_jvp_multi_input_is_sum(ctx_xy):
+    # A full directional derivative is the sum of per-input jvp terms:
+    # df/dx*dx + df/dy*dy for f = x*y, with dx=1, dy=1 -> y + x.
+    context, ds = ctx_xy
     res = _ordered(
-        context.sql("SELECT i, jacobian(sin(x) * y, [x, y]) AS jac FROM g")
+        context.sql(
+            "SELECT i, jvp(x * y, x, 1.0) + jvp(x * y, y, 1.0) AS t FROM g"
+        )
     )
-    jac = np.stack([np.asarray(v, dtype=float) for v in res["jac"]])
-    np.testing.assert_allclose(jac[:, 0], np.cos(x) * y)
-    np.testing.assert_allclose(jac[:, 1], np.sin(x))
+    np.testing.assert_allclose(res["t"], ds["y"].values + ds["x"].values)
+
+
+def test_vjp_reverse_pullback(ctx_xy):
+    # vjp(f, x, w) = w * df/dx. With f = sin(x)*y and cotangent w = 3.0.
+    context, ds = ctx_xy
+    x, y = ds["x"].values, ds["y"].values
+    res = _ordered(context.sql("SELECT i, vjp(sin(x) * y, x, 3.0) AS s FROM g"))
+    np.testing.assert_allclose(res["s"], 3.0 * (np.cos(x) * y))
+
+
+def test_jvp_and_vjp_agree_for_unit_seed(ctx_xy):
+    # Forward (unit tangent) and reverse (unit cotangent) coincide for a
+    # scalar output -- both contract the same partial derivative.
+    context, _ = ctx_xy
+    res = _ordered(
+        context.sql(
+            "SELECT i, jvp(sin(x) * y, x, 1.0) AS fwd, "
+            "vjp(sin(x) * y, x, 1.0) AS rev FROM g"
+        )
+    )
+    np.testing.assert_allclose(res["fwd"], res["rev"])

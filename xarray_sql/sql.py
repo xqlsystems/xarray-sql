@@ -13,10 +13,10 @@ from .df import Chunks
 from .ds import XarrayDataFrame
 from .reader import read_xarray_table
 
-# Matches a call to an autograd marker function (``grad(`` / ``jacobian(``,
+# Matches a call to an autograd marker function (``grad(`` / ``jvp(`` / ``vjp(``,
 # case-insensitive), used as a cheap gate so ordinary queries skip the
 # Substrait round-trip.
-_GRAD_CALL = re.compile(r"\b(grad|jacobian)\s*\(", re.IGNORECASE)
+_GRAD_CALL = re.compile(r"\b(grad|jvp|vjp)\s*\(", re.IGNORECASE)
 
 
 class XarrayContext(SessionContext):
@@ -34,35 +34,33 @@ class XarrayContext(SessionContext):
         self._register_autograd_udfs()
 
     def _register_autograd_udfs(self) -> None:
-        """Register the ``grad`` / ``jacobian`` marker UDFs.
+        """Register the ``grad`` / ``jvp`` / ``vjp`` marker UDFs.
 
         These are *markers*: they let queries parse and plan with the
         differentiation request intact. They are never executed — the Substrait
-        rewrite in :meth:`sql` replaces every call with the symbolic
-        derivative before execution.
+        rewrite in :meth:`sql` replaces every call with the symbolic derivative
+        before execution. All return a scalar, staying in the long/tidy data
+        model (one value per row).
 
-        * ``grad(expr, column)`` -> scalar ``d(expr)/d(column)``.
-        * ``jacobian(expr, [c1, c2, ...])`` -> the gradient of ``expr`` with
-          respect to several columns, as a ``List<Float64>`` (one Jacobian
-          row). The second argument is a SQL array of bare column references.
+        * ``grad(expr, column)`` -> ``d(expr)/d(column)``.
+        * ``jvp(expr, column, tangent)`` -> forward-mode directional derivative
+          ``d(expr)/d(column) * tangent`` (seed a tangent on an input). A
+          multi-input directional derivative is a sum of jvp terms.
+        * ``vjp(expr, column, cotangent)`` -> reverse-mode pullback
+          ``cotangent * d(expr)/d(column)`` (seed a cotangent on the output).
+
+        A full gradient/Jacobian is expressed as several scalar columns, e.g.
+        ``grad(f, x) AS dfdx, grad(f, y) AS dfdy``.
         """
+        f64 = pa.float64()
         self.register_udf(
-            udf(
-                lambda expr, column: expr,
-                [pa.float64(), pa.float64()],
-                pa.float64(),
-                "immutable",
-                "grad",
-            )
+            udf(lambda e, c: e, [f64, f64], f64, "immutable", "grad")
         )
         self.register_udf(
-            udf(
-                lambda expr, columns: columns,
-                [pa.float64(), pa.list_(pa.float64())],
-                pa.list_(pa.float64()),
-                "immutable",
-                "jacobian",
-            )
+            udf(lambda e, c, t: e, [f64, f64, f64], f64, "immutable", "jvp")
+        )
+        self.register_udf(
+            udf(lambda e, c, w: e, [f64, f64, f64], f64, "immutable", "vjp")
         )
 
     def from_dataset(

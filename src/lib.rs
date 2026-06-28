@@ -1314,7 +1314,8 @@ fn grad_rewrite<'py>(
     // per referenced name (so the consumer can resolve table scans).
     let ctx = SessionContext::new();
     ctx.register_udf(autograd::grad_marker());
-    ctx.register_udf(autograd::jacobian_marker());
+    ctx.register_udf(autograd::jvp_marker());
+    ctx.register_udf(autograd::vjp_marker());
 
     for (name, schema_obj) in &tables {
         let schema = Schema::from_pyarrow_bound(schema_obj).map_err(|e| {

@@ -22,23 +22,31 @@
 //! `add_tangents`: a `0` derivative short-circuits products and drops out of
 //! sums, and a `1` factor drops out of products.
 //!
-//! ## Scope (MVP)
+//! ## Surface
 //!
-//! This first cut implements scalar `grad`: the partial derivative of a single
-//! expression with respect to one named column. Forward-/reverse-mode
-//! (`jvp`/`vjp`) and multi-input Jacobians are deliberately left for later.
+//! Three scalar operations, all rewritten away before execution:
+//!
+//! * `grad(expr, column)` — the partial derivative `d(expr)/d(column)`.
+//! * `jvp(expr, column, tangent)` — forward-mode directional derivative,
+//!   `d(expr)/d(column) * tangent` (seed a tangent on an input).
+//! * `vjp(expr, column, cotangent)` — reverse-mode pullback,
+//!   `cotangent * d(expr)/d(column)` (seed a cotangent on the output).
+//!
+//! All three return a scalar per row, staying in the long/tidy data model. A
+//! full gradient or Jacobian is expressed as several scalar columns (e.g.
+//! `grad(f, x) AS dfdx, grad(f, y) AS dfdy`) rather than a nested array, which
+//! would break the one-value-per-coordinate model.
 
 #![allow(dead_code)]
 
 use std::any::Any;
+use std::collections::HashMap;
 use std::f64::consts::{LN_10, LN_2};
-use std::sync::Arc;
 
-use datafusion::arrow::datatypes::{DataType, Field};
+use datafusion::arrow::datatypes::DataType;
 use datafusion::common::tree_node::{Transformed, TreeNode};
 use datafusion::common::{DataFusionError, Result, ScalarValue};
 use datafusion::functions::math::expr_fn;
-use datafusion::functions_nested::expr_fn::make_array;
 use datafusion::logical_expr::expr::ScalarFunction;
 use datafusion::logical_expr::{
     lit, BinaryExpr, Cast, ColumnarValue, Expr, LogicalPlan, Operator, ScalarFunctionArgs,
@@ -160,41 +168,48 @@ fn square(e: Expr) -> Expr {
 }
 
 // ---------------------------------------------------------------------------
-// The differentiation rules
+// The differentiation engine (forward-mode linearization)
 // ---------------------------------------------------------------------------
 
-/// Differentiate `expr` with respect to the column named `wrt`.
+/// A *leaf rule*: the tangent of a column, i.e. the seed assigned to each input
+/// during forward-mode differentiation.
 ///
-/// Returns a new [`Expr`] for the partial derivative, composed of ordinary
-/// DataFusion expressions. Returns a [`DataFusionError::NotImplemented`] for
-/// expression nodes or scalar functions without a differentiation rule, so the
-/// caller can surface a clear, actionable error rather than silently producing
-/// a wrong answer.
-pub fn differentiate(expr: &Expr, wrt: &str) -> Result<Expr> {
-    match expr {
-        // d/dx (x) = 1 ; d/dx (y) = 0 for any other column.
-        Expr::Column(c) => Ok(if c.name == wrt { one() } else { zero() }),
+/// `grad` uses a one-hot leaf (`1` for the differentiation variable, `0`
+/// otherwise); `jvp` uses an arbitrary seed per input. Everything above the
+/// leaves — the chain rule — is shared.
+type Leaf<'a> = dyn Fn(&str) -> Expr + 'a;
 
-        // d/dx (constant) = 0.
+/// Linearize `expr`: push tangents from the leaves (per `leaf`) up through the
+/// expression via the chain rule, returning the tangent of `expr`.
+///
+/// This is forward-mode automatic differentiation. `differentiate` (a single
+/// partial derivative) and `jvp` (a directional derivative) are both thin
+/// wrappers that only differ in their leaf rule. Returns a
+/// [`DataFusionError::NotImplemented`] for nodes or functions without a rule,
+/// so callers surface a clear error rather than a silently-wrong derivative.
+fn linearize(expr: &Expr, leaf: &Leaf) -> Result<Expr> {
+    match expr {
+        // The leaf rule decides a column's tangent.
+        Expr::Column(c) => Ok(leaf(&c.name)),
+
+        // Constants have zero tangent.
         Expr::Literal(_, _) => Ok(zero()),
 
-        // An alias is transparent to differentiation; the surrounding query
-        // re-applies any output naming.
-        Expr::Alias(a) => differentiate(&a.expr, wrt),
+        // An alias is transparent; the surrounding query re-applies any naming.
+        Expr::Alias(a) => linearize(&a.expr, leaf),
 
-        // A numeric cast is (locally) linear: d/dx cast(u) = cast(du). We keep
-        // the cast so the derivative retains the declared output type.
+        // A numeric cast is (locally) linear: tangent of cast(u) = cast(du).
         Expr::Cast(c) => {
-            let du = differentiate(&c.expr, wrt)?;
+            let du = linearize(&c.expr, leaf)?;
             Ok(Expr::Cast(Cast::new(Box::new(du), c.data_type.clone())))
         }
 
-        // d/dx (-u) = -(du).
-        Expr::Negative(inner) => Ok(neg(differentiate(inner, wrt)?)),
+        // tangent of -u = -(du).
+        Expr::Negative(inner) => Ok(neg(linearize(inner, leaf)?)),
 
-        Expr::BinaryExpr(be) => diff_binary(be, wrt),
+        Expr::BinaryExpr(be) => linearize_binary(be, leaf),
 
-        Expr::ScalarFunction(sf) => diff_scalar_function(sf, wrt),
+        Expr::ScalarFunction(sf) => linearize_scalar_function(sf, leaf),
 
         other => Err(DataFusionError::NotImplemented(format!(
             "grad: differentiation is not implemented for this expression: {other}"
@@ -202,22 +217,34 @@ pub fn differentiate(expr: &Expr, wrt: &str) -> Result<Expr> {
     }
 }
 
-/// Differentiate a binary arithmetic expression via the sum/product/quotient
-/// rules.
-fn diff_binary(be: &BinaryExpr, wrt: &str) -> Result<Expr> {
+/// Differentiate `expr` with respect to the column named `wrt`.
+///
+/// Forward-mode with a one-hot seed: `1` on `wrt`, `0` on every other column.
+pub fn differentiate(expr: &Expr, wrt: &str) -> Result<Expr> {
+    linearize(expr, &|name| if name == wrt { one() } else { zero() })
+}
+
+/// Forward-mode directional derivative: the tangent of `expr` given a tangent
+/// (`seeds[col]`) for each seeded input column; unseeded columns are constant.
+fn jvp(expr: &Expr, seeds: &HashMap<String, Expr>) -> Result<Expr> {
+    linearize(expr, &|name| seeds.get(name).cloned().unwrap_or_else(zero))
+}
+
+/// Linearize a binary arithmetic expression via the sum/product/quotient rules.
+fn linearize_binary(be: &BinaryExpr, leaf: &Leaf) -> Result<Expr> {
     let a = be.left.as_ref();
     let b = be.right.as_ref();
-    let da = differentiate(a, wrt)?;
-    let db = differentiate(b, wrt)?;
+    let da = linearize(a, leaf)?;
+    let db = linearize(b, leaf)?;
 
     match be.op {
-        // d/dx (a + b) = da + db
+        // tangent of (a + b) = da + db
         Operator::Plus => Ok(add(da, db)),
-        // d/dx (a - b) = da - db
+        // tangent of (a - b) = da - db
         Operator::Minus => Ok(sub(da, db)),
-        // d/dx (a * b) = da*b + a*db   (product rule)
+        // tangent of (a * b) = da*b + a*db   (product rule)
         Operator::Multiply => Ok(add(mul(da, b.clone()), mul(a.clone(), db))),
-        // d/dx (a / b) = (da*b - a*db) / b^2   (quotient rule)
+        // tangent of (a / b) = (da*b - a*db) / b^2   (quotient rule)
         Operator::Divide => {
             let numerator = sub(mul(da, b.clone()), mul(a.clone(), db));
             Ok(div(numerator, square(b.clone())))
@@ -228,17 +255,17 @@ fn diff_binary(be: &BinaryExpr, wrt: &str) -> Result<Expr> {
     }
 }
 
-/// Differentiate a scalar-function call via the chain rule.
+/// Linearize a scalar-function call via the chain rule.
 ///
-/// For a unary primitive `f(u)`, the derivative is `f'(u) * du`. For `power`,
+/// For a unary primitive `f(u)`, the tangent is `f'(u) * du`. For `power`,
 /// which is binary, we handle the constant-exponent and constant-base cases.
-fn diff_scalar_function(sf: &ScalarFunction, wrt: &str) -> Result<Expr> {
+fn linearize_scalar_function(sf: &ScalarFunction, leaf: &Leaf) -> Result<Expr> {
     let name = sf.func.name();
     let args = &sf.args;
 
-    // `power(base, exponent)` is the one binary primitive we differentiate.
+    // `power(base, exponent)` is the one binary primitive we linearize.
     if name == "power" {
-        return diff_power(args, wrt);
+        return linearize_power(args, leaf);
     }
 
     if args.len() != 1 {
@@ -249,9 +276,9 @@ fn diff_scalar_function(sf: &ScalarFunction, wrt: &str) -> Result<Expr> {
     }
 
     let u = &args[0];
-    let du = differentiate(u, wrt)?;
-    // Chain rule short-circuit: if du is 0, the whole derivative is 0 and we
-    // avoid emitting the (dead) outer derivative term entirely.
+    let du = linearize(u, leaf)?;
+    // Chain rule short-circuit: if du is 0, the whole tangent is 0 and we avoid
+    // emitting the (dead) outer derivative term entirely.
     if is_zero(&du) {
         return Ok(zero());
     }
@@ -287,12 +314,12 @@ fn diff_scalar_function(sf: &ScalarFunction, wrt: &str) -> Result<Expr> {
     Ok(mul(outer, du))
 }
 
-/// Differentiate `power(base, exponent)`.
+/// Linearize `power(base, exponent)`.
 ///
-/// * Constant exponent `c`: `d/dx base^c = c * base^(c-1) * d(base)`.
-/// * Constant base `a`: `d/dx a^u = a^u * ln(a) * d(u)`.
-/// * Both variable (`u^v`): not supported in the MVP.
-fn diff_power(args: &[Expr], wrt: &str) -> Result<Expr> {
+/// * Constant exponent `c`: tangent = `c * base^(c-1) * d(base)`.
+/// * Constant base `a`: tangent = `a^u * ln(a) * d(u)`.
+/// * Both variable (`u^v`): not supported yet.
+fn linearize_power(args: &[Expr], leaf: &Leaf) -> Result<Expr> {
     if args.len() != 2 {
         return Err(DataFusionError::NotImplemented(
             "grad: power() expects exactly two arguments".to_string(),
@@ -304,7 +331,7 @@ fn diff_power(args: &[Expr], wrt: &str) -> Result<Expr> {
     match (as_const(base), as_const(exponent)) {
         // Constant exponent (covers the common x^2, x^0.5, ... cases).
         (_, Some(c)) => {
-            let dbase = differentiate(base, wrt)?;
+            let dbase = linearize(base, leaf)?;
             if is_zero(&dbase) {
                 return Ok(zero());
             }
@@ -313,14 +340,14 @@ fn diff_power(args: &[Expr], wrt: &str) -> Result<Expr> {
         }
         // Constant base, variable exponent.
         (Some(a), None) => {
-            let dexp = differentiate(exponent, wrt)?;
+            let dexp = linearize(exponent, leaf)?;
             if is_zero(&dexp) {
                 return Ok(zero());
             }
             let outer = mul(expr_fn::power(base.clone(), exponent.clone()), lit(a.ln()));
             Ok(mul(outer, dexp))
         }
-        // General u^v requires the exp/log trick; deferred past the MVP.
+        // General u^v requires the exp/log trick; deferred for now.
         (None, None) => Err(DataFusionError::NotImplemented(
             "grad: power(base, exponent) where both depend on the \
              differentiation variable is not yet supported"
@@ -335,26 +362,22 @@ fn diff_power(args: &[Expr], wrt: &str) -> Result<Expr> {
 
 /// A no-op placeholder UDF for the autograd surface functions.
 ///
-/// `grad` and `jacobian` are *markers*: they carry the differentiation request
-/// intact through SQL parsing, logical planning, and Substrait serialization.
-/// They are always rewritten away by [`rewrite_grad_calls`] before execution,
-/// so `invoke` is never reached in normal use (and deliberately errors if it
-/// somehow is, rather than silently returning a wrong value).
+/// `grad`, `jvp`, and `vjp` are *markers*: they carry the differentiation
+/// request intact through SQL parsing, logical planning, and Substrait
+/// serialization. They are always rewritten away by [`rewrite_grad_calls`]
+/// before execution, so `invoke` is never reached in normal use (and
+/// deliberately errors if it somehow is, rather than returning a wrong value).
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct MarkerUdf {
     name: String,
     signature: Signature,
-    return_type: DataType,
 }
 
 impl MarkerUdf {
-    fn new(name: &str, return_type: DataType) -> Self {
+    fn new(name: &str, arity: usize) -> Self {
         Self {
             name: name.to_string(),
-            // Both markers take two arguments: the expression and either a
-            // column (grad) or an array of columns (jacobian).
-            signature: Signature::any(2, Volatility::Immutable),
-            return_type,
+            signature: Signature::any(arity, Volatility::Immutable),
         }
     }
 }
@@ -373,7 +396,8 @@ impl ScalarUDFImpl for MarkerUdf {
     }
 
     fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType> {
-        Ok(self.return_type.clone())
+        // Every autograd marker rewrites to a scalar derivative expression.
+        Ok(DataType::Float64)
     }
 
     fn invoke_with_args(&self, _args: ScalarFunctionArgs) -> Result<ColumnarValue> {
@@ -385,63 +409,25 @@ impl ScalarUDFImpl for MarkerUdf {
     }
 }
 
-/// A `List<Float64>` data type, the output of a `jacobian(...)` call.
-fn list_of_f64() -> DataType {
-    DataType::List(Arc::new(Field::new("item", DataType::Float64, true)))
-}
-
-/// The `grad(expr, column)` marker UDF: returns a scalar derivative.
+/// The `grad(expr, column)` marker: scalar partial derivative `d(expr)/dcolumn`.
 pub fn grad_marker() -> ScalarUDF {
-    ScalarUDF::from(MarkerUdf::new("grad", DataType::Float64))
+    ScalarUDF::from(MarkerUdf::new("grad", 2))
 }
 
-/// The `jacobian(expr, [c1, c2, ...])` marker UDF: returns the gradient of
-/// `expr` with respect to several columns as a `List<Float64>`.
-pub fn jacobian_marker() -> ScalarUDF {
-    ScalarUDF::from(MarkerUdf::new("jacobian", list_of_f64()))
+/// The `jvp(expr, column, tangent)` marker: forward-mode directional derivative.
+pub fn jvp_marker() -> ScalarUDF {
+    ScalarUDF::from(MarkerUdf::new("jvp", 3))
 }
 
-/// Build the Jacobian row `[d(expr)/dc1, d(expr)/dc2, ...]` as an array
-/// expression (`make_array`), differentiating `expr` w.r.t. each named column.
-fn jacobian(expr: &Expr, wrt: &[String]) -> Result<Expr> {
-    let partials = wrt
-        .iter()
-        .map(|c| differentiate(expr, c))
-        .collect::<Result<Vec<_>>>()?;
-    Ok(make_array(partials))
+/// The `vjp(expr, column, cotangent)` marker: reverse-mode pullback to an input.
+pub fn vjp_marker() -> ScalarUDF {
+    ScalarUDF::from(MarkerUdf::new("vjp", 3))
 }
 
-/// Extract the bare column names from an array-literal expression, i.e. the
-/// `make_array(c1, c2, ...)` that a SQL `[c1, c2, ...]` array parses into.
-fn columns_from_array(expr: &Expr) -> Result<Vec<String>> {
-    let Expr::ScalarFunction(sf) = expr else {
-        return Err(DataFusionError::Plan(format!(
-            "jacobian(): the second argument must be an array of columns \
-             like [x, y, z], got: {expr}"
-        )));
-    };
-    if sf.func.name() != "make_array" {
-        return Err(DataFusionError::Plan(format!(
-            "jacobian(): the second argument must be an array of columns \
-             like [x, y, z], got: {expr}"
-        )));
-    }
-    sf.args
-        .iter()
-        .map(|a| match a {
-            Expr::Column(c) => Ok(c.name.clone()),
-            other => Err(DataFusionError::Plan(format!(
-                "jacobian(): array entries must be bare columns to \
-                 differentiate with respect to, got: {other}"
-            ))),
-        })
-        .collect()
-}
-
-/// Rewrite every `grad(...)` / `jacobian(...)` call anywhere in a logical plan
-/// into its symbolic derivative(s), leaving everything else untouched. The
-/// plan's schema is recomputed afterwards because replacing a marker can change
-/// an expression's name or type.
+/// Rewrite every `grad`/`jvp`/`vjp` call anywhere in a logical plan into its
+/// symbolic derivative, leaving everything else untouched. The plan's schema is
+/// recomputed afterwards because replacing a marker can change an expression's
+/// name or type.
 pub fn rewrite_grad_calls(plan: LogicalPlan) -> Result<LogicalPlan> {
     let rewritten = plan
         .transform_up(|node| node.map_expressions(rewrite_grad_in_expr))?
@@ -449,8 +435,8 @@ pub fn rewrite_grad_calls(plan: LogicalPlan) -> Result<LogicalPlan> {
     rewritten.recompute_schema()
 }
 
-/// Replace any `grad(...)` / `jacobian(...)` calls nested anywhere inside a
-/// single expression.
+/// Replace any `grad`/`jvp`/`vjp` calls nested anywhere inside a single
+/// expression.
 fn rewrite_grad_in_expr(expr: Expr) -> Result<Transformed<Expr>> {
     expr.transform_up(|e| {
         let Expr::ScalarFunction(sf) = &e else {
@@ -458,13 +444,25 @@ fn rewrite_grad_in_expr(expr: Expr) -> Result<Transformed<Expr>> {
         };
         match sf.func.name() {
             "grad" => Ok(Transformed::yes(rewrite_grad(&sf.args)?)),
-            "jacobian" => Ok(Transformed::yes(rewrite_jacobian(&sf.args)?)),
+            "jvp" => Ok(Transformed::yes(rewrite_jvp(&sf.args)?)),
+            "vjp" => Ok(Transformed::yes(rewrite_vjp(&sf.args)?)),
             _ => Ok(Transformed::no(e)),
         }
     })
 }
 
-/// `grad(expr, column)` -> d(expr)/d(column).
+/// Read a bare column name from a marker argument, or report a clear error.
+fn column_arg(func: &str, arg: &Expr) -> Result<String> {
+    match arg {
+        Expr::Column(c) => Ok(c.name.clone()),
+        other => Err(DataFusionError::Plan(format!(
+            "{func}(): the column argument must be a bare column to \
+             differentiate with respect to, got: {other}"
+        ))),
+    }
+}
+
+/// `grad(expr, column)` -> `d(expr)/d(column)`.
 fn rewrite_grad(args: &[Expr]) -> Result<Expr> {
     if args.len() != 2 {
         return Err(DataFusionError::Plan(format!(
@@ -472,29 +470,44 @@ fn rewrite_grad(args: &[Expr]) -> Result<Expr> {
             args.len()
         )));
     }
-    let wrt = match &args[1] {
-        Expr::Column(c) => c.name.clone(),
-        other => {
-            return Err(DataFusionError::Plan(format!(
-                "grad(): the second argument must be a bare column to \
-                 differentiate with respect to, got: {other}"
-            )))
-        }
-    };
+    let wrt = column_arg("grad", &args[1])?;
     differentiate(&args[0], &wrt)
 }
 
-/// `jacobian(expr, [c1, c2, ...])` -> array `[d(expr)/dc1, d(expr)/dc2, ...]`.
-fn rewrite_jacobian(args: &[Expr]) -> Result<Expr> {
-    if args.len() != 2 {
+/// `jvp(expr, column, tangent)` -> forward-mode tangent: seed `tangent` on
+/// `column` and push it through `expr`, yielding `d(expr)/d(column) * tangent`.
+///
+/// A directional derivative over several inputs is the sum of per-input jvps,
+/// e.g. `jvp(f, x, dx) + jvp(f, y, dy)`, since each treats the other inputs as
+/// having zero tangent.
+fn rewrite_jvp(args: &[Expr]) -> Result<Expr> {
+    if args.len() != 3 {
         return Err(DataFusionError::Plan(format!(
-            "jacobian() expects two arguments jacobian(expr, [c1, c2, ...]), \
-             got {}",
+            "jvp() expects three arguments jvp(expr, column, tangent), got {}",
             args.len()
         )));
     }
-    let wrt = columns_from_array(&args[1])?;
-    jacobian(&args[0], &wrt)
+    let wrt = column_arg("jvp", &args[1])?;
+    let seeds = HashMap::from([(wrt, args[2].clone())]);
+    jvp(&args[0], &seeds)
+}
+
+/// `vjp(expr, column, cotangent)` -> reverse-mode pullback: the sensitivity that
+/// an output cotangent induces on `column`, i.e. `cotangent * d(expr)/d(column)`.
+///
+/// For a single scalar output this equals the matching `jvp` (both contract the
+/// same partial derivative); the surfaces differ in where the seed lives — `jvp`
+/// seeds an input tangent, `vjp` seeds an output cotangent.
+fn rewrite_vjp(args: &[Expr]) -> Result<Expr> {
+    if args.len() != 3 {
+        return Err(DataFusionError::Plan(format!(
+            "vjp() expects three arguments vjp(expr, column, cotangent), got {}",
+            args.len()
+        )));
+    }
+    let wrt = column_arg("vjp", &args[1])?;
+    let derivative = differentiate(&args[0], &wrt)?;
+    Ok(mul(args[2].clone(), derivative))
 }
 
 // ---------------------------------------------------------------------------
@@ -584,28 +597,37 @@ mod tests {
     }
 
     #[test]
-    fn jacobian_builds_array_of_partials() {
-        // jacobian(x*y, [x, y]) = [d/dx, d/dy] = [y, x]
+    fn jvp_seeds_a_tangent_on_one_input() {
+        // jvp(x*y, {x: dx}) = product rule with tangent(x)=dx, tangent(y)=0
+        //                   = dx*y + x*0 = dx*y
         let f = binary(col("x"), Operator::Multiply, col("y"));
-        let j = jacobian(&f, &["x".to_string(), "y".to_string()]).unwrap();
-        let expected = make_array(vec![col("y"), col("x")]);
-        assert_eq!(j, expected);
+        let seeds = HashMap::from([("x".to_string(), col("dx"))]);
+        let t = jvp(&f, &seeds).unwrap();
+        assert_eq!(t, mul(col("dx"), col("y")));
     }
 
     #[test]
-    fn jacobian_single_input_is_one_element_array() {
-        let j = jacobian(&expr_fn::sin(col("x")), &["x".to_string()]).unwrap();
-        assert_eq!(j, make_array(vec![expr_fn::cos(col("x"))]));
+    fn jvp_with_unit_seed_matches_grad() {
+        // A one-hot tangent reproduces the partial derivative.
+        let f = expr_fn::sin(col("x"));
+        let seeds = HashMap::from([("x".to_string(), one())]);
+        assert_eq!(jvp(&f, &seeds).unwrap(), differentiate(&f, "x").unwrap());
     }
 
     #[test]
-    fn columns_from_array_extracts_names() {
-        let arr = make_array(vec![col("a"), col("b"), col("c")]);
-        assert_eq!(columns_from_array(&arr).unwrap(), vec!["a", "b", "c"]);
+    fn vjp_equals_cotangent_times_grad() {
+        // rewrite_vjp(sin(x), x, w) = w * cos(x)
+        let f = expr_fn::sin(col("x"));
+        let got = rewrite_vjp(&[f.clone(), col("x"), col("w")]).unwrap();
+        assert_eq!(got, mul(col("w"), expr_fn::cos(col("x"))));
     }
 
     #[test]
-    fn columns_from_array_rejects_non_array() {
-        assert!(columns_from_array(&col("x")).is_err());
+    fn jvp_and_vjp_agree_for_unit_seed() {
+        // With matching unit seed/cotangent, forward and reverse coincide.
+        let f = binary(expr_fn::sin(col("x")), Operator::Multiply, col("x"));
+        let fwd = rewrite_jvp(&[f.clone(), col("x"), one()]).unwrap();
+        let rev = rewrite_vjp(&[f, col("x"), one()]).unwrap();
+        assert_eq!(fwd, rev);
     }
 }
