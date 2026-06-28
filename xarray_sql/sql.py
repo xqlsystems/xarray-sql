@@ -251,11 +251,12 @@ class XarrayContext(SessionContext):
         schemas = []
         for name in self._registered_datasets:
             try:
+                # Names may be bare ("air") or schema-qualified ("era5.surface",
+                # from a mixed-dimension dataset); both resolve here.
                 schemas.append((name, self.table(name).schema()))
             except Exception:
-                # Schema-qualified tables (mixed-dimension datasets) aren't
-                # resolvable by a bare name yet; skip rather than fail the
-                # whole query. grad() over those is a follow-up.
+                # Be defensive: skip a table we can't introspect rather than
+                # failing the whole query.
                 continue
         return schemas
 

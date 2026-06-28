@@ -133,6 +133,46 @@ def test_vjp_reverse_pullback(ctx_xy):
     np.testing.assert_allclose(res["s"], 3.0 * (np.cos(x) * y))
 
 
+@pytest.fixture
+def ctx_mixed():
+    # A mixed-dimension dataset registers as schema-qualified tables:
+    #   era5.time_x        (surface, 2 dims)
+    #   era5.time_x_level  (atmosphere, 3 dims)
+    rng = np.random.default_rng(1)
+    ds = xr.Dataset(
+        {
+            "sfc": (("time", "x"), rng.uniform(0.5, 2.5, (3, 4))),
+            "atm": (("time", "x", "level"), rng.uniform(0.5, 2.5, (3, 4, 2))),
+        },
+        coords={"time": [0, 1, 2], "x": np.arange(4.0), "level": [0, 1]},
+    )
+    context = xql.XarrayContext()
+    context.from_dataset("era5", ds, chunks={"time": 1})
+    return context, ds
+
+
+def test_grad_on_qualified_surface_table(ctx_mixed):
+    context, ds = ctx_mixed
+    res = _ordered(
+        context.sql(
+            "SELECT time, x, sfc, grad(sin(sfc), sfc) AS d FROM era5.time_x"
+        ),
+        key="sfc",
+    )
+    np.testing.assert_allclose(res["d"], np.cos(res["sfc"]))
+
+
+def test_grad_on_qualified_atmosphere_table(ctx_mixed):
+    context, ds = ctx_mixed
+    res = _ordered(
+        context.sql(
+            "SELECT atm, grad(power(atm, 2), atm) AS d FROM era5.time_x_level"
+        ),
+        key="atm",
+    )
+    np.testing.assert_allclose(res["d"], 2.0 * res["atm"])
+
+
 def test_jvp_and_vjp_agree_for_unit_seed(ctx_xy):
     # Forward (unit tangent) and reverse (unit cotangent) coincide for a
     # scalar output -- both contract the same partial derivative.
