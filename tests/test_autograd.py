@@ -80,6 +80,31 @@ def test_grad_quotient_and_power(ctx):
     np.testing.assert_allclose(res["dcube"], 3.0 * val**2)
 
 
+def test_higher_order_grad(ctx):
+    # Nested grad() differentiates repeatedly: the inner call is rewritten
+    # first, then the outer differentiates its result.
+    val = np.linspace(0.1, 3.0, 16)
+    res = _ordered(
+        ctx.sql(
+            "SELECT i, "
+            "grad(grad(sin(val), val), val) AS d2_sin, "
+            "grad(grad(power(val, 3), val), val) AS d2_cube FROM t"
+        )
+    )
+    np.testing.assert_allclose(res["d2_sin"], -np.sin(val))  # -sin
+    np.testing.assert_allclose(res["d2_cube"], 6.0 * val)  # d2/dx2 x^3 = 6x
+
+
+def test_third_order_grad(ctx):
+    val = np.linspace(0.1, 3.0, 16)
+    res = _ordered(
+        ctx.sql(
+            "SELECT i, grad(grad(grad(sin(val), val), val), val) AS d3 FROM t"
+        )
+    )
+    np.testing.assert_allclose(res["d3"], -np.cos(val))  # d3/dx3 sin = -cos
+
+
 def test_non_grad_query_is_unaffected(ctx):
     # Queries without grad() bypass the rewrite and behave normally.
     res = _ordered(ctx.sql("SELECT i, val FROM t"))

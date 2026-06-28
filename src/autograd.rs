@@ -36,6 +36,10 @@
 //! full gradient or Jacobian is expressed as several scalar columns (e.g.
 //! `grad(f, x) AS dfdx, grad(f, y) AS dfdy`) rather than a nested array, which
 //! would break the one-value-per-coordinate model.
+//!
+//! Calls nest, giving higher-order derivatives for free: the rewrite walks
+//! bottom-up, so the inner call in `grad(grad(f, x), x)` is differentiated
+//! first and the outer call differentiates that result.
 
 #![allow(dead_code)]
 
@@ -594,6 +598,14 @@ mod tests {
         // atan2 is binary and has no rule yet.
         let e = expr_fn::atan2(col("x"), col("y"));
         assert!(differentiate(&e, "x").is_err());
+    }
+
+    #[test]
+    fn higher_order_derivative() {
+        // Differentiation composes: d2/dx2 sin(x) = -sin(x).
+        let d1 = differentiate(&expr_fn::sin(col("x")), "x").unwrap();
+        let d2 = differentiate(&d1, "x").unwrap();
+        assert_eq!(d2, neg(expr_fn::sin(col("x"))));
     }
 
     #[test]
