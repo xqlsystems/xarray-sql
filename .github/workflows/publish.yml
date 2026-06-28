@@ -54,6 +54,13 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # The `substrait` crate (a datafusion-substrait dependency) generates
+      # code from .proto files at build time and requires protoc.
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
 
@@ -91,6 +98,18 @@ jobs:
           manylinux: 2_28
           rustup-components: rust-std rustfmt
           sccache: 'true'
+          # protoc is required by the substrait crate build and must be
+          # installed inside the manylinux container.
+          before-script-linux: |
+            PROTOC_VERSION=29.3
+            case "$(uname -m)" in
+              x86_64) PROTOC_ARCH=x86_64 ;;
+              aarch64) PROTOC_ARCH=aarch_64 ;;
+              *) echo "unsupported arch $(uname -m)"; exit 1 ;;
+            esac
+            curl -L -o /tmp/protoc.zip "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-${PROTOC_ARCH}.zip"
+            unzip -o /tmp/protoc.zip -d /usr/local bin/protoc 'include/*'
+            protoc --version
           # abi3 (see Cargo.toml) produces one wheel for all CPython >= 3.10,
           # so a single interpreter is enough to build it.
           args: --release --strip --out dist -i python3.10
@@ -115,6 +134,18 @@ jobs:
           manylinux: 2_28
           rustup-components: rust-std rustfmt
           sccache: 'true'
+          # protoc is required by the substrait crate build and must be
+          # installed inside the manylinux container.
+          before-script-linux: |
+            PROTOC_VERSION=29.3
+            case "$(uname -m)" in
+              x86_64) PROTOC_ARCH=x86_64 ;;
+              aarch64) PROTOC_ARCH=aarch_64 ;;
+              *) echo "unsupported arch $(uname -m)"; exit 1 ;;
+            esac
+            curl -L -o /tmp/protoc.zip "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-${PROTOC_ARCH}.zip"
+            unzip -o /tmp/protoc.zip -d /usr/local bin/protoc 'include/*'
+            protoc --version
           # abi3 (see Cargo.toml) produces one wheel for all CPython >= 3.10,
           # so a single interpreter is enough to build it.
           args: --release --strip --out dist -i python3.10
