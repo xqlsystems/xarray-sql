@@ -50,13 +50,15 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use arrow::array::RecordBatch;
-use arrow::datatypes::{DataType, Schema, SchemaRef, TimeUnit};
+use arrow::datatypes::{DataType, Field, Schema, SchemaRef, TimeUnit};
 use arrow::pyarrow::{FromPyArrow, ToPyArrow};
 use async_stream::try_stream;
 use async_trait::async_trait;
 use datafusion::catalog::streaming::StreamingTable;
 use datafusion::catalog::{MemorySchemaProvider, Session};
-use datafusion::common::{DataFusionError, Result as DFResult, ScalarValue, TableReference};
+use datafusion::common::{
+    DFSchema, DataFusionError, Result as DFResult, ScalarValue, TableReference,
+};
 use datafusion::catalog::Session;
 use datafusion::common::stats::Precision;
 use datafusion::common::{
@@ -75,6 +77,7 @@ use datafusion::physical_plan::{
     DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties, SendableRecordBatchStream,
 };
 use datafusion::prelude::SessionContext;
+use datafusion::sql::unparser::expr_to_sql;
 use datafusion_ffi::proto::logical_extension_codec::FFI_LogicalExtensionCodec;
 use datafusion_ffi::table_provider::FFI_TableProvider;
 use datafusion_substrait::logical_plan::consumer::from_substrait_plan;
@@ -1403,10 +1406,63 @@ fn grad_rewrite<'py>(
     Ok(PyBytes::new(py, &out_plan.encode_to_vec()))
 }
 
+/// Differentiate a SQL scalar expression symbolically and return the
+/// derivative as SQL text.
+///
+/// Where [`grad_rewrite`] rewrites `grad(...)` calls inside a whole plan, this
+/// differentiates a single expression and hands back the result as SQL — the
+/// autograd engine acting as a "calculus compiler". It lets a caller obtain an
+/// update rule once and embed it in queries the Substrait round-trip can't
+/// carry a `grad` marker through, such as a recursive-CTE training loop.
+///
+/// Args:
+///     expr: A SQL scalar expression over `columns` (e.g. `"sin(x) * x"`).
+///     wrt: The column name to differentiate with respect to.
+///     columns: The column names in scope; all treated as `Float64` (enough to
+///         parse and differentiate — types don't affect the symbolic result).
+///
+/// Returns:
+///     The derivative as a SQL string (e.g. `"cos(x) * x + sin(x)"`).
+#[pyfunction]
+fn differentiate_sql(expr: &str, wrt: &str, columns: Vec<String>) -> PyResult<String> {
+    let ctx = SessionContext::new();
+
+    let fields: Vec<Field> = columns
+        .iter()
+        .map(|name| Field::new(name, DataType::Float64, true))
+        .collect();
+    let df_schema = DFSchema::try_from(Schema::new(fields)).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "differentiate_sql: failed to build schema: {e}"
+        ))
+    })?;
+
+    let parsed = ctx.parse_sql_expr(expr, &df_schema).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "differentiate_sql: failed to parse expression '{expr}': {e}"
+        ))
+    })?;
+
+    let derivative = autograd::differentiate(&parsed, wrt).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "differentiate_sql: failed to differentiate: {e}"
+        ))
+    })?;
+
+    let sql = expr_to_sql(&derivative).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "differentiate_sql: failed to render derivative to SQL: {e}"
+        ))
+    })?;
+
+    Ok(sql.to_string())
+}
+
 /// Python module initialization
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<LazyArrowStreamTable>()?;
     m.add_function(wrap_pyfunction!(grad_rewrite, m)?)?;
+    m.add_function(wrap_pyfunction!(differentiate_sql, m)?)?;
     Ok(())
 }

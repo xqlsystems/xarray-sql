@@ -134,6 +134,15 @@ def test_grad_over_in_memory_table(ctx):
     np.testing.assert_allclose(res["d"], 3.0 * 2.0 * val)
 
 
+def test_differentiate_sql_round_trip(ctx):
+    # differentiate_sql returns the derivative as SQL text; evaluating it must
+    # match the analytic derivative. d/dval (sin(val)*val) = cos(val)*val + sin(val).
+    deriv = xql.differentiate_sql("sin(val) * val", "val", ["val"])
+    val = np.linspace(0.1, 3.0, 16)
+    res = _ordered(ctx.sql(f"SELECT i, {deriv} AS d FROM t"))
+    np.testing.assert_allclose(res["d"], np.cos(val) * val + np.sin(val))
+
+
 def test_grad_inside_aggregate(ctx):
     # Differentiation through an aggregate is just linearity:
     #   AGG(grad(f, x)) == d/dx AGG(f). grad rewrites to plain SQL before the
