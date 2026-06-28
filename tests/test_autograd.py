@@ -117,6 +117,58 @@ def test_unsupported_function_raises(ctx):
         ctx.sql("SELECT grad(atan2(val, val), val) AS d FROM t").to_pandas()
 
 
+def test_grad_inside_aggregate(ctx):
+    # Differentiation through an aggregate is just linearity:
+    #   AGG(grad(f, x)) == d/dx AGG(f). grad rewrites to plain SQL before the
+    #   aggregate runs, so this composes with no special machinery.
+    val = np.linspace(0.1, 3.0, 16)
+    res = ctx.sql(
+        "SELECT SUM(grad(val * val, val)) AS s, "
+        "AVG(grad(sin(val), val)) AS a FROM t"
+    ).to_pandas()
+    np.testing.assert_allclose(res["s"][0], np.sum(2 * val))
+    np.testing.assert_allclose(res["a"][0], np.mean(np.cos(val)))
+
+
+def test_gradient_descent_in_sql():
+    # End to end: fit y ~= a*x + b by minimising MSE, with the gradients
+    # w.r.t. the parameters computed in SQL via AVG(grad(loss, param)).
+    rng = np.random.default_rng(0)
+    n = 200
+    x = rng.uniform(0.0, 1.0, n)
+    a_true, b_true = 2.0, -1.0
+    y = a_true * x + b_true + rng.normal(0.0, 0.01, n)
+    data = xr.Dataset(
+        {"x": (("i",), x), "y": (("i",), y)}, coords={"i": np.arange(n)}
+    )
+    ctx = xql.XarrayContext()
+    ctx.from_dataset("d", data, chunks={"i": n})
+
+    resid = "(y - (a * x + b))"
+    loss = f"{resid} * {resid}"
+    a, b, lr = 0.0, 0.0, 0.4
+    losses = []
+    for _ in range(120):
+        if "params" in ctx._registered_datasets:
+            ctx.deregister_table("params")
+            del ctx._registered_datasets["params"]
+        params = xr.Dataset(
+            {"a": (("p",), [a]), "b": (("p",), [b])}, coords={"p": [0]}
+        )
+        ctx.from_dataset("params", params, chunks={"p": 1})
+        row = ctx.sql(
+            f"SELECT AVG({loss}) AS loss, "
+            f"AVG(grad({loss}, a)) AS dl_da, "
+            f"AVG(grad({loss}, b)) AS dl_db FROM d CROSS JOIN params"
+        ).to_pandas()
+        losses.append(float(row["loss"][0]))
+        a -= lr * float(row["dl_da"][0])
+        b -= lr * float(row["dl_db"][0])
+
+    assert losses[-1] < losses[0]  # loss decreased
+    np.testing.assert_allclose([a, b], [a_true, b_true], atol=0.05)
+
+
 def test_multi_input_grad_columns(ctx_xy):
     # A full Jacobian written as separate scalar grad() columns:
     # f = x*y  ->  df/dx = y, df/dy = x.

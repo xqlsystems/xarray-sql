@@ -40,6 +40,14 @@
 //! Calls nest, giving higher-order derivatives for free: the rewrite walks
 //! bottom-up, so the inner call in `grad(grad(f, x), x)` is differentiated
 //! first and the outer call differentiates that result.
+//!
+//! Differentiation through an aggregate is just linearity and needs no special
+//! handling: write the `grad` *inside* the aggregate, e.g. `SUM(grad(f, x))` or
+//! `AVG(grad(loss, theta))`. Because the marker is rewritten to plain SQL
+//! before the aggregate runs (and the column is in scope there), this is the
+//! relational `d/dθ Σ f = Σ ∂f/∂θ` — enough to run gradient descent in SQL.
+//! (The transposed form `grad(SUM(f), x)` is rejected by SQL's own scoping,
+//! since `x` is gone after aggregation.)
 
 #![allow(dead_code)]
 
