@@ -32,15 +32,17 @@
 
 use std::any::Any;
 use std::f64::consts::{LN_10, LN_2};
+use std::sync::Arc;
 
-use datafusion::arrow::datatypes::DataType;
+use datafusion::arrow::datatypes::{DataType, Field};
 use datafusion::common::tree_node::{Transformed, TreeNode};
 use datafusion::common::{DataFusionError, Result, ScalarValue};
 use datafusion::functions::math::expr_fn;
+use datafusion::functions_nested::expr_fn::make_array;
 use datafusion::logical_expr::expr::ScalarFunction;
 use datafusion::logical_expr::{
     lit, BinaryExpr, Cast, ColumnarValue, Expr, LogicalPlan, Operator, ScalarFunctionArgs,
-    ScalarUDFImpl, Signature, Volatility,
+    ScalarUDF, ScalarUDFImpl, Signature, Volatility,
 };
 
 // ---------------------------------------------------------------------------
@@ -328,43 +330,42 @@ fn diff_power(args: &[Expr], wrt: &str) -> Result<Expr> {
 }
 
 // ---------------------------------------------------------------------------
-// The `grad` marker UDF and the plan-level rewrite
+// The `grad` / `jacobian` marker UDFs and the plan-level rewrite
 // ---------------------------------------------------------------------------
 
-/// A no-op placeholder UDF for `grad(expr, column)`.
+/// A no-op placeholder UDF for the autograd surface functions.
 ///
-/// `grad` is a *marker*: it carries the differentiation request intact through
-/// SQL parsing, logical planning, and Substrait serialization. It is always
-/// rewritten away by [`rewrite_grad_calls`] before execution, so its `invoke`
-/// is never reached in normal use (and deliberately errors if it somehow is,
-/// rather than silently returning a wrong value).
+/// `grad` and `jacobian` are *markers*: they carry the differentiation request
+/// intact through SQL parsing, logical planning, and Substrait serialization.
+/// They are always rewritten away by [`rewrite_grad_calls`] before execution,
+/// so `invoke` is never reached in normal use (and deliberately errors if it
+/// somehow is, rather than silently returning a wrong value).
 #[derive(Debug, PartialEq, Eq, Hash)]
-pub struct GradMarker {
+pub struct MarkerUdf {
+    name: String,
     signature: Signature,
+    return_type: DataType,
 }
 
-impl GradMarker {
-    pub fn new() -> Self {
-        // grad(expr, column): two arguments of any (numeric) type.
+impl MarkerUdf {
+    fn new(name: &str, return_type: DataType) -> Self {
         Self {
+            name: name.to_string(),
+            // Both markers take two arguments: the expression and either a
+            // column (grad) or an array of columns (jacobian).
             signature: Signature::any(2, Volatility::Immutable),
+            return_type,
         }
     }
 }
 
-impl Default for GradMarker {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ScalarUDFImpl for GradMarker {
+impl ScalarUDFImpl for MarkerUdf {
     fn as_any(&self) -> &dyn Any {
         self
     }
 
     fn name(&self) -> &str {
-        "grad"
+        &self.name
     }
 
     fn signature(&self) -> &Signature {
@@ -372,22 +373,75 @@ impl ScalarUDFImpl for GradMarker {
     }
 
     fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType> {
-        Ok(DataType::Float64)
+        Ok(self.return_type.clone())
     }
 
     fn invoke_with_args(&self, _args: ScalarFunctionArgs) -> Result<ColumnarValue> {
-        Err(DataFusionError::Execution(
-            "grad() marker reached execution without being rewritten; this is \
-             an internal xarray-sql autograd error"
-                .to_string(),
-        ))
+        Err(DataFusionError::Execution(format!(
+            "{}() marker reached execution without being rewritten; this is \
+             an internal xarray-sql autograd error",
+            self.name
+        )))
     }
 }
 
-/// Rewrite every `grad(expr, column)` call anywhere in a logical plan into the
-/// symbolic derivative of `expr` with respect to `column`, leaving everything
-/// else untouched. The plan's schema is recomputed afterwards because replacing
-/// a `grad` call can change an expression's name or type.
+/// A `List<Float64>` data type, the output of a `jacobian(...)` call.
+fn list_of_f64() -> DataType {
+    DataType::List(Arc::new(Field::new("item", DataType::Float64, true)))
+}
+
+/// The `grad(expr, column)` marker UDF: returns a scalar derivative.
+pub fn grad_marker() -> ScalarUDF {
+    ScalarUDF::from(MarkerUdf::new("grad", DataType::Float64))
+}
+
+/// The `jacobian(expr, [c1, c2, ...])` marker UDF: returns the gradient of
+/// `expr` with respect to several columns as a `List<Float64>`.
+pub fn jacobian_marker() -> ScalarUDF {
+    ScalarUDF::from(MarkerUdf::new("jacobian", list_of_f64()))
+}
+
+/// Build the Jacobian row `[d(expr)/dc1, d(expr)/dc2, ...]` as an array
+/// expression (`make_array`), differentiating `expr` w.r.t. each named column.
+fn jacobian(expr: &Expr, wrt: &[String]) -> Result<Expr> {
+    let partials = wrt
+        .iter()
+        .map(|c| differentiate(expr, c))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(make_array(partials))
+}
+
+/// Extract the bare column names from an array-literal expression, i.e. the
+/// `make_array(c1, c2, ...)` that a SQL `[c1, c2, ...]` array parses into.
+fn columns_from_array(expr: &Expr) -> Result<Vec<String>> {
+    let Expr::ScalarFunction(sf) = expr else {
+        return Err(DataFusionError::Plan(format!(
+            "jacobian(): the second argument must be an array of columns \
+             like [x, y, z], got: {expr}"
+        )));
+    };
+    if sf.func.name() != "make_array" {
+        return Err(DataFusionError::Plan(format!(
+            "jacobian(): the second argument must be an array of columns \
+             like [x, y, z], got: {expr}"
+        )));
+    }
+    sf.args
+        .iter()
+        .map(|a| match a {
+            Expr::Column(c) => Ok(c.name.clone()),
+            other => Err(DataFusionError::Plan(format!(
+                "jacobian(): array entries must be bare columns to \
+                 differentiate with respect to, got: {other}"
+            ))),
+        })
+        .collect()
+}
+
+/// Rewrite every `grad(...)` / `jacobian(...)` call anywhere in a logical plan
+/// into its symbolic derivative(s), leaving everything else untouched. The
+/// plan's schema is recomputed afterwards because replacing a marker can change
+/// an expression's name or type.
 pub fn rewrite_grad_calls(plan: LogicalPlan) -> Result<LogicalPlan> {
     let rewritten = plan
         .transform_up(|node| node.map_expressions(rewrite_grad_in_expr))?
@@ -395,33 +449,52 @@ pub fn rewrite_grad_calls(plan: LogicalPlan) -> Result<LogicalPlan> {
     rewritten.recompute_schema()
 }
 
-/// Replace any `grad(...)` calls nested anywhere inside a single expression.
+/// Replace any `grad(...)` / `jacobian(...)` calls nested anywhere inside a
+/// single expression.
 fn rewrite_grad_in_expr(expr: Expr) -> Result<Transformed<Expr>> {
     expr.transform_up(|e| {
         let Expr::ScalarFunction(sf) = &e else {
             return Ok(Transformed::no(e));
         };
-        if sf.func.name() != "grad" {
-            return Ok(Transformed::no(e));
+        match sf.func.name() {
+            "grad" => Ok(Transformed::yes(rewrite_grad(&sf.args)?)),
+            "jacobian" => Ok(Transformed::yes(rewrite_jacobian(&sf.args)?)),
+            _ => Ok(Transformed::no(e)),
         }
-        if sf.args.len() != 2 {
-            return Err(DataFusionError::Plan(format!(
-                "grad() expects two arguments grad(expr, column), got {}",
-                sf.args.len()
-            )));
-        }
-        let wrt = match &sf.args[1] {
-            Expr::Column(c) => c.name.clone(),
-            other => {
-                return Err(DataFusionError::Plan(format!(
-                    "grad(): the second argument must be a bare column to \
-                     differentiate with respect to, got: {other}"
-                )))
-            }
-        };
-        let derivative = differentiate(&sf.args[0], &wrt)?;
-        Ok(Transformed::yes(derivative))
     })
+}
+
+/// `grad(expr, column)` -> d(expr)/d(column).
+fn rewrite_grad(args: &[Expr]) -> Result<Expr> {
+    if args.len() != 2 {
+        return Err(DataFusionError::Plan(format!(
+            "grad() expects two arguments grad(expr, column), got {}",
+            args.len()
+        )));
+    }
+    let wrt = match &args[1] {
+        Expr::Column(c) => c.name.clone(),
+        other => {
+            return Err(DataFusionError::Plan(format!(
+                "grad(): the second argument must be a bare column to \
+                 differentiate with respect to, got: {other}"
+            )))
+        }
+    };
+    differentiate(&args[0], &wrt)
+}
+
+/// `jacobian(expr, [c1, c2, ...])` -> array `[d(expr)/dc1, d(expr)/dc2, ...]`.
+fn rewrite_jacobian(args: &[Expr]) -> Result<Expr> {
+    if args.len() != 2 {
+        return Err(DataFusionError::Plan(format!(
+            "jacobian() expects two arguments jacobian(expr, [c1, c2, ...]), \
+             got {}",
+            args.len()
+        )));
+    }
+    let wrt = columns_from_array(&args[1])?;
+    jacobian(&args[0], &wrt)
 }
 
 // ---------------------------------------------------------------------------
@@ -508,5 +581,31 @@ mod tests {
         // atan2 is binary and has no rule yet.
         let e = expr_fn::atan2(col("x"), col("y"));
         assert!(differentiate(&e, "x").is_err());
+    }
+
+    #[test]
+    fn jacobian_builds_array_of_partials() {
+        // jacobian(x*y, [x, y]) = [d/dx, d/dy] = [y, x]
+        let f = binary(col("x"), Operator::Multiply, col("y"));
+        let j = jacobian(&f, &["x".to_string(), "y".to_string()]).unwrap();
+        let expected = make_array(vec![col("y"), col("x")]);
+        assert_eq!(j, expected);
+    }
+
+    #[test]
+    fn jacobian_single_input_is_one_element_array() {
+        let j = jacobian(&expr_fn::sin(col("x")), &["x".to_string()]).unwrap();
+        assert_eq!(j, make_array(vec![expr_fn::cos(col("x"))]));
+    }
+
+    #[test]
+    fn columns_from_array_extracts_names() {
+        let arr = make_array(vec![col("a"), col("b"), col("c")]);
+        assert_eq!(columns_from_array(&arr).unwrap(), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn columns_from_array_rejects_non_array() {
+        assert!(columns_from_array(&col("x")).is_err());
     }
 }

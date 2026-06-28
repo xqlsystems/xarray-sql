@@ -24,6 +24,22 @@ def ctx():
     return context
 
 
+@pytest.fixture
+def ctx_xy():
+    rng = np.random.default_rng(0)
+    n = 16
+    ds = xr.Dataset(
+        {
+            "x": (("i",), rng.uniform(0.5, 2.5, n)),
+            "y": (("i",), rng.uniform(0.5, 2.5, n)),
+        },
+        coords={"i": np.arange(n)},
+    )
+    context = xql.XarrayContext()
+    context.from_dataset("g", ds, chunks={"i": 5})
+    return context, ds
+
+
 def _ordered(df, key="i"):
     """Collect a result DataFrame into a dict of column -> numpy array, sorted
     by the integer key column so comparisons are index-aligned."""
@@ -74,3 +90,40 @@ def test_unsupported_function_raises(ctx):
     # atan2 has no derivative rule yet -> a clear error, not a wrong answer.
     with pytest.raises(Exception):
         ctx.sql("SELECT grad(atan2(val, val), val) AS d FROM t").to_pandas()
+
+
+def test_multi_input_grad_columns(ctx_xy):
+    # A full Jacobian written as separate scalar grad() columns:
+    # f = x*y  ->  df/dx = y, df/dy = x.
+    context, ds = ctx_xy
+    res = _ordered(
+        context.sql(
+            "SELECT i, grad(x * y, x) AS dfdx, grad(x * y, y) AS dfdy FROM g"
+        )
+    )
+    np.testing.assert_allclose(res["dfdx"], ds["y"].values)
+    np.testing.assert_allclose(res["dfdy"], ds["x"].values)
+
+
+def test_jacobian_array(ctx_xy):
+    # jacobian(f, [x, y]) returns the gradient row [df/dx, df/dy] per row.
+    context, ds = ctx_xy
+    res = _ordered(
+        context.sql("SELECT i, jacobian(x * y, [x, y]) AS jac FROM g")
+    )
+    jac = np.stack([np.asarray(v, dtype=float) for v in res["jac"]])
+    # column 0 is df/dx = y, column 1 is df/dy = x
+    np.testing.assert_allclose(jac[:, 0], ds["y"].values)
+    np.testing.assert_allclose(jac[:, 1], ds["x"].values)
+
+
+def test_jacobian_array_nonlinear(ctx_xy):
+    # jacobian(sin(x) * y, [x, y]) = [cos(x)*y, sin(x)]
+    context, ds = ctx_xy
+    x, y = ds["x"].values, ds["y"].values
+    res = _ordered(
+        context.sql("SELECT i, jacobian(sin(x) * y, [x, y]) AS jac FROM g")
+    )
+    jac = np.stack([np.asarray(v, dtype=float) for v in res["jac"]])
+    np.testing.assert_allclose(jac[:, 0], np.cos(x) * y)
+    np.testing.assert_allclose(jac[:, 1], np.sin(x))

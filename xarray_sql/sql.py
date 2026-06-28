@@ -13,9 +13,10 @@ from .df import Chunks
 from .ds import XarrayDataFrame
 from .reader import read_xarray_table
 
-# Matches a call to the autograd marker function ``grad(`` (case-insensitive),
-# used as a cheap gate so ordinary queries skip the Substrait round-trip.
-_GRAD_CALL = re.compile(r"\bgrad\s*\(", re.IGNORECASE)
+# Matches a call to an autograd marker function (``grad(`` / ``jacobian(``,
+# case-insensitive), used as a cheap gate so ordinary queries skip the
+# Substrait round-trip.
+_GRAD_CALL = re.compile(r"\b(grad|jacobian)\s*\(", re.IGNORECASE)
 
 
 class XarrayContext(SessionContext):
@@ -33,21 +34,36 @@ class XarrayContext(SessionContext):
         self._register_autograd_udfs()
 
     def _register_autograd_udfs(self) -> None:
-        """Register the ``grad`` marker UDF used by the autograd rewrite.
+        """Register the ``grad`` / ``jacobian`` marker UDFs.
 
-        ``grad(expr, column)`` is a *marker*: it lets queries parse and plan
-        with the differentiation request intact. It is never executed — the
-        Substrait rewrite in :meth:`sql` replaces every ``grad(...)`` with the
-        symbolic derivative of ``expr`` before execution.
+        These are *markers*: they let queries parse and plan with the
+        differentiation request intact. They are never executed — the Substrait
+        rewrite in :meth:`sql` replaces every call with the symbolic
+        derivative before execution.
+
+        * ``grad(expr, column)`` -> scalar ``d(expr)/d(column)``.
+        * ``jacobian(expr, [c1, c2, ...])`` -> the gradient of ``expr`` with
+          respect to several columns, as a ``List<Float64>`` (one Jacobian
+          row). The second argument is a SQL array of bare column references.
         """
-        marker = udf(
-            lambda expr, column: expr,
-            [pa.float64(), pa.float64()],
-            pa.float64(),
-            "immutable",
-            "grad",
+        self.register_udf(
+            udf(
+                lambda expr, column: expr,
+                [pa.float64(), pa.float64()],
+                pa.float64(),
+                "immutable",
+                "grad",
+            )
         )
-        self.register_udf(marker)
+        self.register_udf(
+            udf(
+                lambda expr, columns: columns,
+                [pa.float64(), pa.list_(pa.float64())],
+                pa.list_(pa.float64()),
+                "immutable",
+                "jacobian",
+            )
+        )
 
     def from_dataset(
         self,
