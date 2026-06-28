@@ -62,3 +62,24 @@ needs the Substrait round-trip, and Substrait has no recursion — so a `grad`
 marker can't live inside a recursive CTE. Differentiating once to plain SQL
 sidesteps that.)
 
+## `mnist_mlp.py` — train an MNIST MLP classifier in SQL
+
+A one-hidden-layer neural network (196 -> 32 tanh -> 10 softmax, on 2x2-pooled
+14x14 MNIST) trained by gradient descent where **every gradient is computed in
+SQL**; the optimisation loop is plain Python. It is reverse-mode autodiff
+expressed as relational algebra:
+
+- **matmul = join + `GROUP BY SUM`** — a layer's pre-activation is
+  `SUM(input * weight)` grouped by (sample, unit).
+- **local derivatives = `grad()`** — the hidden activation's Jacobian is
+  `grad(tanh(z), z)`, the autograd feature doing the calculus per (sample, unit).
+- **cotangent propagation = join**, **parameter gradients = join + `GROUP BY
+  AVG`**.
+
+The MNIST images are registered as xarray (the library's core); the model
+weights and per-step intermediates are DataFusion in-memory tables (a matmul is
+a join over them). The only hand-written gradient is softmax + cross-entropy's
+`delta = softmax - onehot` (softmax couples classes through a per-sample
+normaliser, an aggregate `grad` does not cross). Reaches ~83% test accuracy in
+~20s. Downloads MNIST on first run.
+
