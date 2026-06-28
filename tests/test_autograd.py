@@ -6,6 +6,7 @@ derivatives computed with numpy.
 """
 
 import numpy as np
+import pyarrow as pa
 import pytest
 import xarray as xr
 
@@ -115,6 +116,22 @@ def test_unsupported_function_raises(ctx):
     # atan2 has no derivative rule yet -> a clear error, not a wrong answer.
     with pytest.raises(Exception):
         ctx.sql("SELECT grad(atan2(val, val), val) AS d FROM t").to_pandas()
+
+
+def test_grad_over_in_memory_table(ctx):
+    # grad works over plain DataFusion tables too (not just xarray-registered
+    # ones): here a coefficient lives in an in-memory MemTable cross-joined to
+    # the xarray data. d/dval (c * val^2) = c * 2*val, with c = 3.
+    ctx.register_record_batches(
+        "coef", [[pa.RecordBatch.from_pydict({"c": [3.0]})]]
+    )
+    val = np.linspace(0.1, 3.0, 16)
+    res = _ordered(
+        ctx.sql(
+            "SELECT i, grad(c * val * val, val) AS d FROM t CROSS JOIN coef"
+        )
+    )
+    np.testing.assert_allclose(res["d"], 3.0 * 2.0 * val)
 
 
 def test_grad_inside_aggregate(ctx):

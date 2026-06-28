@@ -242,22 +242,40 @@ class XarrayContext(SessionContext):
         return self.create_dataframe_from_logical_plan(new_plan)
 
     def _table_schemas(self) -> list[tuple[str, pa.Schema]]:
-        """Return ``(name, schema)`` for each registered table.
+        """Return ``(name, schema)`` for every table registered in the context.
 
-        The Substrait consumer in ``grad_rewrite`` resolves table scans by
-        name, so it needs the schema of every table the plan might reference.
-        Only metadata is read here — never the underlying data.
+        The Substrait consumer in ``grad_rewrite`` resolves table scans by name,
+        so it needs the schema of every table the plan might reference. We
+        enumerate the catalog rather than only the xarray-registered datasets,
+        so ``grad`` also works over plain DataFusion tables (e.g. in-memory
+        ``MemTable``s holding model parameters or intermediate results). Only
+        metadata is read here — never the underlying data.
         """
         schemas = []
-        for name in self._registered_datasets:
-            try:
-                # Names may be bare ("air") or schema-qualified ("era5.surface",
-                # from a mixed-dimension dataset); both resolve here.
-                schemas.append((name, self.table(name).schema()))
-            except Exception:
-                # Be defensive: skip a table we can't introspect rather than
-                # failing the whole query.
+        catalog = self.catalog()
+        for schema_name in catalog.schema_names():
+            if schema_name == "information_schema":
                 continue
+            schema = catalog.schema(schema_name)
+            names = (
+                schema.table_names()
+                if hasattr(schema, "table_names")
+                else schema.names()
+            )
+            for table_name in names:
+                # Tables in the default schema are referenced bare ("air");
+                # others are schema-qualified ("era5.surface").
+                qualified = (
+                    table_name
+                    if schema_name in ("public", "default")
+                    else f"{schema_name}.{table_name}"
+                )
+                try:
+                    schemas.append((qualified, self.table(qualified).schema()))
+                except Exception:
+                    # Be defensive: skip a table we can't introspect rather
+                    # than failing the whole query.
+                    continue
         return schemas
 
 
