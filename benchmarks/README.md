@@ -62,40 +62,57 @@ needs the Substrait round-trip, and Substrait has no recursion — so a `grad`
 marker can't live inside a recursive CTE. Differentiating once to plain SQL
 sidesteps that.)
 
-## `mnist_mlp.py` — train an MNIST MLP classifier in SQL
+## `mnist_mlp.py` — an MNIST MLP as relational tensor algebra
 
-A one-hidden-layer neural network (196 -> 32 tanh -> 10 softmax, on 2x2-pooled
-14x14 MNIST) where **every gradient is computed in SQL** and the whole model —
-with its entire training history — lives in a single table.
+An MLP (196 -> 32 tanh -> 10 softmax on 2x2-pooled 14x14 MNIST) built on one
+idea: **a neural net is a chain of tensor contractions (einsums), and an einsum
+over coordinate-indexed arrays *is* relational algebra.**
 
-The model is one append-only table `model(step, layer, i, j, val)`: every
-parameter is a row, tagged by which generation (`step`) it belongs to. **A
-training step never mutates anything; it appends the next generation's rows.**
-`WHERE step = N` is the model at iteration N, and the full trajectory is the
-table. Each step is a *single* SQL statement that reads the current generation
-and writes the next — reverse-mode autodiff as relational algebra:
+```
+C[i,k] = sum_j A[i,j] * B[j,k]   <=>   JOIN A, B ON A.j = B.j
+                                       GROUP BY i, k -> SUM(A.val * B.val)
+```
 
-- **matmul = join + `GROUP BY SUM`** — a layer's pre-activation is
-  `SUM(input * weight)` grouped by (sample, unit).
-- **local derivatives = `grad()`** — the hidden activation's Jacobian is
-  `grad(tanh(z), z)`, the autograd feature doing the calculus per (sample, unit).
-- **cotangent propagation = join**, **parameter gradients = join + `GROUP BY
-  AVG`**, and the update `w - lr*g` is emitted as the next generation's rows.
+Contracting a shared index is a join on it followed by a grouped `SUM` over the
+indices that survive. In xarray-sql an array indexed by named dims is a table
+keyed by those dims, so **the dimension names are the join keys**.
 
-The images are registered as xarray (the library's core); evaluation is SQL too
-(a forward pass with `ROW_NUMBER()` for the argmax). The only hand-written
-gradient is softmax + cross-entropy's `delta = softmax - onehot` (softmax couples
-classes through a per-sample normaliser, which an aggregate `grad` does not
-cross). Reaches ~83% test accuracy over 60 steps (~140s on a laptop — the
-parameter updates run in SQL and every generation is kept as rows, so it trades
-speed for a fully relational, fully inspectable training history). Downloads
-MNIST on first run.
+**The architecture is data.** The whole model is *one* `xr.Dataset`: each layer's
+weight is a data variable `w{L}` over dims `(u{L}, u{L+1})`, the widths it
+connects, sharing the boundary dims (`u1` is layer 0's output and layer 1's
+input, so it is the join key between them). The dim sizes *are* the layer widths,
+and the number of weights is the depth — differing neuron counts per layer are
+just differing dim sizes, no padding, because the relational (long) form is
+naturally ragged. `from_dataset` splits that one Dataset into a table per weight
+automatically. Change `WIDTHS` (e.g. `196, 64, 32, 10`) and the same code trains
+the deeper net.
 
-Why is the *outer* loop still Python rather than one recursive query (like
-`grad_descent.py`)? A recursive CTE may reference the recursive relation only
-once, but a 2-layer net uses the current weights several times per step (W1 and
-W2 forward, W2 again in backprop), so it can't be a single recursive statement.
-Training is also sequential and reuses each step's result, so steps must be
-*materialised* between iterations — which is exactly what the thin loop does
-(append a generation, then query it). All the maths stays in SQL; Python only
-sequences the steps.
+A small `contract()` helper turns an einsum spec into one query, and a single
+generic loop trains a net of any shape:
+
+- **forward** contracts the activation with each layer's weight, `+ bias`,
+  `tanh` (softmax on the last layer).
+- **backward is the *same* operator with indices transposed** — the VJP of a
+  contraction is a contraction — and `grad(tanh(z), z)` supplies the only
+  genuinely-calculus part. Linear algebra is joins; the derivatives of the
+  nonlinearities are `grad`.
+
+Everything stays relational: every stage is an inspectable table (`a1`, `delta2`,
+`gw0`, …); the only hand-written gradient is softmax + cross-entropy's `delta =
+softmax - onehot`. Even the training metrics are a table — each logged step
+appends a `(step, loss, train_acc, test_acc)` row to a `metrics` relation rather
+than a Python list (NN training produces a lot of such data; it belongs in
+rows). Evaluation is SQL too (a forward pass + `ROW_NUMBER()` argmax), and the
+trained model, predictions, and metrics all come **back out as xarray** via
+`to_dataset`. Reaches ~83% test accuracy over 60 steps. Downloads MNIST on first
+run.
+
+This is not a numpy replacement — relational matmul carries join overhead a BLAS
+inner product doesn't. What it buys is a fully declarative, inspectable pipeline
+whose data side is chunked xarray (parallel over the batch, larger-than-memory).
+The *outer* training loop stays in Python because the steps must be materialised
+between iterations: a multi-layer net can't be one recursive CTE (the recursive
+relation may be referenced only once, but the weights are used several times per
+step), and unrolling the steps as non-recursive CTEs blows up exponentially
+(DataFusion inlines CTEs). The thin loop does exactly that materialisation; all
+the maths stays in SQL.

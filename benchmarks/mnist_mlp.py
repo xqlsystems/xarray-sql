@@ -4,53 +4,48 @@
 #   "xarray_sql",
 #   "xarray",
 #   "numpy",
-#   "pyarrow",
 # ]
 #
 # [tool.uv.sources]
 # xarray_sql = { path = "..", editable = true }
 # ///
-"""Train an MNIST MLP classifier in SQL.
+"""Train an MNIST MLP as relational tensor algebra — with the architecture as data.
 
-A one-hidden-layer network (196->32 tanh->10 softmax, on 2x2-pooled 14x14 =
-196-pixel images) trained by gradient descent where **every gradient is computed
-in SQL** — and the whole model, with its entire training history, lives in a
-single table.
+A neural network is a chain of **tensor contractions** (einsums), and an einsum
+over coordinate-indexed arrays *is* relational algebra:
 
-The model is one append-only table ``model(step, layer, i, j, val)``: every
-parameter ``W1[i, j]`` / ``b1[i]`` / ``W2`` / ``b2`` is a row, tagged by which
-generation (``step``) it belongs to. **A training step never mutates anything —
-it appends the next generation's rows.** The full optimisation trajectory is the
-table; ``WHERE step = N`` is the model at iteration N.
+    C[i,k] = sum_j A[i,j] * B[j,k]   <=>   JOIN A, B ON A.j = B.j
+                                           GROUP BY i, k -> SUM(A.val * B.val)
 
-Each step is a *single* SQL statement (``STEP`` below) that reads the current
-generation and writes the next. It is reverse-mode autodiff as relational
-algebra:
+Contracting a shared index is a join on it followed by a grouped SUM over the
+indices that survive. In xarray-sql an array indexed by named dims is a table
+keyed by those dims, so **the dimension names are the join keys**.
 
-* **matmul = join + GROUP BY SUM.** A layer's pre-activation is
-  ``SUM(input * weight)`` grouped by (sample, unit), joining the data to the
-  current weight rows.
-* **local derivatives = grad().** The hidden Jacobian is ``grad(tanh(z), z)`` —
-  the autograd feature differentiates the nonlinearity, per (sample, unit).
-* **cotangent propagation = join.** The output error is pushed back through W2 by
-  another join + SUM, then scaled by the local ``grad`` factor.
-* **parameter gradients = join + GROUP BY AVG**, and the update is ``w - lr*g``,
-  emitted as the next generation's rows.
+The whole model is **one ``xr.Dataset``**. Each layer's weight is a data variable
+whose two dims are the widths it connects — ``w0(u0, u1)``, ``w1(u1, u2)``, … —
+sharing the boundary dims (``u1`` is the output of layer 0 and the input of layer
+1, so it is the join key between them). **The architecture is therefore data: the
+Dataset's dim sizes are the layer widths, and the number of layers is how many
+weights it holds.** Differing neuron counts per layer are just differing dim
+sizes — no padding, because the relational (long) form is naturally ragged.
+``from_dataset`` splits that one Dataset into a table per weight automatically.
 
-The only hand-written gradient is softmax + cross-entropy's ``delta = softmax -
-onehot`` (softmax couples classes through a per-sample normaliser, which an
-aggregate ``grad`` does not cross — staying faithful to SQL). Everything else is
-grad and joins. Evaluation is SQL too: a forward pass with ``ROW_NUMBER()`` for
-the argmax.
+A single ``contract()`` turns an einsum spec into one query, and a single generic
+loop trains a net of any depth/width:
 
-Why is the *outer* loop still Python rather than one recursive query (like
-``grad_descent.py``)? A recursive CTE may reference the recursive relation only
-once, but a 2-layer net uses the current weights several times per step (W1 and
-W2 in the forward pass, W2 again in backprop), so it cannot be a single recursive
-statement. Training is also inherently sequential and reuses each step's result,
-so the steps must be *materialised* between iterations — which is exactly what the
-thin Python loop does (append a generation, then query it). All the maths stays
-in SQL; Python only sequences the steps.
+* **forward** — contract the activation with each layer's weight, add bias, tanh
+  (softmax on the last layer).
+* **backward is the same operator transposed** — the VJP of a contraction is a
+  contraction — with ``grad(tanh(z), z)`` for the one local-derivative step.
+  Linear algebra is joins; the derivatives of the nonlinearities are ``grad``.
+
+Every stage is an inspectable relation; the trained model, predictions, and loss
+curve come back out as ``xarray`` via ``to_dataset``. Change ``WIDTHS`` and the
+same code trains a different network.
+
+This is not a numpy replacement — relational matmul carries join overhead a BLAS
+inner product doesn't. What it buys is a declarative, inspectable pipeline whose
+data side is chunked xarray (parallel over the batch, larger-than-memory).
 
 Run standalone (builds the local extension on first use):
 
@@ -67,7 +62,6 @@ import urllib.request
 from pathlib import Path
 
 import numpy as np
-import pyarrow as pa
 import xarray as xr
 
 import xarray_sql as xql
@@ -75,13 +69,252 @@ import xarray_sql as xql
 MIRROR = "https://storage.googleapis.com/cvdf-datasets/mnist"
 CACHE = Path(tempfile.gettempdir()) / "mnist-xql"
 
-# Network dimensions: 14x14 pooled pixels -> 32 hidden (tanh) -> 10 classes.
-N_TRAIN, N_TEST, N_PIX, N_HID, N_CLS = 1000, 500, 196, 32, 10
-LR, STEPS = 0.5, 60
+# The architecture, as data: layer widths. 196 pooled pixels -> 32 tanh -> 10.
+# Add an entry (e.g. 196, 64, 32, 10) and the same code trains the deeper net.
+WIDTHS = [196, 32, 10]
+DEPTH = len(WIDTHS) - 1  # number of weight layers
+N_TRAIN, N_TEST = 1000, 500
+LR, STEPS, CHUNK = 0.5, 60, 250
+
+
+# --- the one idea: a tensor contraction is a relational query -----------------
+
+
+def contract(spec: str, left: str, right: str) -> str:
+    """An einsum over two coordinate-indexed tables, as one SQL query.
+
+    ``contract("sample,u0 * u0,u1 -> sample,u1", "x", "w0")`` joins ``x`` and
+    ``w0`` on their shared dim ``u0``, groups by the output dims, and sums the
+    product of values — a matmul. Every table has its dims as columns plus a
+    ``val`` column. Indices in the inputs but not the output are contracted; the
+    same helper expresses the transposed contractions of backprop.
+    """
+    spec = spec.replace(" ", "")
+    lhs, out = spec.split("->")
+    da, db = (operand.split(",") for operand in lhs.split("*"))
+    out_dims = out.split(",")
+    shared = [d for d in da if d in db]
+    join = (
+        f"JOIN {right} r ON " + " AND ".join(f"l.{d} = r.{d}" for d in shared)
+        if shared
+        else f"CROSS JOIN {right} r"
+    )
+    pick = ", ".join(f"{'l' if d in da else 'r'}.{d} AS {d}" for d in out_dims)
+    return (
+        f"SELECT {pick}, SUM(l.val * r.val) AS val "
+        f"FROM {left} l {join} GROUP BY {', '.join(out_dims)}"
+    )
+
+
+def register_tensor(
+    ctx: xql.XarrayContext,
+    name: str,
+    arr: np.ndarray,
+    dims: tuple[str, ...],
+    var: str = "val",
+    chunk: int | None = None,
+) -> None:
+    """Register a numpy array as a relation, the array-relational way: wrap it as
+    an ``xr.Dataset`` whose named dims become the table's key columns, then hand
+    it to ``from_dataset``. A tensor is an array at the edge and a relation
+    inside; ``from_dataset`` is the bridge, and the dims become the join keys."""
+    arr = np.asarray(arr, dtype=np.float64)
+    ds = xr.Dataset(
+        {var: (dims, arr)},
+        coords={d: np.arange(n) for d, n in zip(dims, arr.shape)},
+    )
+    ctx.from_dataset(name, ds, chunks={dims[0]: chunk or arr.shape[0]})
+
+
+class Tensors:
+    """A step rewrites a handful of relations; ``put`` materialises a query as a
+    named table (the stages of the forward/backward pass)."""
+
+    def __init__(self, ctx: xql.XarrayContext):
+        self.ctx = ctx
+
+    def put(self, name: str, sql: str) -> None:
+        batches = self.ctx.sql(sql).collect()
+        if self.ctx.table_exist(name):
+            self.ctx.deregister_table(name)
+        self.ctx.register_record_batches(name, [batches])
+
+
+# --- the model as one xarray Dataset ------------------------------------------
+
+
+def build_model(rng: np.random.Generator) -> xr.Dataset:
+    """The whole model as one Dataset: weight ``w{L}`` over dims ``(u{L}, u{L+1})``
+    and bias ``b{L}`` over ``(u{L+1},)``. The shared boundary dims tie the layers
+    together; the dim sizes *are* the architecture."""
+    data_vars: dict = {}
+    for layer in range(DEPTH):
+        n_in, n_out = WIDTHS[layer], WIDTHS[layer + 1]
+        data_vars[f"w{layer}"] = (
+            (f"u{layer}", f"u{layer + 1}"),
+            rng.standard_normal((n_in, n_out)) * 0.1,
+        )
+        data_vars[f"b{layer}"] = ((f"u{layer + 1}",), np.zeros(n_out))
+    coords = {f"u{i}": np.arange(w) for i, w in enumerate(WIDTHS)}
+    return xr.Dataset(data_vars, coords=coords)
+
+
+def seed_weights(t: Tensors) -> None:
+    """Unpack the one model Dataset (registered as the ``model`` schema) into
+    working weight/bias relations with a uniform ``val`` column."""
+    for layer in range(DEPTH):
+        i, o = f"u{layer}", f"u{layer + 1}"
+        t.put(
+            f"w{layer}", f"SELECT {i}, {o}, w{layer} AS val FROM model.w{layer}"
+        )
+        t.put(f"b{layer}", f"SELECT {o}, b{layer} AS val FROM model.b{layer}")
+
+
+# --- the network, as contractions (generic over depth) ------------------------
+
+
+def forward(t: Tensors, inp: str = "x") -> None:
+    """Forward pass from ``inp``: a contraction + bias + tanh per layer, leaving
+    the pre-activations ``a{L}.z`` for backprop and the output ``logits``."""
+    prev = inp
+    for layer in range(DEPTH):
+        i, o = f"u{layer}", f"u{layer + 1}"
+        zc = contract(f"sample,{i} * {i},{o} -> sample,{o}", prev, f"w{layer}")
+        if layer < DEPTH - 1:
+            t.put(
+                f"a{layer + 1}",
+                f"""WITH zc AS ({zc})
+                SELECT zc.sample, zc.{o}, zc.val + b{layer}.val AS z,
+                       tanh(zc.val + b{layer}.val) AS val
+                FROM zc JOIN b{layer} ON zc.{o} = b{layer}.{o}""",
+            )
+            prev = f"a{layer + 1}"
+        else:
+            t.put(
+                "logits",
+                f"""WITH zc AS ({zc})
+                SELECT zc.sample, zc.{o}, zc.val + b{layer}.val AS z
+                FROM zc JOIN b{layer} ON zc.{o} = b{layer}.{o}""",
+            )
+
+
+def softmax_delta_sql() -> str:
+    """Output error delta = softmax(logits) - onehot(label). The one hand-derived
+    rule: softmax couples classes through a per-sample normaliser an aggregate
+    grad() does not cross."""
+    o = f"u{DEPTH}"
+    return f"""
+    WITH m AS (SELECT sample, MAX(z) AS m FROM logits GROUP BY sample),
+         e AS (SELECT logits.sample, logits.{o}, exp(logits.z - m.m) AS e
+               FROM logits JOIN m ON logits.sample = m.sample),
+         s AS (SELECT sample, SUM(e) AS s FROM e GROUP BY sample)
+    SELECT e.sample, e.{o},
+           e.e / s.s - CASE WHEN e.{o} = y.label THEN 1.0 ELSE 0.0 END AS val
+    FROM e JOIN s ON e.sample = s.sample JOIN y ON y.sample = e.sample"""
+
+
+def train_step(t: Tensors) -> None:
+    """Forward, backward (the same contraction transposed), SGD update."""
+    forward(t)
+    t.put(f"delta{DEPTH}", softmax_delta_sql())
+    # Backward: walk the layers in reverse, the gradients are contractions.
+    for layer in reversed(range(DEPTH)):
+        i, o = f"u{layer}", f"u{layer + 1}"
+        a_in = "x" if layer == 0 else f"a{layer}"
+        gw = contract(
+            f"sample,{i} * sample,{o} -> {i},{o}", a_in, f"delta{layer + 1}"
+        )
+        t.put(
+            f"gw{layer}", f"SELECT {i}, {o}, val / {N_TRAIN} AS val FROM ({gw})"
+        )
+        t.put(
+            f"gb{layer}",
+            f"SELECT {o}, AVG(val) AS val FROM delta{layer + 1} GROUP BY {o}",
+        )
+        if layer > 0:  # propagate the cotangent, scaled by the local derivative
+            dc = contract(
+                f"sample,{o} * {i},{o} -> sample,{i}",
+                f"delta{layer + 1}",
+                f"w{layer}",
+            )
+            t.put(
+                f"delta{layer}",
+                f"""WITH dh AS ({dc})
+                SELECT dh.sample, dh.{i}, dh.val * grad(tanh(a{layer}.z), a{layer}.z) AS val
+                FROM dh JOIN a{layer} ON dh.sample = a{layer}.sample AND dh.{i} = a{layer}.{i}""",
+            )
+    # SGD: each weight relation becomes w - lr * grad.
+    for layer in range(DEPTH):
+        i, o = f"u{layer}", f"u{layer + 1}"
+        t.put(
+            f"w{layer}",
+            f"SELECT w{layer}.{i}, w{layer}.{o}, w{layer}.val - {LR} * gw{layer}.val AS val "
+            f"FROM w{layer} JOIN gw{layer} ON w{layer}.{i} = gw{layer}.{i} "
+            f"AND w{layer}.{o} = gw{layer}.{o}",
+        )
+        t.put(
+            f"b{layer}",
+            f"SELECT b{layer}.{o}, b{layer}.val - {LR} * gb{layer}.val AS val "
+            f"FROM b{layer} JOIN gb{layer} ON b{layer}.{o} = gb{layer}.{o}",
+        )
+
+
+def accuracy(t: Tensors, inp: str, lab: str) -> float:
+    """A forward pass over ``inp`` + argmax, compared to ``lab`` — all in SQL."""
+    forward(t, inp)
+    o = f"u{DEPTH}"
+    return float(
+        t.ctx.sql(
+            f"""WITH pred AS (
+                SELECT sample, {o},
+                       ROW_NUMBER() OVER (PARTITION BY sample ORDER BY z DESC) AS rk
+                FROM logits)
+            SELECT AVG(CASE WHEN p.{o} = l.label THEN 1.0 ELSE 0.0 END) AS acc
+            FROM pred p JOIN {lab} l ON p.sample = l.sample WHERE p.rk = 1"""
+        ).to_pandas()["acc"][0]
+    )
+
+
+def record_metrics(t: Tensors, step: int) -> None:
+    """Append a (step, loss, train_acc, test_acc) row to the ``metrics`` table.
+
+    NN training emits a lot of data — loss curves, per-step accuracies — and like
+    everything else here it lives as rows in a relation, grown each time, not a
+    Python list. Read it back at the end as a tidy ``(step,)`` xarray.
+    """
+    o = f"u{DEPTH}"
+    train = accuracy(t, "x", "y")  # leaves the training forward in `logits`
+    loss = float(
+        t.ctx.sql(
+            f"""WITH m AS (SELECT sample, MAX(z) AS m FROM logits GROUP BY sample),
+                e AS (SELECT logits.sample, logits.{o}, exp(logits.z - m.m) AS e
+                      FROM logits JOIN m ON logits.sample = m.sample),
+                s AS (SELECT sample, SUM(e) AS s FROM e GROUP BY sample)
+            SELECT -AVG(ln(e.e / s.s)) AS loss
+            FROM e JOIN s ON e.sample = s.sample JOIN y ON y.sample = e.sample
+            WHERE e.{o} = y.label"""
+        ).to_pandas()["loss"][0]
+    )
+    test = accuracy(t, "x_te", "y_te")
+    row = (
+        f"SELECT CAST({step} AS BIGINT) AS step, CAST({loss} AS DOUBLE) AS loss, "
+        f"CAST({train} AS DOUBLE) AS train_acc, CAST({test} AS DOUBLE) AS test_acc"
+    )
+    t.put(
+        "metrics",
+        f"SELECT * FROM metrics UNION ALL {row}"
+        if t.ctx.table_exist("metrics")
+        else row,
+    )
+    print(
+        f"step {step:2d}: loss {loss:.3f}  train {train:.3f}  test {test:.3f}"
+    )
+
+
+# --- MNIST loading ------------------------------------------------------------
 
 
 def _download(url: str, dest: Path, tries: int = 5) -> None:
-    """Fetch a URL to dest, reading the whole body (retries on truncation)."""
     last = None
     for _ in range(tries):
         try:
@@ -102,12 +335,11 @@ def _read_idx(path: Path) -> np.ndarray:
         if magic == 2051:  # images
             n, r, c = struct.unpack(">III", f.read(12))
             return np.frombuffer(f.read(), np.uint8).reshape(n, r, c)
-        (n,) = struct.unpack(">I", f.read(4))  # labels
+        struct.unpack(">I", f.read(4))  # labels: skip the count
         return np.frombuffer(f.read(), np.uint8)
 
 
 def load_mnist():
-    """Download (and cache) MNIST, 2x2 mean-pool to 14x14, subsample."""
     CACHE.mkdir(exist_ok=True)
     files = {
         "images": "train-images-idx3-ubyte.gz",
@@ -119,241 +351,90 @@ def load_mnist():
         if not dest.exists():
             _download(f"{MIRROR}/{name}", dest)
         paths[key] = dest
-
     imgs = _read_idx(paths["images"]).astype(np.float32) / 255.0
     labs = _read_idx(paths["labels"]).astype(np.int64)
-    pooled = imgs.reshape(-1, 14, 2, 14, 2).mean(axis=(2, 4)).reshape(-1, N_PIX)
-
+    side = WIDTHS[0]  # pooled pixels per image
+    pool = int(round((28 * 28 / side) ** 0.5))  # 2 for 196 pixels
+    k = 28 // pool
+    pooled = (
+        imgs.reshape(-1, k, pool, k, pool).mean(axis=(2, 4)).reshape(-1, side)
+    )
     rng = np.random.default_rng(0)
     idx = rng.permutation(len(pooled))
     tr, te = idx[:N_TRAIN], idx[N_TRAIN : N_TRAIN + N_TEST]
     return pooled[tr], labs[tr], pooled[te], labs[te]
 
 
-# --- the model as rows --------------------------------------------------------
-
-_MODEL_SCHEMA = pa.schema(
-    [
-        ("step", pa.int64()),
-        ("layer", pa.utf8()),
-        ("i", pa.int64()),
-        ("j", pa.int64()),
-        ("val", pa.float64()),
-    ]
-)
-
-
-def _param_rows(step: int, layer: str, arr: np.ndarray) -> dict:
-    """One layer's parameters as ``(step, layer, i, j, val)`` columns.
-
-    A matrix ``W[i, j]`` becomes rows ``(i, j, w)``; a bias vector ``b[i]``
-    becomes ``(i, 0, b)``.
-    """
-    if arr.ndim == 2:
-        ii, jj = np.meshgrid(
-            np.arange(arr.shape[0]), np.arange(arr.shape[1]), indexing="ij"
-        )
-        ii, jj = ii.ravel(), jj.ravel()
-    else:
-        ii, jj = np.arange(arr.size), np.zeros(arr.size, np.int64)
-    n = arr.size
-    return {
-        "step": np.full(n, step, np.int64),
-        "layer": [layer] * n,
-        "i": ii.astype(np.int64),
-        "j": jj.astype(np.int64),
-        "val": arr.ravel().astype(np.float64),
-    }
-
-
-def _generation_batch(step, w1, b1, w2, b2) -> pa.RecordBatch:
-    """All four layers of one generation as a single RecordBatch."""
-    cols: dict[str, list] = {k: [] for k in ("step", "layer", "i", "j", "val")}
-    for layer, arr in (("w1", w1), ("b1", b1), ("w2", w2), ("b2", b2)):
-        for k, v in _param_rows(step, layer, arr).items():
-            cols[k].extend(list(v))
-    return pa.RecordBatch.from_arrays(
-        [
-            pa.array(cols["step"], pa.int64()),
-            pa.array(cols["layer"], pa.utf8()),
-            pa.array(cols["i"], pa.int64()),
-            pa.array(cols["j"], pa.int64()),
-            pa.array(cols["val"], pa.float64()),
-        ],
-        schema=_MODEL_SCHEMA,
-    )
-
-
-# One training step, as one SQL statement: read the current generation of the
-# model table, run the forward + backward pass over the data, and SELECT the next
-# generation's parameter rows (which the loop appends to the model table).
-STEP = f"""
-WITH cur AS (SELECT max(step) AS s FROM model),
- w1 AS (SELECT i AS pix, j AS hid, val AS w FROM model, cur
-        WHERE step = cur.s AND layer = 'w1'),
- b1 AS (SELECT i AS hid, val AS b FROM model, cur
-        WHERE step = cur.s AND layer = 'b1'),
- w2 AS (SELECT i AS hid, j AS cls, val AS w FROM model, cur
-        WHERE step = cur.s AND layer = 'w2'),
- b2 AS (SELECT i AS cls, val AS b FROM model, cur
-        WHERE step = cur.s AND layer = 'b2'),
- -- forward: hidden pre-activation z and activation a = tanh(z)
- zt AS (SELECT i.sample, w.hid, SUM(i.val * w.w) + MAX(bb.b) AS z
-        FROM imgs i JOIN w1 w ON i.pix = w.pix JOIN b1 bb ON w.hid = bb.hid
-        GROUP BY i.sample, w.hid),
- h AS (SELECT sample, hid, z, tanh(z) AS a FROM zt),
- -- output logits, then a stable softmax
- lg AS (SELECT h.sample, w.cls, SUM(h.a * w.w) + MAX(bb.b) AS z
-        FROM h JOIN w2 w ON h.hid = w.hid JOIN b2 bb ON w.cls = bb.cls
-        GROUP BY h.sample, w.cls),
- mx AS (SELECT sample, MAX(z) AS m FROM lg GROUP BY sample),
- ex AS (SELECT l.sample, l.cls, exp(l.z - mx.m) AS e
-        FROM lg l JOIN mx ON l.sample = mx.sample),
- zs AS (SELECT sample, SUM(e) AS z FROM ex GROUP BY sample),
- -- output error delta2 = softmax - onehot(label)
- d2 AS (SELECT ex.sample, ex.cls,
-               ex.e / zs.z
-                 - CASE WHEN ex.cls = lb.label THEN 1.0 ELSE 0.0 END AS d
-        FROM ex JOIN zs ON ex.sample = zs.sample
-                JOIN labels lb ON lb.sample = ex.sample),
- -- backprop to hidden: push delta2 through W2, scale by grad(tanh(z), z)
- da AS (SELECT d.sample, w.hid, SUM(d.d * w.w) AS da
-        FROM d2 d JOIN w2 w ON d.cls = w.cls GROUP BY d.sample, w.hid),
- d1 AS (SELECT da.sample, da.hid, da.da * grad(tanh(h.z), h.z) AS d
-        FROM da JOIN h ON da.sample = h.sample AND da.hid = h.hid),
- -- parameter gradients: dW = AVG(input * delta) over the batch
- gw1 AS (SELECT i.pix, d.hid, AVG(i.val * d.d) AS g
-         FROM imgs i JOIN d1 d ON i.sample = d.sample GROUP BY i.pix, d.hid),
- gb1 AS (SELECT hid, AVG(d) AS g FROM d1 GROUP BY hid),
- gw2 AS (SELECT h.hid, d.cls, AVG(h.a * d.d) AS g
-         FROM h JOIN d2 d ON h.sample = d.sample GROUP BY h.hid, d.cls),
- gb2 AS (SELECT cls, AVG(d) AS g FROM d2 GROUP BY cls)
--- the next generation: w - lr*grad, tagged step+1, as model rows
-SELECT (SELECT s FROM cur) + 1 AS step, 'w1' AS layer,
-       w.pix AS i, w.hid AS j, w.w - {LR} * g.g AS val
-FROM w1 w JOIN gw1 g ON w.pix = g.pix AND w.hid = g.hid
-UNION ALL
-SELECT (SELECT s FROM cur) + 1, 'b1', b.hid, CAST(0 AS BIGINT), b.b - {LR} * g.g
-FROM b1 b JOIN gb1 g ON b.hid = g.hid
-UNION ALL
-SELECT (SELECT s FROM cur) + 1, 'w2', w.hid, w.cls, w.w - {LR} * g.g
-FROM w2 w JOIN gw2 g ON w.hid = g.hid AND w.cls = g.cls
-UNION ALL
-SELECT (SELECT s FROM cur) + 1, 'b2', b.cls, CAST(0 AS BIGINT), b.b - {LR} * g.g
-FROM b2 b JOIN gb2 g ON b.cls = g.cls
-"""
-
-
-def eval_sql(imgs_table: str, labels_table: str) -> str:
-    """Accuracy of the latest model on a dataset — a forward pass in SQL.
-
-    ``ROW_NUMBER()`` picks each sample's argmax class; it is compared to the
-    label. No softmax needed at inference: the argmax of the logits is the
-    prediction.
-    """
-    return f"""
-    WITH cur AS (SELECT max(step) AS s FROM model),
-     w1 AS (SELECT i AS pix, j AS hid, val AS w FROM model, cur
-            WHERE step = cur.s AND layer = 'w1'),
-     b1 AS (SELECT i AS hid, val AS b FROM model, cur
-            WHERE step = cur.s AND layer = 'b1'),
-     w2 AS (SELECT i AS hid, j AS cls, val AS w FROM model, cur
-            WHERE step = cur.s AND layer = 'w2'),
-     b2 AS (SELECT i AS cls, val AS b FROM model, cur
-            WHERE step = cur.s AND layer = 'b2'),
-     h AS (SELECT i.sample, w.hid,
-                  tanh(SUM(i.val * w.w) + MAX(bb.b)) AS a
-           FROM {imgs_table} i JOIN w1 w ON i.pix = w.pix
-                               JOIN b1 bb ON w.hid = bb.hid
-           GROUP BY i.sample, w.hid),
-     lg AS (SELECT h.sample, w.cls, SUM(h.a * w.w) + MAX(bb.b) AS z
-            FROM h JOIN w2 w ON h.hid = w.hid JOIN b2 bb ON w.cls = bb.cls
-            GROUP BY h.sample, w.cls),
-     pred AS (SELECT sample, cls,
-                     ROW_NUMBER() OVER (PARTITION BY sample ORDER BY z DESC) AS rk
-              FROM lg)
-    SELECT AVG(CASE WHEN p.cls = l.label THEN 1.0 ELSE 0.0 END) AS acc
-    FROM pred p JOIN {labels_table} l ON p.sample = l.sample
-    WHERE p.rk = 1
-    """
-
-
-def _register_images(ctx, name, X):
-    ctx.from_dataset(
-        name,
-        xr.Dataset(
-            {"val": (("sample", "pix"), X)},
-            coords={
-                "sample": np.arange(X.shape[0]),
-                "pix": np.arange(N_PIX),
-            },
-        ),
-        chunks={"sample": X.shape[0]},
-    )
-
-
-def _register_labels(ctx, name, y):
-    ctx.from_dataset(
-        name,
-        xr.Dataset(
-            {"label": (("sample",), y.astype(np.float64))},
-            coords={"sample": np.arange(len(y))},
-        ),
-        chunks={"sample": len(y)},
-    )
+# --- driver -------------------------------------------------------------------
 
 
 def main() -> None:
     Xtr, ytr, Xte, yte = load_mnist()
-    print(
-        f"MNIST: train {Xtr.shape}, test {Xte.shape}  "
-        f"({N_PIX} pix, {N_HID} hidden, {N_CLS} classes)"
-    )
+    print(f"MNIST: train {Xtr.shape}, test {Xte.shape}  architecture {WIDTHS}")
 
     ctx = xql.XarrayContext()
-    # The data is registered as xarray (the library's core); the model below is
-    # the one append-only table that holds every layer and every generation.
-    _register_images(ctx, "imgs", Xtr)
-    _register_labels(ctx, "labels", ytr)
-    _register_images(ctx, "imgs_te", Xte)
-    _register_labels(ctx, "labels_te", yte)
-
-    # Generation 0: small random weights, zero biases.
+    # The whole model is one Dataset; from_dataset splits it into a table per
+    # weight (the shared boundary dims become the join keys).
     rng = np.random.default_rng(1)
-    gen0 = _generation_batch(
-        0,
-        rng.standard_normal((N_PIX, N_HID)) * 0.1,
-        np.zeros(N_HID),
-        rng.standard_normal((N_HID, N_CLS)) * 0.1,
-        np.zeros(N_CLS),
+    model = build_model(rng)
+    ctx.from_dataset(
+        "model",
+        model,
+        table_names={
+            (f"u{layer}", f"u{layer + 1}"): f"w{layer}"
+            for layer in range(DEPTH)
+        }
+        | {(f"u{layer + 1}",): f"b{layer}" for layer in range(DEPTH)},
+        chunks={f"u{i}": w for i, w in enumerate(WIDTHS)},
     )
-    generations = [gen0]
-    ctx.register_record_batches("model", [generations])
+    t = Tensors(ctx)
+    seed_weights(t)
 
-    def test_acc() -> float:
-        return float(
-            ctx.sql(eval_sql("imgs_te", "labels_te")).to_pandas()["acc"][0]
-        )
+    # Inputs and labels, registered once; the queries read x / x_te by name.
+    register_tensor(ctx, "x", Xtr, ("sample", "u0"), chunk=CHUNK)
+    register_tensor(ctx, "y", ytr, ("sample",), var="label")
+    register_tensor(ctx, "x_te", Xte, ("sample", "u0"))
+    register_tensor(ctx, "y_te", yte, ("sample",), var="label")
 
-    print(f"init: test acc {test_acc():.3f}")
+    print(f"init: test acc {accuracy(t, 'x_te', 'y_te'):.3f}")
+
     t0 = time.time()
-    for s in range(STEPS):
-        # One SQL statement computes the next generation; appending its rows to
-        # the model table *is* the parameter update.
-        generations.extend(ctx.sql(STEP).collect())
-        ctx.deregister_table("model")
-        ctx.register_record_batches("model", [generations])
-        if s % 10 == 0 or s == STEPS - 1:
-            tr = float(
-                ctx.sql(eval_sql("imgs", "labels")).to_pandas()["acc"][0]
-            )
-            print(f"step {s:2d}: train {tr:.3f}  test {test_acc():.3f}")
+    for step in range(STEPS):
+        train_step(t)
+        if step % 10 == 0 or step == STEPS - 1:
+            record_metrics(t, step)
+    dt = time.time() - t0
 
-    n_rows = ctx.sql("SELECT count(*) AS n FROM model").to_pandas()["n"][0]
+    # The trained model comes back out as one xarray Dataset.
+    parts = []
+    for layer in range(DEPTH):
+        i, o = f"u{layer}", f"u{layer + 1}"
+        parts.append(
+            ctx.sql(f"SELECT {i}, {o}, val FROM w{layer}")
+            .to_dataset(dims=[i, o])
+            .rename({"val": f"w{layer}"})
+        )
+        parts.append(
+            ctx.sql(f"SELECT {o}, val FROM b{layer}")
+            .to_dataset(dims=[o])
+            .rename({"val": f"b{layer}"})
+        )
+    trained = xr.merge(parts)
+    # The loss curve and accuracies were recorded as rows; read them back as a
+    # tidy (step,) xarray of training metrics.
+    metrics = ctx.sql("SELECT * FROM metrics ORDER BY step").to_dataset(
+        dims=["step"]
+    )
+
     print(
-        f"\ntrained an MNIST MLP in SQL: test accuracy {test_acc():.3f} "
-        f"in {time.time() - t0:.0f}s.\nThe model and its entire training "
-        f"history are one table of {n_rows} rows ({STEPS + 1} generations)."
+        f"\ntrained a {WIDTHS} MLP as relational tensor algebra in {dt:.0f}s: "
+        f"test accuracy {accuracy(t, 'x_te', 'y_te'):.3f}."
+    )
+    print(
+        f"the model is one xarray Dataset again "
+        f"(vars {list(trained.data_vars)}, dims {dict(trained.sizes)}); "
+        f"metrics are a table -> xarray {list(metrics.data_vars)} over "
+        f"{dict(metrics.sizes)}."
     )
 
 
