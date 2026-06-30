@@ -77,31 +77,38 @@ Contracting a shared index is a join on it followed by a grouped `SUM` over the
 indices that survive. In xarray-sql an array indexed by named dims is a table
 keyed by those dims, so **the dimension names are the join keys**.
 
-**The architecture is data.** The whole model is *one* `xr.Dataset`: each layer's
-weight is a data variable `w{L}` over dims `(u{L}, u{L+1})`, the widths it
-connects, sharing the boundary dims (`u1` is layer 0's output and layer 1's
-input, so it is the join key between them). The dim sizes *are* the layer widths,
-and the number of weights is the depth — differing neuron counts per layer are
-just differing dim sizes, no padding, because the relational (long) form is
-naturally ragged. `from_dataset` splits that one Dataset into a table per weight
-automatically. Change `WIDTHS` (e.g. `196, 64, 32, 10`) and the same code trains
-the deeper net.
+**The whole network is one relation.** Two moves get there:
+
+- **Bias folded into the weights (an `nn.Linear`).** Each layer's bias is the
+  weight of a constant-`1` input, kept as the extra row `inp = width` of the same
+  weight array — so a layer is a single matrix.
+- **A `layer` dimension.** Every layer's weight lives in one
+  `weight(layer, inp, out)` array, so the forward/backward filter on the `layer`
+  *column* instead of referencing a table per layer.
+
+So **the architecture is data**: the whole model is one `xr.Dataset` with a
+`layer` dim, registered via `from_dataset`. The dim sizes are the layer widths
+and the number of layers is the depth — differing neuron counts are just
+differing sizes, NaN-padded in the dense array and dropped on the way in (the
+relational form is naturally ragged). Change `WIDTHS` (e.g. `196, 64, 32, 10`)
+and the same code trains the deeper net.
 
 A small `contract()` helper turns an einsum spec into one query, and a single
 generic loop trains a net of any shape:
 
-- **forward** contracts the activation with each layer's weight, `+ bias`,
-  `tanh` (softmax on the last layer).
+- **forward** contracts the activation with `weight WHERE layer = L`, adds the
+  bias row, `tanh` (softmax on the last layer).
 - **backward is the *same* operator with indices transposed** — the VJP of a
-  contraction is a contraction — and `grad(tanh(z), z)` supplies the only
-  genuinely-calculus part. Linear algebra is joins; the derivatives of the
-  nonlinearities are `grad`.
+  contraction is a contraction — accumulated into one `gweight` relation, with
+  `grad(tanh(z), z)` for the only genuinely-calculus part. Even the update is one
+  query over the whole `weight` relation. Linear algebra is joins; the
+  derivatives of the nonlinearities are `grad`.
 
 Everything stays relational: every stage is an inspectable table (`a1`, `delta2`,
-`gw0`, …); the only hand-written gradient is softmax + cross-entropy's `delta =
-softmax - onehot`. Even the training metrics are a table — each logged step
-appends a `(step, loss, train_acc, test_acc)` row to a `metrics` relation rather
-than a Python list (NN training produces a lot of such data; it belongs in
+`gweight`, …); the only hand-written gradient is softmax + cross-entropy's
+`delta = softmax - onehot`. Even the training metrics are a table — each logged
+step appends a `(step, loss, train_acc, test_acc)` row to a `metrics` relation
+rather than a Python list (NN training produces a lot of such data; it belongs in
 rows). Evaluation is SQL too (a forward pass + `ROW_NUMBER()` argmax), and the
 trained model, predictions, and metrics all come **back out as xarray** via
 `to_dataset`. Reaches ~83% test accuracy over 60 steps. Downloads MNIST on first

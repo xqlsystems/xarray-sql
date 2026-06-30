@@ -9,7 +9,7 @@
 # [tool.uv.sources]
 # xarray_sql = { path = "..", editable = true }
 # ///
-"""Train an MNIST MLP as relational tensor algebra — with the architecture as data.
+"""Train an MNIST MLP as relational tensor algebra — the whole net is one table.
 
 A neural network is a chain of **tensor contractions** (einsums), and an einsum
 over coordinate-indexed arrays *is* relational algebra:
@@ -17,35 +17,41 @@ over coordinate-indexed arrays *is* relational algebra:
     C[i,k] = sum_j A[i,j] * B[j,k]   <=>   JOIN A, B ON A.j = B.j
                                            GROUP BY i, k -> SUM(A.val * B.val)
 
-Contracting a shared index is a join on it followed by a grouped SUM over the
-indices that survive. In xarray-sql an array indexed by named dims is a table
-keyed by those dims, so **the dimension names are the join keys**.
+Contracting a shared index is a join on it followed by a grouped SUM. In
+xarray-sql an array indexed by named dims is a table keyed by those dims, so the
+dim names are the join keys.
 
-The whole model is **one ``xr.Dataset``**. Each layer's weight is a data variable
-whose two dims are the widths it connects — ``w0(u0, u1)``, ``w1(u1, u2)``, … —
-sharing the boundary dims (``u1`` is the output of layer 0 and the input of layer
-1, so it is the join key between them). **The architecture is therefore data: the
-Dataset's dim sizes are the layer widths, and the number of layers is how many
-weights it holds.** Differing neuron counts per layer are just differing dim
-sizes — no padding, because the relational (long) form is naturally ragged.
-``from_dataset`` splits that one Dataset into a table per weight automatically.
+Two simplifications make the whole model **one relation**:
 
-A single ``contract()`` turns an einsum spec into one query, and a single generic
-loop trains a net of any depth/width:
+* **Bias folded into the weights (an ``nn.Linear``).** Each layer's bias is the
+  weight of a constant-``1`` input, stored as the extra row ``inp = width`` in the
+  same weight array — so a layer is a single matrix. The forward reads the matmul
+  rows and that bias row from the one relation (no separate bias table).
+* **A ``layer`` dimension.** Every layer's weight lives in one
+  ``weight(layer, inp, out)`` array, so the forward/backward filter on the
+  ``layer`` *column* instead of referencing a table per layer. The whole network
+  is one ``xr.Dataset`` registered with ``from_dataset``; differing layer widths
+  are NaN-padded in the dense array and dropped on the way in (the relational
+  form is naturally ragged). The architecture is data — change ``WIDTHS`` and the
+  same code trains a different net.
 
-* **forward** — contract the activation with each layer's weight, add bias, tanh
-  (softmax on the last layer).
-* **backward is the same operator transposed** — the VJP of a contraction is a
-  contraction — with ``grad(tanh(z), z)`` for the one local-derivative step.
-  Linear algebra is joins; the derivatives of the nonlinearities are ``grad``.
+A single ``contract()`` and one generic loop train a net of any depth: forward
+contracts the activation with ``weight WHERE layer = L``; backward is the same
+contraction transposed (the VJP of a contraction is a contraction), with
+``grad(tanh(z), z)`` for the one local-derivative step. Even the weight update is
+one query over the whole ``weight`` relation. Linear algebra is joins; the
+derivatives of the nonlinearities are ``grad``.
 
-Every stage is an inspectable relation; the trained model, predictions, and loss
-curve come back out as ``xarray`` via ``to_dataset``. Change ``WIDTHS`` and the
-same code trains a different network.
+Everything stays relational and inspectable: activations, errors, gradients, and
+the per-step training metrics are all tables; the trained model, predictions, and
+metrics come back out as ``xarray`` via ``to_dataset``.
 
-This is not a numpy replacement — relational matmul carries join overhead a BLAS
-inner product doesn't. What it buys is a declarative, inspectable pipeline whose
-data side is chunked xarray (parallel over the batch, larger-than-memory).
+This is not a numpy replacement — the long form puts one matrix entry per row, so
+the matmul-as-join carries overhead a BLAS inner product doesn't. What it buys is
+a declarative, inspectable pipeline whose data side is chunked xarray (parallel
+over the batch, larger-than-memory). Recovering BLAS speed would mean storing
+dense *tiles* per cell and contracting them with a tile-matmul — a future
+direction, not done here.
 
 Run standalone (builds the local extension on first use):
 
@@ -62,6 +68,7 @@ import urllib.request
 from pathlib import Path
 
 import numpy as np
+import pyarrow as pa
 import xarray as xr
 
 import xarray_sql as xql
@@ -81,13 +88,13 @@ LR, STEPS, CHUNK = 0.5, 60, 250
 
 
 def contract(spec: str, left: str, right: str) -> str:
-    """An einsum over two coordinate-indexed tables, as one SQL query.
+    """An einsum over two coordinate-indexed relations, as one SQL query.
 
-    ``contract("sample,u0 * u0,u1 -> sample,u1", "x", "w0")`` joins ``x`` and
-    ``w0`` on their shared dim ``u0``, groups by the output dims, and sums the
-    product of values — a matmul. Every table has its dims as columns plus a
-    ``val`` column. Indices in the inputs but not the output are contracted; the
-    same helper expresses the transposed contractions of backprop.
+    ``contract("sample,inp * inp,out -> sample,out", "x", w)`` joins ``x`` and
+    ``w`` on their shared dim ``inp``, groups by the output dims, and sums the
+    product of values — a matmul. ``left`` / ``right`` are table names or
+    parenthesised subqueries; each exposes its dims plus a ``val`` column.
+    Indices in the inputs but not the output are contracted (summed over).
     """
     spec = spec.replace(" ", "")
     lhs, out = spec.split("->")
@@ -135,66 +142,85 @@ class Tensors:
 
     def put(self, name: str, sql: str) -> None:
         batches = self.ctx.sql(sql).collect()
+        # UNION branches can yield batches that differ only in field nullability;
+        # cast them all to one (nullable) schema so registration accepts them.
+        if batches:
+            target = pa.schema(
+                [pa.field(f.name, f.type) for f in batches[0].schema]
+            )
+            batches = [b.cast(target) for b in batches]
         if self.ctx.table_exist(name):
             self.ctx.deregister_table(name)
         self.ctx.register_record_batches(name, [batches])
 
 
-# --- the model as one xarray Dataset ------------------------------------------
+# --- the model: one weight relation, bias folded in ---------------------------
 
 
 def build_model(rng: np.random.Generator) -> xr.Dataset:
-    """The whole model as one Dataset: weight ``w{L}`` over dims ``(u{L}, u{L+1})``
-    and bias ``b{L}`` over ``(u{L+1},)``. The shared boundary dims tie the layers
-    together; the dim sizes *are* the architecture."""
-    data_vars: dict = {}
+    """The whole network as one ``weight(layer, inp, out)`` Dataset.
+
+    Layer ``L`` connects ``WIDTHS[L]`` inputs (plus a constant-1 bias input, index
+    ``WIDTHS[L]``) to ``WIDTHS[L+1]`` outputs. The dense array is NaN-padded to the
+    widest layer; the padding is dropped when the relation is seeded, so the live
+    table is the ragged set of real weights.
+    """
+    max_in = max(WIDTHS[layer] + 1 for layer in range(DEPTH))
+    max_out = max(WIDTHS[layer + 1] for layer in range(DEPTH))
+    arr = np.full((DEPTH, max_in, max_out), np.nan)
     for layer in range(DEPTH):
         n_in, n_out = WIDTHS[layer], WIDTHS[layer + 1]
-        data_vars[f"w{layer}"] = (
-            (f"u{layer}", f"u{layer + 1}"),
-            rng.standard_normal((n_in, n_out)) * 0.1,
+        arr[layer, :n_in, :n_out] = rng.standard_normal((n_in, n_out)) * 0.1
+        arr[layer, n_in, :n_out] = (
+            0.0  # bias row (weight of the constant input)
         )
-        data_vars[f"b{layer}"] = ((f"u{layer + 1}",), np.zeros(n_out))
-    coords = {f"u{i}": np.arange(w) for i, w in enumerate(WIDTHS)}
-    return xr.Dataset(data_vars, coords=coords)
+    return xr.Dataset(
+        {"weight": (("layer", "inp", "out"), arr)},
+        coords={
+            "layer": np.arange(DEPTH),
+            "inp": np.arange(max_in),
+            "out": np.arange(max_out),
+        },
+    )
 
 
-def seed_weights(t: Tensors) -> None:
-    """Unpack the one model Dataset (registered as the ``model`` schema) into
-    working weight/bias relations with a uniform ``val`` column."""
-    for layer in range(DEPTH):
-        i, o = f"u{layer}", f"u{layer + 1}"
-        t.put(
-            f"w{layer}", f"SELECT {i}, {o}, w{layer} AS val FROM model.w{layer}"
-        )
-        t.put(f"b{layer}", f"SELECT {o}, b{layer} AS val FROM model.b{layer}")
+def matmul_rows(layer: int) -> str:
+    """The matmul (non-bias) rows of one layer's weight, as a subquery."""
+    return f"(SELECT inp, out, val FROM weight WHERE layer = {layer} AND inp < {WIDTHS[layer]})"
+
+
+def bias_row(layer: int) -> str:
+    """The bias row (inp = width) of one layer's weight, as a subquery over out."""
+    return f"(SELECT out, val FROM weight WHERE layer = {layer} AND inp = {WIDTHS[layer]})"
 
 
 # --- the network, as contractions (generic over depth) ------------------------
 
 
 def forward(t: Tensors, inp: str = "x") -> None:
-    """Forward pass from ``inp``: a contraction + bias + tanh per layer, leaving
-    the pre-activations ``a{L}.z`` for backprop and the output ``logits``."""
+    """Forward pass from ``inp``: per layer, contract with the matmul rows and add
+    the bias row (both from the one weight relation), then tanh on the hidden
+    layers. Leaves ``a{L}.z`` for backprop and the output ``logits``."""
     prev = inp
     for layer in range(DEPTH):
-        i, o = f"u{layer}", f"u{layer + 1}"
-        zc = contract(f"sample,{i} * {i},{o} -> sample,{o}", prev, f"w{layer}")
+        zc = contract(
+            "sample,inp * inp,out -> sample,out", prev, matmul_rows(layer)
+        )
         if layer < DEPTH - 1:
             t.put(
                 f"a{layer + 1}",
                 f"""WITH zc AS ({zc})
-                SELECT zc.sample, zc.{o}, zc.val + b{layer}.val AS z,
-                       tanh(zc.val + b{layer}.val) AS val
-                FROM zc JOIN b{layer} ON zc.{o} = b{layer}.{o}""",
+                SELECT zc.sample, zc.out AS inp, zc.val + b.val AS z,
+                       tanh(zc.val + b.val) AS val
+                FROM zc JOIN {bias_row(layer)} b ON zc.out = b.out""",
             )
             prev = f"a{layer + 1}"
         else:
             t.put(
                 "logits",
                 f"""WITH zc AS ({zc})
-                SELECT zc.sample, zc.{o}, zc.val + b{layer}.val AS z
-                FROM zc JOIN b{layer} ON zc.{o} = b{layer}.{o}""",
+                SELECT zc.sample, zc.out, zc.val + b.val AS z
+                FROM zc JOIN {bias_row(layer)} b ON zc.out = b.out""",
             )
 
 
@@ -202,74 +228,77 @@ def softmax_delta_sql() -> str:
     """Output error delta = softmax(logits) - onehot(label). The one hand-derived
     rule: softmax couples classes through a per-sample normaliser an aggregate
     grad() does not cross."""
-    o = f"u{DEPTH}"
-    return f"""
+    return """
     WITH m AS (SELECT sample, MAX(z) AS m FROM logits GROUP BY sample),
-         e AS (SELECT logits.sample, logits.{o}, exp(logits.z - m.m) AS e
+         e AS (SELECT logits.sample, logits.out, exp(logits.z - m.m) AS e
                FROM logits JOIN m ON logits.sample = m.sample),
          s AS (SELECT sample, SUM(e) AS s FROM e GROUP BY sample)
-    SELECT e.sample, e.{o},
-           e.e / s.s - CASE WHEN e.{o} = y.label THEN 1.0 ELSE 0.0 END AS val
+    SELECT e.sample, e.out,
+           e.e / s.s - CASE WHEN e.out = y.label THEN 1.0 ELSE 0.0 END AS val
     FROM e JOIN s ON e.sample = s.sample JOIN y ON y.sample = e.sample"""
 
 
 def train_step(t: Tensors) -> None:
-    """Forward, backward (the same contraction transposed), SGD update."""
+    """Forward, backward (the same contraction transposed), one SGD update."""
     forward(t)
     t.put(f"delta{DEPTH}", softmax_delta_sql())
-    # Backward: walk the layers in reverse, the gradients are contractions.
+    # Backward: gradients are contractions over the batch, accumulated into one
+    # gweight relation tagged by layer. delta{L} is the error at layer L's units.
     for layer in reversed(range(DEPTH)):
-        i, o = f"u{layer}", f"u{layer + 1}"
         a_in = "x" if layer == 0 else f"a{layer}"
+        # matmul gradient (mean over batch) + bias gradient (mean of delta),
+        # both tagged with this layer, as rows of one gweight relation.
         gw = contract(
-            f"sample,{i} * sample,{o} -> {i},{o}", a_in, f"delta{layer + 1}"
+            "sample,inp * sample,out -> inp,out", a_in, f"delta{layer + 1}"
+        )
+        rows = (
+            f"SELECT CAST({layer} AS BIGINT) AS layer, inp, out, "
+            f"val / {N_TRAIN} AS val FROM ({gw}) "
+            f"UNION ALL "
+            f"SELECT CAST({layer} AS BIGINT) AS layer, "
+            f"CAST({WIDTHS[layer]} AS BIGINT) AS inp, out, AVG(val) AS val "
+            f"FROM delta{layer + 1} GROUP BY out"
         )
         t.put(
-            f"gw{layer}", f"SELECT {i}, {o}, val / {N_TRAIN} AS val FROM ({gw})"
-        )
-        t.put(
-            f"gb{layer}",
-            f"SELECT {o}, AVG(val) AS val FROM delta{layer + 1} GROUP BY {o}",
+            "gweight",
+            f"SELECT * FROM gweight UNION ALL {rows}"
+            if t.ctx.table_exist("gweight")
+            else rows,
         )
         if layer > 0:  # propagate the cotangent, scaled by the local derivative
             dc = contract(
-                f"sample,{o} * {i},{o} -> sample,{i}",
+                "sample,out * inp,out -> sample,inp",
                 f"delta{layer + 1}",
-                f"w{layer}",
+                matmul_rows(layer),
             )
             t.put(
                 f"delta{layer}",
-                f"""WITH dh AS ({dc})
-                SELECT dh.sample, dh.{i}, dh.val * grad(tanh(a{layer}.z), a{layer}.z) AS val
-                FROM dh JOIN a{layer} ON dh.sample = a{layer}.sample AND dh.{i} = a{layer}.{i}""",
+                f"""WITH dc AS ({dc})
+                SELECT dc.sample, dc.inp AS out,
+                       dc.val * grad(tanh(a{layer}.z), a{layer}.z) AS val
+                FROM dc JOIN a{layer}
+                  ON dc.sample = a{layer}.sample AND dc.inp = a{layer}.inp""",
             )
-    # SGD: each weight relation becomes w - lr * grad.
-    for layer in range(DEPTH):
-        i, o = f"u{layer}", f"u{layer + 1}"
-        t.put(
-            f"w{layer}",
-            f"SELECT w{layer}.{i}, w{layer}.{o}, w{layer}.val - {LR} * gw{layer}.val AS val "
-            f"FROM w{layer} JOIN gw{layer} ON w{layer}.{i} = gw{layer}.{i} "
-            f"AND w{layer}.{o} = gw{layer}.{o}",
-        )
-        t.put(
-            f"b{layer}",
-            f"SELECT b{layer}.{o}, b{layer}.val - {LR} * gb{layer}.val AS val "
-            f"FROM b{layer} JOIN gb{layer} ON b{layer}.{o} = gb{layer}.{o}",
-        )
+    # One SGD update for the whole network: weight <- weight - lr * gweight.
+    t.put(
+        "weight",
+        f"""SELECT w.layer, w.inp, w.out, w.val - {LR} * g.val AS val
+        FROM weight w JOIN gweight g
+          ON w.layer = g.layer AND w.inp = g.inp AND w.out = g.out""",
+    )
+    t.ctx.deregister_table("gweight")
 
 
 def accuracy(t: Tensors, inp: str, lab: str) -> float:
     """A forward pass over ``inp`` + argmax, compared to ``lab`` — all in SQL."""
     forward(t, inp)
-    o = f"u{DEPTH}"
     return float(
         t.ctx.sql(
             f"""WITH pred AS (
-                SELECT sample, {o},
+                SELECT sample, out,
                        ROW_NUMBER() OVER (PARTITION BY sample ORDER BY z DESC) AS rk
                 FROM logits)
-            SELECT AVG(CASE WHEN p.{o} = l.label THEN 1.0 ELSE 0.0 END) AS acc
+            SELECT AVG(CASE WHEN p.out = l.label THEN 1.0 ELSE 0.0 END) AS acc
             FROM pred p JOIN {lab} l ON p.sample = l.sample WHERE p.rk = 1"""
         ).to_pandas()["acc"][0]
     )
@@ -282,17 +311,16 @@ def record_metrics(t: Tensors, step: int) -> None:
     everything else here it lives as rows in a relation, grown each time, not a
     Python list. Read it back at the end as a tidy ``(step,)`` xarray.
     """
-    o = f"u{DEPTH}"
     train = accuracy(t, "x", "y")  # leaves the training forward in `logits`
     loss = float(
         t.ctx.sql(
-            f"""WITH m AS (SELECT sample, MAX(z) AS m FROM logits GROUP BY sample),
-                e AS (SELECT logits.sample, logits.{o}, exp(logits.z - m.m) AS e
+            """WITH m AS (SELECT sample, MAX(z) AS m FROM logits GROUP BY sample),
+                e AS (SELECT logits.sample, logits.out, exp(logits.z - m.m) AS e
                       FROM logits JOIN m ON logits.sample = m.sample),
                 s AS (SELECT sample, SUM(e) AS s FROM e GROUP BY sample)
             SELECT -AVG(ln(e.e / s.s)) AS loss
             FROM e JOIN s ON e.sample = s.sample JOIN y ON y.sample = e.sample
-            WHERE e.{o} = y.label"""
+            WHERE e.out = y.label"""
         ).to_pandas()["loss"][0]
     )
     test = accuracy(t, "x_te", "y_te")
@@ -354,7 +382,7 @@ def load_mnist():
     imgs = _read_idx(paths["images"]).astype(np.float32) / 255.0
     labs = _read_idx(paths["labels"]).astype(np.int64)
     side = WIDTHS[0]  # pooled pixels per image
-    pool = int(round((28 * 28 / side) ** 0.5))  # 2 for 196 pixels
+    pool = 28 // int(round(side**0.5))  # 2 for 196 pixels (14x14)
     k = 28 // pool
     pooled = (
         imgs.reshape(-1, k, pool, k, pool).mean(axis=(2, 4)).reshape(-1, side)
@@ -373,31 +401,32 @@ def main() -> None:
     print(f"MNIST: train {Xtr.shape}, test {Xte.shape}  architecture {WIDTHS}")
 
     ctx = xql.XarrayContext()
-    # The whole model is one Dataset; from_dataset splits it into a table per
-    # weight (the shared boundary dims become the join keys).
+    # The whole model is one Dataset with a layer dim; from_dataset gives one
+    # `net` table, and seeding drops the NaN padding to the live `weight` relation.
     rng = np.random.default_rng(1)
     model = build_model(rng)
     ctx.from_dataset(
-        "model",
+        "net",
         model,
-        table_names={
-            (f"u{layer}", f"u{layer + 1}"): f"w{layer}"
-            for layer in range(DEPTH)
-        }
-        | {(f"u{layer + 1}",): f"b{layer}" for layer in range(DEPTH)},
-        chunks={f"u{i}": w for i, w in enumerate(WIDTHS)},
+        chunks={
+            "layer": DEPTH,
+            "inp": model.sizes["inp"],
+            "out": model.sizes["out"],
+        },
     )
     t = Tensors(ctx)
-    seed_weights(t)
+    t.put(
+        "weight",
+        "SELECT layer, inp, out, weight AS val FROM net WHERE weight IS NOT NULL",
+    )
 
-    # Inputs and labels, registered once; the queries read x / x_te by name.
-    register_tensor(ctx, "x", Xtr, ("sample", "u0"), chunk=CHUNK)
+    # Inputs and labels (the bias is in the weight relation, so no augmentation).
+    register_tensor(ctx, "x", Xtr, ("sample", "inp"), chunk=CHUNK)
     register_tensor(ctx, "y", ytr, ("sample",), var="label")
-    register_tensor(ctx, "x_te", Xte, ("sample", "u0"))
+    register_tensor(ctx, "x_te", Xte, ("sample", "inp"))
     register_tensor(ctx, "y_te", yte, ("sample",), var="label")
 
     print(f"init: test acc {accuracy(t, 'x_te', 'y_te'):.3f}")
-
     t0 = time.time()
     for step in range(STEPS):
         train_step(t)
@@ -405,23 +434,12 @@ def main() -> None:
             record_metrics(t, step)
     dt = time.time() - t0
 
-    # The trained model comes back out as one xarray Dataset.
-    parts = []
-    for layer in range(DEPTH):
-        i, o = f"u{layer}", f"u{layer + 1}"
-        parts.append(
-            ctx.sql(f"SELECT {i}, {o}, val FROM w{layer}")
-            .to_dataset(dims=[i, o])
-            .rename({"val": f"w{layer}"})
-        )
-        parts.append(
-            ctx.sql(f"SELECT {o}, val FROM b{layer}")
-            .to_dataset(dims=[o])
-            .rename({"val": f"b{layer}"})
-        )
-    trained = xr.merge(parts)
-    # The loss curve and accuracies were recorded as rows; read them back as a
-    # tidy (step,) xarray of training metrics.
+    # The trained model, predictions, and metrics all come back out as xarray.
+    weights = (
+        ctx.sql("SELECT layer, inp, out, val FROM weight")
+        .to_dataset(dims=["layer", "inp", "out"])
+        .rename({"val": "weight"})
+    )
     metrics = ctx.sql("SELECT * FROM metrics ORDER BY step").to_dataset(
         dims=["step"]
     )
@@ -431,10 +449,9 @@ def main() -> None:
         f"test accuracy {accuracy(t, 'x_te', 'y_te'):.3f}."
     )
     print(
-        f"the model is one xarray Dataset again "
-        f"(vars {list(trained.data_vars)}, dims {dict(trained.sizes)}); "
-        f"metrics are a table -> xarray {list(metrics.data_vars)} over "
-        f"{dict(metrics.sizes)}."
+        f"the whole model is one weight relation -> xarray "
+        f"{dict(weights.sizes)}; metrics are a table -> xarray "
+        f"{list(metrics.data_vars)} over {dict(metrics.sizes)}."
     )
 
 
