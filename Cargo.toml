@@ -23,8 +23,7 @@ async-stream = "0.3"
 async-trait = "0.1"
 datafusion = { version = "54.0.0" }
 datafusion-ffi = { version = "54.0.0" }
-datafusion-substrait = { version = "52.0.0" }
-prost = "0.14"
+sqlparser = { version = "0.59", features = ["visitor"] }
 futures = { version = "0.3" }
 # `abi3-py310` builds against CPython's stable ABI, so a single wheel per
 # platform works on all CPython >= 3.10 (matching `requires-python`). This

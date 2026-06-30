@@ -1,7 +1,8 @@
 """Tests for the SQL autograd surface: ``SELECT grad(expr, column) ...``.
 
-These exercise the full path — XarrayContext.sql() -> Substrait -> native
-grad_rewrite -> Substrait -> execute — and compare results against analytic
+These exercise the full path — XarrayContext.sql() differentiates every
+``grad``/``jvp``/``vjp`` call as SQL text before planning, then DataFusion
+executes the rewritten query — and compare results against analytic
 derivatives computed with numpy.
 """
 
@@ -193,6 +194,25 @@ def test_gradient_descent_in_sql():
 
     assert losses[-1] < losses[0]  # loss decreased
     np.testing.assert_allclose([a, b], [a_true, b_true], atol=0.05)
+
+
+def test_grad_inside_recursive_cte():
+    # The headline of #197: grad() *inside* a recursive CTE — a query shape the
+    # old Substrait bridge could not represent. Newton's method for sqrt(2)
+    # drives the step with grad(x*x - 2, x) computed in the recursive term:
+    #   x <- x - (x*x - 2) / d/dx(x*x - 2) = x - (x*x - 2) / (2x).
+    ctx = xql.XarrayContext()
+    res = ctx.sql(
+        "WITH RECURSIVE newton AS ("
+        "  SELECT 0 AS step, CAST(1.0 AS DOUBLE) AS x "
+        "  UNION ALL "
+        "  SELECT step + 1 AS step, "
+        "         x - (x * x - 2.0) / grad(x * x - 2.0, x) AS x "
+        "  FROM newton WHERE step < 20"
+        ") "
+        "SELECT x FROM newton ORDER BY step DESC LIMIT 1"
+    ).to_pandas()
+    np.testing.assert_allclose(res["x"][0], np.sqrt(2.0), atol=1e-9)
 
 
 def test_multi_input_grad_columns(ctx_xy):

@@ -54,16 +54,23 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::f64::consts::{LN_10, LN_2};
+use std::ops::ControlFlow;
+use std::sync::Arc;
 
-use datafusion::arrow::datatypes::DataType;
+use datafusion::arrow::datatypes::{DataType, Field};
 use datafusion::common::tree_node::{Transformed, TreeNode};
-use datafusion::common::{DataFusionError, Result, ScalarValue};
+use datafusion::common::{DFSchema, DataFusionError, Result, ScalarValue, TableReference};
 use datafusion::functions::math::expr_fn;
 use datafusion::logical_expr::expr::ScalarFunction;
 use datafusion::logical_expr::{
     lit, BinaryExpr, Cast, ColumnarValue, Expr, LogicalPlan, Operator, ScalarFunctionArgs,
     ScalarUDF, ScalarUDFImpl, Signature, Volatility,
 };
+use datafusion::prelude::SessionContext;
+use datafusion::sql::unparser::expr_to_sql;
+use sqlparser::ast::{Expr as SqlExpr, Visit, VisitMut, Visitor, VisitorMut};
+use sqlparser::dialect::GenericDialect;
+use sqlparser::parser::Parser;
 
 // ---------------------------------------------------------------------------
 // Constant helpers and the 0/1-folding builders
@@ -523,6 +530,142 @@ fn rewrite_vjp(args: &[Expr]) -> Result<Expr> {
 }
 
 // ---------------------------------------------------------------------------
+// SQL source-to-source rewrite
+// ---------------------------------------------------------------------------
+
+/// Rewrite every `grad`/`jvp`/`vjp` call in a SQL statement into its symbolic
+/// derivative, returning the rewritten SQL text.
+///
+/// Unlike a logical-plan rewrite, this is a pure source-to-source transform run
+/// *before* the query is planned, so it works for any query shape the SQL parser
+/// accepts — recursive CTEs, DML, and subqueries included. Each marker call is
+/// parsed into a DataFusion [`Expr`], differentiated by the engine in this
+/// module, and rendered back to SQL in place. Columns are taken from the call's
+/// own identifiers (all treated as `Float64`; types don't affect the symbolic
+/// result), so no catalog or table schema is needed.
+pub fn rewrite_grad_in_sql(sql: &str) -> Result<String> {
+    let dialect = GenericDialect {};
+    let mut statements = Parser::parse_sql(&dialect, sql)
+        .map_err(|e| DataFusionError::Plan(format!("grad: failed to parse SQL: {e}")))?;
+
+    // A throwaway context that only needs the marker UDFs registered so the
+    // calls parse into `ScalarFunction` nodes the engine can dispatch on.
+    let ctx = SessionContext::new();
+    ctx.register_udf(grad_marker());
+    ctx.register_udf(jvp_marker());
+    ctx.register_udf(vjp_marker());
+
+    let mut rewriter = GradSqlRewriter { ctx: &ctx };
+    for stmt in &mut statements {
+        if let ControlFlow::Break(msg) = stmt.visit(&mut rewriter) {
+            return Err(DataFusionError::Plan(msg));
+        }
+    }
+
+    Ok(statements
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("; "))
+}
+
+/// True if `name` is one of the autograd marker functions (case-insensitive).
+fn is_marker_name(name: &str) -> bool {
+    matches!(name.to_lowercase().as_str(), "grad" | "jvp" | "vjp")
+}
+
+/// Walks a SQL AST and replaces each `grad`/`jvp`/`vjp` call with its derivative.
+struct GradSqlRewriter<'a> {
+    ctx: &'a SessionContext,
+}
+
+impl VisitorMut for GradSqlRewriter<'_> {
+    type Break = String;
+
+    fn pre_visit_expr(&mut self, expr: &mut SqlExpr) -> ControlFlow<String> {
+        let is_marker = matches!(
+            expr,
+            SqlExpr::Function(f) if is_marker_name(&f.name.to_string())
+        );
+        if !is_marker {
+            return ControlFlow::Continue(());
+        }
+        match self.rewrite_call(expr) {
+            Ok(()) => ControlFlow::Continue(()),
+            Err(e) => ControlFlow::Break(e),
+        }
+    }
+}
+
+impl GradSqlRewriter<'_> {
+    /// Differentiate a single marker call in place. The replacement is wrapped
+    /// in parentheses so it keeps the call's precedence in the surrounding SQL.
+    fn rewrite_call(&self, expr: &mut SqlExpr) -> std::result::Result<(), String> {
+        let schema = call_schema(expr)?;
+        let text = expr.to_string();
+        let parsed = self
+            .ctx
+            .parse_sql_expr(&text, &schema)
+            .map_err(|e| format!("grad: failed to parse '{text}': {e}"))?;
+        let derivative = rewrite_grad_in_expr(parsed)
+            .map_err(|e| format!("grad: failed to differentiate '{text}': {e}"))?
+            .data;
+        let rendered = expr_to_sql(&derivative)
+            .map_err(|e| format!("grad: failed to render derivative for '{text}': {e}"))?;
+        *expr = SqlExpr::Nested(Box::new(rendered));
+        Ok(())
+    }
+}
+
+/// Build a `Float64` schema covering every column identifier referenced inside a
+/// marker call, so the call's argument expression can be parsed standalone.
+fn call_schema(call: &SqlExpr) -> std::result::Result<DFSchema, String> {
+    let mut collector = ColumnCollector::default();
+    let _ = call.visit(&mut collector);
+    let fields = collector
+        .cols
+        .into_iter()
+        .map(|(qualifier, name)| {
+            let qualifier = qualifier.map(TableReference::bare);
+            (
+                qualifier,
+                Arc::new(Field::new(name, DataType::Float64, true)),
+            )
+        })
+        .collect();
+    DFSchema::new_with_metadata(fields, HashMap::new())
+        .map_err(|e| format!("grad: failed to build schema for differentiation: {e}"))
+}
+
+/// Collects the (optional qualifier, name) of every column identifier in a SQL
+/// expression tree.
+#[derive(Default)]
+struct ColumnCollector {
+    cols: Vec<(Option<String>, String)>,
+}
+
+impl Visitor for ColumnCollector {
+    type Break = ();
+
+    fn pre_visit_expr(&mut self, expr: &SqlExpr) -> ControlFlow<()> {
+        let pair = match expr {
+            SqlExpr::Identifier(ident) => Some((None, ident.value.clone())),
+            SqlExpr::CompoundIdentifier(parts) => parts.last().map(|last| {
+                let qualifier = (parts.len() >= 2).then(|| parts[parts.len() - 2].value.clone());
+                (qualifier, last.value.clone())
+            }),
+            _ => None,
+        };
+        if let Some(pair) = pair {
+            if !self.cols.contains(&pair) {
+                self.cols.push(pair);
+            }
+        }
+        ControlFlow::Continue(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -649,5 +792,47 @@ mod tests {
         let fwd = rewrite_jvp(&[f.clone(), col("x"), one()]).unwrap();
         let rev = rewrite_vjp(&[f, col("x"), one()]).unwrap();
         assert_eq!(fwd, rev);
+    }
+
+    #[test]
+    fn sql_rewrite_replaces_grad_call() {
+        // grad(sin(x), x) -> cos(x); the surrounding SELECT is preserved.
+        let out = rewrite_grad_in_sql("SELECT grad(sin(x), x) AS d FROM t").unwrap();
+        assert_eq!(out, "SELECT (cos(x)) AS d FROM t");
+    }
+
+    #[test]
+    fn sql_rewrite_leaves_non_grad_queries_intact() {
+        // A query with no marker is still parsed and re-emitted unchanged in
+        // meaning (the caller only invokes the rewrite when a marker is present).
+        let out = rewrite_grad_in_sql("SELECT a + b FROM t").unwrap();
+        assert_eq!(out, "SELECT a + b FROM t");
+    }
+
+    #[test]
+    fn sql_rewrite_fires_inside_recursive_cte() {
+        // The #197 capability: a marker inside a recursive term is rewritten,
+        // a query shape the Substrait bridge could never carry. d/dx(x*x) = x+x.
+        let out = rewrite_grad_in_sql(
+            "WITH RECURSIVE r AS (SELECT 1.0 AS x UNION ALL \
+             SELECT x - grad(x * x, x) FROM r WHERE x < 10) SELECT x FROM r",
+        )
+        .unwrap();
+        assert!(out.contains("(x + x)"), "unexpected rewrite: {out}");
+        assert!(
+            !out.to_lowercase().contains("grad("),
+            "marker left behind: {out}"
+        );
+    }
+
+    #[test]
+    fn sql_rewrite_handles_nested_higher_order_grad() {
+        // grad(grad(power(x, 3), x), x) -> d2/dx2 (x^3) = 6x; bottom-up so the
+        // inner call is differentiated before the outer one.
+        let out = rewrite_grad_in_sql("SELECT grad(grad(power(x, 3), x), x) AS d FROM t").unwrap();
+        assert!(
+            !out.to_lowercase().contains("grad("),
+            "marker left behind: {out}"
+        );
     }
 }

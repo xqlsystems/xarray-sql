@@ -54,13 +54,6 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      # The `substrait` crate (a datafusion-substrait dependency) generates
-      # code from .proto files at build time and requires protoc.
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
 

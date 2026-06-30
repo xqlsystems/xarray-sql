@@ -1,10 +1,8 @@
 import re
 
-import pyarrow as pa
 import xarray as xr
-from datafusion import SessionContext, udf
+from datafusion import SessionContext
 from datafusion.catalog import Schema
-from datafusion.substrait import Consumer, Producer, Serde
 from collections import defaultdict
 
 from . import _native
@@ -14,8 +12,8 @@ from .ds import XarrayDataFrame
 from .reader import read_xarray_table
 
 # Matches a call to an autograd marker function (``grad(`` / ``jvp(`` / ``vjp(``,
-# case-insensitive), used as a cheap gate so ordinary queries skip the
-# Substrait round-trip.
+# case-insensitive), used as a cheap gate so ordinary queries skip the grad
+# source-to-source rewrite.
 _GRAD_CALL = re.compile(r"\b(grad|jvp|vjp)\s*\(", re.IGNORECASE)
 
 
@@ -31,37 +29,6 @@ class XarrayContext(SessionContext):
         # in SQL (e.g. ``"air"`` for a uniform-dim Dataset, or
         # ``"era5.surface"`` for one entry from a multi-dim-group split).
         self._registered_datasets: dict[str, xr.Dataset] = {}
-        self._register_autograd_udfs()
-
-    def _register_autograd_udfs(self) -> None:
-        """Register the ``grad`` / ``jvp`` / ``vjp`` marker UDFs.
-
-        These are *markers*: they let queries parse and plan with the
-        differentiation request intact. They are never executed — the Substrait
-        rewrite in :meth:`sql` replaces every call with the symbolic derivative
-        before execution. All return a scalar, staying in the long/tidy data
-        model (one value per row).
-
-        * ``grad(expr, column)`` -> ``d(expr)/d(column)``.
-        * ``jvp(expr, column, tangent)`` -> forward-mode directional derivative
-          ``d(expr)/d(column) * tangent`` (seed a tangent on an input). A
-          multi-input directional derivative is a sum of jvp terms.
-        * ``vjp(expr, column, cotangent)`` -> reverse-mode pullback
-          ``cotangent * d(expr)/d(column)`` (seed a cotangent on the output).
-
-        A full gradient/Jacobian is expressed as several scalar columns, e.g.
-        ``grad(f, x) AS dfdx, grad(f, y) AS dfdy``.
-        """
-        f64 = pa.float64()
-        self.register_udf(
-            udf(lambda e, c: e, [f64, f64], f64, "immutable", "grad")
-        )
-        self.register_udf(
-            udf(lambda e, c, t: e, [f64, f64, f64], f64, "immutable", "jvp")
-        )
-        self.register_udf(
-            udf(lambda e, c, w: e, [f64, f64, f64], f64, "immutable", "vjp")
-        )
 
     def from_dataset(
         self,
@@ -207,6 +174,11 @@ class XarrayContext(SessionContext):
         ``.to_dataset(dimension_columns=[...])`` for round-tripping the
         result back to an ``xr.Dataset``.
 
+        If the query contains ``grad`` / ``jvp`` / ``vjp`` calls, they are
+        differentiated and substituted as SQL text *before* planning (see
+        :meth:`_rewrite_autograd`), so the differentiation works inside any
+        query shape — recursive CTEs, DML, and subqueries included.
+
         Args:
             query: A SQL query string.
             *args: Forwarded to ``SessionContext.sql``.
@@ -216,67 +188,32 @@ class XarrayContext(SessionContext):
             An :class:`XarrayDataFrame` wrapping the DataFusion DataFrame.
         """
         if _GRAD_CALL.search(query):
-            inner = self._sql_with_autograd(query, *args, **kwargs)
-        else:
-            inner = super().sql(query, *args, **kwargs)
+            query = self._rewrite_autograd(query)
+        inner = super().sql(query, *args, **kwargs)
         return XarrayDataFrame(inner, templates=self._registered_datasets)
 
-    def _sql_with_autograd(self, query: str, *args, **kwargs):
-        """Plan ``query``, rewrite ``grad(...)`` calls, return a DataFrame.
+    def _rewrite_autograd(self, query: str) -> str:
+        """Differentiate ``grad`` / ``jvp`` / ``vjp`` calls into SQL text.
 
         The differentiation engine lives in the native (Rust) extension and
-        operates on DataFusion logical expressions. Since that extension links
-        its own copy of DataFusion, the plan crosses the boundary as Substrait:
-        we produce the logical plan as Substrait, hand it to ``grad_rewrite``
-        (which differentiates every ``grad(expr, column)`` symbolically), then
-        consume the rewritten Substrait back into an executable DataFrame.
-        """
-        plan = super().sql(query, *args, **kwargs).logical_plan()
-        substrait_plan = Producer.to_substrait_plan(plan, self)
-        rewritten = _native.grad_rewrite(
-            substrait_plan.encode(), self._table_schemas()
-        )
-        new_plan = Consumer.from_substrait_plan(
-            self, Serde.deserialize_bytes(rewritten)
-        )
-        return self.create_dataframe_from_logical_plan(new_plan)
+        operates on DataFusion logical expressions. Rather than round-tripping a
+        whole plan across that extension's boundary, we hand it the query as SQL
+        text: it parses each marker call, differentiates it symbolically, and
+        renders the derivative back into the query in place. The result is an
+        ordinary SQL string this context can plan and execute directly.
 
-    def _table_schemas(self) -> list[tuple[str, pa.Schema]]:
-        """Return ``(name, schema)`` for every table registered in the context.
+        * ``grad(expr, column)`` -> ``d(expr)/d(column)``.
+        * ``jvp(expr, column, tangent)`` -> forward-mode directional derivative
+          ``d(expr)/d(column) * tangent`` (seed a tangent on an input). A
+          multi-input directional derivative is a sum of jvp terms.
+        * ``vjp(expr, column, cotangent)`` -> reverse-mode pullback
+          ``cotangent * d(expr)/d(column)`` (seed a cotangent on the output).
 
-        The Substrait consumer in ``grad_rewrite`` resolves table scans by name,
-        so it needs the schema of every table the plan might reference. We
-        enumerate the catalog rather than only the xarray-registered datasets,
-        so ``grad`` also works over plain DataFusion tables (e.g. in-memory
-        ``MemTable``s holding model parameters or intermediate results). Only
-        metadata is read here — never the underlying data.
+        A full gradient/Jacobian is expressed as several scalar columns, e.g.
+        ``grad(f, x) AS dfdx, grad(f, y) AS dfdy``.
         """
-        schemas = []
-        catalog = self.catalog()
-        for schema_name in catalog.schema_names():
-            if schema_name == "information_schema":
-                continue
-            schema = catalog.schema(schema_name)
-            names = (
-                schema.table_names()
-                if hasattr(schema, "table_names")
-                else schema.names()
-            )
-            for table_name in names:
-                # Tables in the default schema are referenced bare ("air");
-                # others are schema-qualified ("era5.surface").
-                qualified = (
-                    table_name
-                    if schema_name in ("public", "default")
-                    else f"{schema_name}.{table_name}"
-                )
-                try:
-                    schemas.append((qualified, self.table(qualified).schema()))
-                except Exception:
-                    # Be defensive: skip a table we can't introspect rather
-                    # than failing the whole query.
-                    continue
-        return schemas
+        rewritten: str = _native.rewrite_grad_sql(query)
+        return rewritten
 
 
 def _group_vars_by_dims(ds: xr.Dataset) -> dict[tuple[str, ...], list[str]]:
