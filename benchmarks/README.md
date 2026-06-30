@@ -65,21 +65,37 @@ sidesteps that.)
 ## `mnist_mlp.py` — train an MNIST MLP classifier in SQL
 
 A one-hidden-layer neural network (196 -> 32 tanh -> 10 softmax, on 2x2-pooled
-14x14 MNIST) trained by gradient descent where **every gradient is computed in
-SQL**; the optimisation loop is plain Python. It is reverse-mode autodiff
-expressed as relational algebra:
+14x14 MNIST) where **every gradient is computed in SQL** and the whole model —
+with its entire training history — lives in a single table.
+
+The model is one append-only table `model(step, layer, i, j, val)`: every
+parameter is a row, tagged by which generation (`step`) it belongs to. **A
+training step never mutates anything; it appends the next generation's rows.**
+`WHERE step = N` is the model at iteration N, and the full trajectory is the
+table. Each step is a *single* SQL statement that reads the current generation
+and writes the next — reverse-mode autodiff as relational algebra:
 
 - **matmul = join + `GROUP BY SUM`** — a layer's pre-activation is
   `SUM(input * weight)` grouped by (sample, unit).
 - **local derivatives = `grad()`** — the hidden activation's Jacobian is
   `grad(tanh(z), z)`, the autograd feature doing the calculus per (sample, unit).
 - **cotangent propagation = join**, **parameter gradients = join + `GROUP BY
-  AVG`**.
+  AVG`**, and the update `w - lr*g` is emitted as the next generation's rows.
 
-The MNIST images are registered as xarray (the library's core); the model
-weights and per-step intermediates are DataFusion in-memory tables (a matmul is
-a join over them). The only hand-written gradient is softmax + cross-entropy's
-`delta = softmax - onehot` (softmax couples classes through a per-sample
-normaliser, an aggregate `grad` does not cross). Reaches ~83% test accuracy in
-~20s. Downloads MNIST on first run.
+The images are registered as xarray (the library's core); evaluation is SQL too
+(a forward pass with `ROW_NUMBER()` for the argmax). The only hand-written
+gradient is softmax + cross-entropy's `delta = softmax - onehot` (softmax couples
+classes through a per-sample normaliser, which an aggregate `grad` does not
+cross). Reaches ~83% test accuracy over 60 steps (~140s on a laptop — the
+parameter updates run in SQL and every generation is kept as rows, so it trades
+speed for a fully relational, fully inspectable training history). Downloads
+MNIST on first run.
 
+Why is the *outer* loop still Python rather than one recursive query (like
+`grad_descent.py`)? A recursive CTE may reference the recursive relation only
+once, but a 2-layer net uses the current weights several times per step (W1 and
+W2 forward, W2 again in backprop), so it can't be a single recursive statement.
+Training is also sequential and reuses each step's result, so steps must be
+*materialised* between iterations — which is exactly what the thin loop does
+(append a generation, then query it). All the maths stays in SQL; Python only
+sequences the steps.
