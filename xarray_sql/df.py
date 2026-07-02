@@ -73,7 +73,7 @@ def resolve_chunks(
     return {d: tuple(c) for d, c in ds.chunks.items()}
 
 
-def ensure_default_indexes(ds: xr.Dataset) -> xr.Dataset:
+def _ensure_default_indexes(ds: xr.Dataset) -> xr.Dataset:
     """Attach a default integer index coordinate to every dimension lacking one.
 
     xarray allows "dimensions without coordinates"; these are absent from
@@ -82,8 +82,8 @@ def ensure_default_indexes(ds: xr.Dataset) -> xr.Dataset:
     block* (restarting at 0 in every partition). Materialising an explicit
     ``arange`` index up front turns them into ordinary dimension coordinates, so
     they appear as columns and carry their absolute position through chunked
-    reads (issue #203). Datasets whose dimensions already have coordinates are
-    returned unchanged.
+    reads. Datasets whose dimensions already have coordinates are returned
+    unchanged.
     """
     missing = {
         dim: np.arange(ds.sizes[dim]) for dim in ds.dims if dim not in ds.coords
@@ -391,8 +391,8 @@ def _parse_schema(ds: xr.Dataset) -> pa.Schema:
 
     Only *dimension coordinates* become dimension columns, so a dimension
     without a coordinate would be dropped. Callers must run the Dataset through
-    :func:`ensure_default_indexes` first (the readers do) so every dimension has
-    a coordinate and appears as a column (issue #203).
+    :func:`_ensure_default_indexes` first (the readers do) so every dimension
+    has a coordinate and appears as a column.
 
     Uses the xarray index type to detect cftime coordinates without
     materializing their data — important for Dask/Zarr-backed datasets

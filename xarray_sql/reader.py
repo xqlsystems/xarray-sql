@@ -24,9 +24,9 @@ from .df import (
     _block_len,
     _block_metadata,
     _block_slices_from_resolved,
+    _ensure_default_indexes,
     _parse_schema,
     block_slices,
-    ensure_default_indexes,
     iter_record_batches,
     resolve_chunks,
 )
@@ -85,7 +85,6 @@ class XarrayRecordBatchReader:
                 each block dict just before it's converted to Arrow. This
                 allows tests to track when iteration actually occurs.
         """
-        ds = ensure_default_indexes(ds)
         self._ds = ds
         self._chunks = chunks
         self._batch_size = batch_size
@@ -187,6 +186,7 @@ def read_xarray(ds: xr.Dataset, chunks: Chunks = None) -> pa.RecordBatchReader:
       A PyArrow RecordBatchReader, which is a table representation of the input
       Dataset.
     """
+    ds = _ensure_default_indexes(ds)
     reader = XarrayRecordBatchReader(ds, chunks=chunks)
     return pa.RecordBatchReader.from_stream(reader)
 
@@ -256,7 +256,7 @@ def read_xarray_table(
     """
     from ._native import LazyArrowStreamTable
 
-    ds = ensure_default_indexes(ds)
+    ds = _ensure_default_indexes(ds)
     schema = _parse_schema(ds)
 
     # Hoist coordinate reads once; avoids N_partitions remote I/O calls for

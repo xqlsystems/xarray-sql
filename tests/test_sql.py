@@ -491,7 +491,7 @@ class TestFromDatasetMultiDims:
 
     @pytest.fixture
     def coordless_dims_ds(self):
-        """Mirror the fashion-mnist layout from issue #203: a dimension
+        """Mirror the fashion-mnist layout: a dimension
         coordinate (``sample``) alongside dimensions without coordinates
         (``channel``/``height``/``width``)."""
         n_sample, n_channel, n_height, n_width = 4, 1, 3, 3
@@ -510,8 +510,8 @@ class TestFromDatasetMultiDims:
         ).chunk({"sample": 1})
 
     def test_coordless_dims_appear_as_columns(self, coordless_dims_ds):
-        """Regression for #203: dimensions without coordinates must still be
-        emitted as columns, not silently dropped from the schema."""
+        """Dimensions without coordinates must still be emitted as columns,
+        not silently dropped from the schema."""
         ctx = XarrayContext()
         ctx.from_dataset(
             "mnist",
@@ -578,7 +578,7 @@ class TestFromDatasetMultiDims:
     def test_single_table_all_coordless_dims(self):
         """A uniform-dim dataset whose dims lack coordinates registers as one
         table with every dimension present as a column, and the coordinate-less
-        dimensions carry their ABSOLUTE index even when chunked (issue #203)."""
+        dimensions carry their ABSOLUTE index even when chunked."""
         ds = xr.Dataset(
             {"a": (("x", "y"), np.arange(6, dtype="float32").reshape(3, 2))}
         ).chunk({"x": 1})  # chunked along the coordinate-less 'x' dim
