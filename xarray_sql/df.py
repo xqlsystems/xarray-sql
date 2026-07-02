@@ -421,12 +421,19 @@ def _coord_index_type(n_values: int) -> pa.DataType:
     partition's cardinality). Narrower indices mean fewer bytes moved and cheaper
     group/join hashing: a 721-point latitude or 1440-point longitude fits int16,
     while a multi-million-step time axis needs int32.
+
+    Indices run ``0 .. n_values - 1``, so a signed type with maximum ``M`` holds
+    a cardinality of ``M + 1``. The ``int64`` fallback keeps astronomically large
+    coordinate axes representable rather than silently overflowing a 32-bit index
+    (cf. the adaptive-key-width note in jayendra13's zarr-datafusion).
     """
-    if n_values <= np.iinfo(np.int8).max:
+    if n_values <= np.iinfo(np.int8).max + 1:
         return pa.int8()
-    if n_values <= np.iinfo(np.int16).max:
+    if n_values <= np.iinfo(np.int16).max + 1:
         return pa.int16()
-    return pa.int32()
+    if n_values <= np.iinfo(np.int32).max + 1:
+        return pa.int32()
+    return pa.int64()
 
 
 def _as_dictionary_field(field: pa.Field, n_values: int) -> pa.Field:

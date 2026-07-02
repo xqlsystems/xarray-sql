@@ -11,10 +11,32 @@ values still round-trip correctly.
 
 import numpy as np
 import pyarrow as pa
+import pytest
 import xarray as xr
 
 from xarray_sql import XarrayContext
-from xarray_sql.df import _parse_schema, block_slices, iter_record_batches
+from xarray_sql.df import (
+    _coord_index_type,
+    _parse_schema,
+    block_slices,
+    iter_record_batches,
+)
+
+
+@pytest.mark.parametrize(
+    "n_values, expected",
+    [
+        (1, pa.int8()),
+        (128, pa.int8()),  # int8 holds indices 0..127
+        (129, pa.int16()),
+        (32768, pa.int16()),  # int16 holds indices 0..32767
+        (32769, pa.int32()),
+        (2**31, pa.int32()),  # int32 holds indices 0..2**31-1
+        (2**31 + 1, pa.int64()),  # fallback keeps huge axes representable
+    ],
+)
+def test_coord_index_type_boundaries(n_values, expected):
+    assert _coord_index_type(n_values) == expected
 
 
 def _grid() -> xr.Dataset:
