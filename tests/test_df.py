@@ -12,6 +12,7 @@ from xarray_sql.df import (
     block_slices,
     compute_chunks,
     dataset_to_record_batch,
+    ensure_default_indexes,
     explode,
     from_map,
     from_map_batched,
@@ -242,6 +243,84 @@ def test_dataset_to_record_batch_row_count(air_small):
         )
         batch = dataset_to_record_batch(ds_block, schema)
         assert batch.num_rows == expected_rows
+
+
+def _coordless_ds():
+    """A 2-D dataset whose dimensions have NO coordinates (issue #203)."""
+    return xr.Dataset(
+        {"a": (("x", "y"), np.arange(6, dtype="float32").reshape(3, 2))}
+    )
+
+
+def test_ensure_default_indexes_materializes_missing_coords():
+    """ensure_default_indexes gives coordinate-less dims a 0..N-1 index and
+    leaves already-coordinated dims untouched (issue #203)."""
+    ds = _coordless_ds()
+    assert "x" not in ds.coords and "y" not in ds.coords
+
+    fixed = ensure_default_indexes(ds)
+    assert list(fixed.coords["x"].values) == [0, 1, 2]
+    assert list(fixed.coords["y"].values) == [0, 1]
+
+    already = xr.Dataset(
+        {"a": (("x",), np.arange(3))}, coords={"x": [10, 11, 12]}
+    )
+    assert list(ensure_default_indexes(already).coords["x"].values) == [
+        10,
+        11,
+        12,
+    ]
+
+
+def test_parse_schema_includes_coordless_dims_after_materialize():
+    """Once default indexes are materialised, every dimension is a column."""
+    schema = _parse_schema(ensure_default_indexes(_coordless_ds()))
+    assert set(schema.names) == {"x", "y", "a"}
+    # Coordinate-less dims fall back to xarray's default integer index.
+    assert pa.types.is_integer(schema.field("x").type)
+    assert pa.types.is_integer(schema.field("y").type)
+
+
+def test_record_batch_paths_carry_absolute_coordless_index():
+    """With materialised indexes, both record-batch builders emit the ABSOLUTE
+    0..N-1 position for a coordinate-less dim, even when that dim is chunked so
+    each block is sliced separately (issue #203)."""
+    ds = ensure_default_indexes(_coordless_ds())
+    schema = _parse_schema(ds)
+
+    # Chunk along the coordinate-less 'x' dim: each block is a separate slice,
+    # which is exactly where a block-relative index would corrupt the values.
+    frames_iter, frames_single = [], []
+    for block in block_slices(ds, chunks={"x": 1}):
+        ds_block = ds.isel(block)
+        frames_iter.append(
+            pa.Table.from_batches(
+                list(iter_record_batches(ds_block, schema))
+            ).to_pandas()
+        )
+        frames_single.append(
+            dataset_to_record_batch(ds_block, schema).to_pandas()
+        )
+
+    got_iter = (
+        pd.concat(frames_iter).sort_values(["x", "y"]).reset_index(drop=True)
+    )
+    got_single = (
+        pd.concat(frames_single).sort_values(["x", "y"]).reset_index(drop=True)
+    )
+    pd.testing.assert_frame_equal(got_iter, got_single)
+
+    # Absolute (not block-relative) index: x spans 0..2 across the 3 chunks.
+    assert sorted(got_iter["x"].unique().tolist()) == [0, 1, 2]
+    assert sorted(got_iter["y"].unique().tolist()) == [0, 1]
+
+    expected = (
+        ds.to_dataframe()
+        .reset_index()
+        .sort_values(["x", "y"])
+        .reset_index(drop=True)
+    )
+    pd.testing.assert_frame_equal(got_iter, expected, check_dtype=False)
 
 
 def test_from_map_batched_basic_functionality(air_small):

@@ -488,3 +488,116 @@ class TestFromDatasetMultiDims:
         ctx = XarrayContext()
         with pytest.raises(TypeError):
             ctx.from_dataset("era5", mixed_ds, {("time",): "x"})
+
+    @pytest.fixture
+    def coordless_dims_ds(self):
+        """Mirror the fashion-mnist layout from issue #203: a dimension
+        coordinate (``sample``) alongside dimensions without coordinates
+        (``channel``/``height``/``width``)."""
+        n_sample, n_channel, n_height, n_width = 4, 1, 3, 3
+        return xr.Dataset(
+            {
+                "images": (
+                    ["sample", "channel", "height", "width"],
+                    np.arange(
+                        n_sample * n_channel * n_height * n_width,
+                        dtype="float32",
+                    ).reshape(n_sample, n_channel, n_height, n_width),
+                ),
+                "labels": (["sample"], np.arange(n_sample, dtype="int64")),
+            },
+            coords={"sample": ("sample", np.arange(n_sample, dtype="int64"))},
+        ).chunk({"sample": 1})
+
+    def test_coordless_dims_appear_as_columns(self, coordless_dims_ds):
+        """Regression for #203: dimensions without coordinates must still be
+        emitted as columns, not silently dropped from the schema."""
+        ctx = XarrayContext()
+        ctx.from_dataset(
+            "mnist",
+            coordless_dims_ds,
+            table_names={
+                ("sample", "channel", "height", "width"): "X",
+                ("sample",): "y",
+            },
+        )
+        result = ctx.sql('SELECT * FROM mnist."X"').to_pandas()
+        assert set(result.columns) == {
+            "sample",
+            "channel",
+            "height",
+            "width",
+            "images",
+        }
+
+    def test_coordless_dims_values_match_xarray(self, coordless_dims_ds):
+        """The X table's rows must match xarray's own pivot exactly, including
+        the synthesized index values for the coordinate-less dimensions."""
+        ctx = XarrayContext()
+        ctx.from_dataset(
+            "mnist",
+            coordless_dims_ds,
+            table_names={
+                ("sample", "channel", "height", "width"): "X",
+                ("sample",): "y",
+            },
+        )
+        dim_cols = ["sample", "channel", "height", "width"]
+        result = (
+            ctx.sql('SELECT * FROM mnist."X"')
+            .to_pandas()
+            .sort_values(dim_cols)
+            .reset_index(drop=True)
+        )
+        expected = (
+            coordless_dims_ds[["images"]]
+            .to_dataframe()
+            .reset_index()
+            .sort_values(dim_cols)
+            .reset_index(drop=True)
+        )
+        pd.testing.assert_frame_equal(
+            result, expected, check_dtype=False, check_like=True
+        )
+
+    def test_coordless_dims_y_table_unaffected(self, coordless_dims_ds):
+        """The 1-D ``y`` group (sample coordinate + labels) is unchanged."""
+        ctx = XarrayContext()
+        ctx.from_dataset(
+            "mnist",
+            coordless_dims_ds,
+            table_names={
+                ("sample", "channel", "height", "width"): "X",
+                ("sample",): "y",
+            },
+        )
+        result = ctx.sql('SELECT * FROM mnist."y"').to_pandas()
+        assert set(result.columns) == {"sample", "labels"}
+        assert len(result) == coordless_dims_ds.sizes["sample"]
+
+    def test_single_table_all_coordless_dims(self):
+        """A uniform-dim dataset whose dims lack coordinates registers as one
+        table with every dimension present as a column, and the coordinate-less
+        dimensions carry their ABSOLUTE index even when chunked (issue #203)."""
+        ds = xr.Dataset(
+            {"a": (("x", "y"), np.arange(6, dtype="float32").reshape(3, 2))}
+        ).chunk({"x": 1})  # chunked along the coordinate-less 'x' dim
+        ctx = XarrayContext()
+        ctx.from_dataset("grid", ds)
+        result = (
+            ctx.sql("SELECT * FROM grid")
+            .to_pandas()
+            .sort_values(["x", "y"])
+            .reset_index(drop=True)
+        )
+        assert set(result.columns) == {"x", "y", "a"}
+        # x must span 0..2 across the three chunks, not restart at 0 each block.
+        expected = (
+            ds.to_dataframe()
+            .reset_index()
+            .sort_values(["x", "y"])
+            .reset_index(drop=True)
+        )
+        pd.testing.assert_frame_equal(
+            result, expected, check_dtype=False, check_like=True
+        )
