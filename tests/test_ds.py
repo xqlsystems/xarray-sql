@@ -139,6 +139,42 @@ def test_aggregation_drops_dim(air_dataset_small):
     np.testing.assert_allclose(actual, expected)
 
 
+def test_aggregation_infers_dims(air_dataset_small):
+    """#189: to_dataset() infers the surviving GROUP BY dims without dims=."""
+    ctx = XarrayContext()
+    ctx.from_dataset("air", air_dataset_small)
+
+    # GROUP BY lat, lon: time is aggregated away, lat/lon survive.
+    out = ctx.sql(
+        "SELECT lat, lon, AVG(air) AS air_avg FROM air GROUP BY lat, lon"
+    ).to_dataset()
+    assert set(out.dims) == {"lat", "lon"}
+    assert "air_avg" in out.data_vars
+    expected = (
+        air_dataset_small.compute()
+        .sortby(["lat", "lon"])
+        .mean(dim="time")["air"]
+        .values
+    )
+    np.testing.assert_allclose(
+        out.sortby(["lat", "lon"])["air_avg"].values, expected
+    )
+
+    # The reporter's exact case: GROUP BY the time coordinate.
+    single = ctx.sql(
+        'SELECT "time", AVG("air") AS air FROM "air" GROUP BY "time"'
+    ).to_dataset()
+    assert set(single.dims) == {"time"}
+    assert "air" in single.data_vars
+    expected_t = (
+        air_dataset_small.compute()
+        .sortby("time")
+        .mean(dim=["lat", "lon"])["air"]
+        .values
+    )
+    np.testing.assert_allclose(single.sortby("time")["air"].values, expected_t)
+
+
 def test_barrier_query_scans_source_once(air_dataset_small):
     """A barrier plan (aggregation) executes the source exactly once.
 
@@ -383,14 +419,12 @@ def test_to_dataset_multi_registered_requires_explicit_template(
     assert set(out.dims) == {"time", "lat", "lon"}
 
 
-def test_to_dataset_infer_fails_when_no_template_fits(air_dataset_small):
-    """If no registered Dataset's dims fit the result -> clear error."""
+def test_to_dataset_infer_fails_when_no_dim_survives(air_dataset_small):
+    """A global aggregation leaves no registered dim in the result -> clear error."""
     ctx = XarrayContext()
     ctx.from_dataset("air", air_dataset_small)
     with pytest.raises(ValueError, match="dims cannot be inferred"):
-        ctx.sql(
-            "SELECT lat, lon, AVG(air) AS air_avg FROM air GROUP BY lat, lon"
-        ).to_dataset()
+        ctx.sql("SELECT AVG(air) AS air_avg FROM air").to_dataset()
 
 
 def test_template_accepts_name_or_dataset(air_dataset_small):
