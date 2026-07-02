@@ -742,8 +742,19 @@ class XarrayDataFrame:
         object.__setattr__(self, "_templates", dict(templates or {}))
 
     def to_pandas(self) -> pd.DataFrame:
-        """Materialize the result as a ``pd.DataFrame`` (DataFusion API)."""
-        return self._inner.to_pandas()
+        """Materialize the result as a ``pd.DataFrame`` (DataFusion API).
+
+        Coordinate columns are dictionary-encoded internally, which DataFusion
+        surfaces as pandas ``Categorical``. Decode those back to their value
+        dtype so callers see the same plain columns as before the encoding —
+        results sort and compare by value, not by category order.
+        """
+        df = self._inner.to_pandas()
+        for name in df.columns:
+            dtype = df[name].dtype
+            if isinstance(dtype, pd.CategoricalDtype):
+                df[name] = df[name].astype(dtype.categories.dtype)
+        return df
 
     def to_dataset(
         self,
