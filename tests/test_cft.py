@@ -153,18 +153,23 @@ class TestParseSchemaIntegration:
     def test_noleap_produces_timestamp_us(self, rasm_ds):
         schema = _parse_schema(rasm_ds[["Tair"]])
         time_field = schema.field("time")
-        assert time_field.type == pa.timestamp("us")
+        # Coordinate columns are dictionary-encoded; the cftime encoding lives
+        # in the dictionary's value type (and the field metadata is preserved).
+        assert pa.types.is_dictionary(time_field.type)
+        assert time_field.type.value_type == pa.timestamp("us")
         assert time_field.metadata[b"xarray:calendar"] == b"noleap"
 
     def test_360day_produces_int64(self, ds_360day):
         schema = _parse_schema(ds_360day)
         time_field = schema.field("time")
-        assert time_field.type == pa.int64()
+        assert pa.types.is_dictionary(time_field.type)
+        assert time_field.type.value_type == pa.int64()
         assert time_field.metadata[b"xarray:calendar"] == b"360_day"
 
     def test_datetime64_unchanged(self):
         ds = xr.tutorial.open_dataset("air_temperature")
         schema = _parse_schema(ds)
         time_field = schema.field("time")
-        assert pa.types.is_timestamp(time_field.type)
+        assert pa.types.is_dictionary(time_field.type)
+        assert pa.types.is_timestamp(time_field.type.value_type)
         assert time_field.metadata is None  # no xarray: metadata for native
