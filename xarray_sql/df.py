@@ -414,43 +414,49 @@ def iter_record_batches(
 
 
 def _coord_index_type(n_values: int) -> pa.DataType:
-    """Smallest signed Arrow int type that indexes ``n_values`` dictionary keys.
+    """Signed Arrow int type for a coordinate dictionary of ``n_values`` keys.
 
-    A coordinate's dictionary indices range over its dimension length, so the
-    index width is chosen from the full dimension size (a safe upper bound on any
-    partition's cardinality). Narrower indices mean fewer bytes moved and cheaper
-    group/join hashing: a 721-point latitude or 1440-point longitude fits int16,
-    while a multi-million-step time axis needs int32.
-
-    Indices run ``0 .. n_values - 1``, so a signed type with maximum ``M`` holds
-    a cardinality of ``M + 1``. The ``int64`` fallback keeps astronomically large
-    coordinate axes representable rather than silently overflowing a 32-bit index
-    (cf. the adaptive-key-width note in jayendra13's zarr-datafusion).
+    The index must survive DataFusion *concatenating* per-batch dictionaries
+    across a scan. Those concatenations are not always unified (arrow merges
+    dictionary values on a size heuristic, not a guarantee), so the *combined*
+    dictionary an operator sees can be many times a single partition's
+    cardinality — an unchunked coordinate repeated across N partitions can reach
+    ``card × N``. A narrow key (int8/int16) therefore overflows under streaming
+    aggregation ("Dictionary key bigger than the key type"), so we do not use
+    one. ``int32`` covers ~2.1B combined entries (any realistic grid), and
+    ``int64`` backstops the astronomically-large case. Indices run
+    ``0 .. n_values - 1``, so a signed max ``M`` holds a cardinality of ``M + 1``.
     """
-    if n_values <= np.iinfo(np.int8).max + 1:
-        return pa.int8()
-    if n_values <= np.iinfo(np.int16).max + 1:
-        return pa.int16()
     if n_values <= np.iinfo(np.int32).max + 1:
         return pa.int32()
     return pa.int64()
 
 
 def _as_dictionary_field(field: pa.Field, n_values: int) -> pa.Field:
-    """Wrap a coordinate field's value type in a dictionary encoding.
+    """Dictionary-encode a coordinate field when it is worthwhile and safe.
 
     Coordinate columns repeat each value across the whole grid — a chunk of
     shape ``(time, lat, lon)`` carries each latitude ``time × lon`` times. A
-    dictionary array stores only the distinct values plus small integer indices,
-    so this shrinks the bytes the query engine moves for coordinate columns and
-    lets ``GROUP BY`` / equality ``JOIN`` on coordinates compare integer keys
-    instead of rehashing repeated floats. The index type is sized to the
-    dimension length (see :func:`_coord_index_type`). The dictionary's value type
-    and the field's name, nullability, and metadata (e.g. cftime units/calendar)
-    are preserved, so downstream schema handling is unchanged apart from the
-    encoding.
+    dictionary stores only the distinct values plus integer indices, shrinking
+    the bytes the engine moves and letting ``GROUP BY`` / equality ``JOIN``
+    compare integer keys instead of rehashing repeated floats.
+
+    We only encode when the index type (see :func:`_coord_index_type`) is
+    *strictly narrower* than the value type. That keeps 8-byte coordinates
+    (``float64``, ``int64``, timestamps) — a 2× win with an overflow-safe int32
+    key — while leaving 4-byte ``float32`` / ``int32`` coordinates dense, where a
+    dictionary would be pure overhead and a narrower (overflow-prone) key would
+    be the only way to win. Variable-width value types (e.g. strings) are always
+    encoded — the classic dictionary win. The field's name, nullability, and
+    metadata (e.g. cftime units/calendar) are preserved.
     """
     index_type = _coord_index_type(n_values)
+    try:
+        value_bit_width = field.type.bit_width
+    except (ValueError, NotImplementedError):
+        value_bit_width = None  # variable-width (e.g. string): always encode
+    if value_bit_width is not None and index_type.bit_width >= value_bit_width:
+        return field
     return field.with_type(pa.dictionary(index_type, field.type))
 
 

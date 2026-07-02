@@ -774,10 +774,10 @@ fn bound_to_scalar(bound: &ScalarBound, dtype: &DataType) -> Option<ScalarValue>
 
 /// Fixed byte width of one value of `dtype`, or `None` if it is variable-width.
 ///
-/// Dictionary-encoded coordinate columns are sized by their *value* type: the
-/// statistic estimates the logical data volume (a conservative upper bound on
-/// the encoded column's real footprint), and keeps the reported size stable
-/// whether or not a column is dictionary-encoded.
+/// A dictionary-encoded column is sized by its *value* type — a safe upper bound
+/// on the encoded column's real footprint (the actual indices are narrower). We
+/// deliberately over- rather than under-count so a memory-based rule never
+/// under-provisions; the caller marks the total `Inexact` to reflect it.
 fn fixed_width(dtype: &DataType) -> Option<usize> {
     match dtype {
         DataType::Dictionary(_, value_type) => fixed_width(value_type),
@@ -785,21 +785,33 @@ fn fixed_width(dtype: &DataType) -> Option<usize> {
     }
 }
 
-/// Exact in-memory byte size of `num_rows` rows of `schema`, or `Absent` if any
-/// column is variable-width (e.g. Utf8) and cannot be sized from the row count
-/// alone. Our data model is dense fixed-width grids, so this is normally exact.
+/// In-memory byte size of `num_rows` rows of `schema`.
+///
+/// `Absent` if any column is variable-width (e.g. Utf8). `Exact` for a plain
+/// fixed-width grid; `Inexact` when any column is dictionary-encoded, since we
+/// size those by the value type (a safe upper bound) rather than the narrower
+/// index — an honest label now that coordinates can be dictionary-encoded.
 fn total_byte_size(schema: &Schema, num_rows: &Precision<usize>) -> Precision<usize> {
     let Precision::Exact(rows) = num_rows else {
         return Precision::Absent;
     };
     let mut row_width = 0usize;
+    let mut any_dictionary = false;
     for field in schema.fields() {
+        if matches!(field.data_type(), DataType::Dictionary(_, _)) {
+            any_dictionary = true;
+        }
         match fixed_width(field.data_type()) {
             Some(w) => row_width += w,
             None => return Precision::Absent,
         }
     }
-    Precision::Exact(rows.saturating_mul(row_width))
+    let total = rows.saturating_mul(row_width);
+    if any_dictionary {
+        Precision::Inexact(total)
+    } else {
+        Precision::Exact(total)
+    }
 }
 
 /// Build `Statistics` for a scan over the given partitions.
