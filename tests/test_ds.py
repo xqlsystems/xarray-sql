@@ -125,7 +125,7 @@ def test_aggregation_drops_dim(air_dataset_small):
     ctx.from_dataset("air", air_dataset_small)
     out = ctx.sql(
         "SELECT lat, lon, AVG(air) AS air_avg FROM air GROUP BY lat, lon"
-    ).to_dataset(dims=["lat", "lon"])
+    ).to_dataset()
     assert set(out.dims) == {"lat", "lon"}
     assert "air_avg" in out.data_vars
     assert "air" not in out.data_vars
@@ -140,39 +140,20 @@ def test_aggregation_drops_dim(air_dataset_small):
 
 
 def test_aggregation_infers_dims(air_dataset_small):
-    """#189: to_dataset() infers the surviving GROUP BY dims without dims=."""
+    """to_dataset() infers the surviving GROUP BY dim when dims is omitted."""
     ctx = XarrayContext()
     ctx.from_dataset("air", air_dataset_small)
 
-    # GROUP BY lat, lon: time is aggregated away, lat/lon survive.
+    # Grouping by the time coordinate keeps time as the sole dimension; the
+    # ORDER BY makes the result order deterministic so no sort is needed below.
     out = ctx.sql(
-        "SELECT lat, lon, AVG(air) AS air_avg FROM air GROUP BY lat, lon"
+        'SELECT "time", AVG("air") AS air FROM "air" '
+        'GROUP BY "time" ORDER BY "time"'
     ).to_dataset()
-    assert set(out.dims) == {"lat", "lon"}
-    assert "air_avg" in out.data_vars
-    expected = (
-        air_dataset_small.compute()
-        .sortby(["lat", "lon"])
-        .mean(dim="time")["air"]
-        .values
-    )
-    np.testing.assert_allclose(
-        out.sortby(["lat", "lon"])["air_avg"].values, expected
-    )
-
-    # The reporter's exact case: GROUP BY the time coordinate.
-    single = ctx.sql(
-        'SELECT "time", AVG("air") AS air FROM "air" GROUP BY "time"'
-    ).to_dataset()
-    assert set(single.dims) == {"time"}
-    assert "air" in single.data_vars
-    expected_t = (
-        air_dataset_small.compute()
-        .sortby("time")
-        .mean(dim=["lat", "lon"])["air"]
-        .values
-    )
-    np.testing.assert_allclose(single.sortby("time")["air"].values, expected_t)
+    assert set(out.dims) == {"time"}
+    assert "air" in out.data_vars
+    expected = air_dataset_small.compute().mean(dim=["lat", "lon"])["air"]
+    np.testing.assert_allclose(out["air"].values, expected.values)
 
 
 def test_barrier_query_scans_source_once(air_dataset_small):
@@ -202,7 +183,7 @@ def test_barrier_query_scans_source_once(air_dataset_small):
 
     out = ctx.sql(
         "SELECT lat, lon, AVG(air) AS air_avg FROM air GROUP BY lat, lon"
-    ).to_dataset(dims=["lat", "lon"])
+    ).to_dataset()
     reads_after_construct = len(reads)
     out.compute()
     reads_after_compute = len(reads)
@@ -224,7 +205,7 @@ def test_order_by_direction_sets_dim_order(air_dataset_small):
     ctx.from_dataset("air", air_dataset_small)
     out = ctx.sql(
         "SELECT lat, AVG(air) AS air_avg FROM air GROUP BY lat ORDER BY lat DESC"
-    ).to_dataset(dims=["lat"])
+    ).to_dataset()
 
     lat = out["lat"].values
     assert (np.diff(lat) < 0).all(), f"expected descending lat, got {lat}"
@@ -325,7 +306,7 @@ def test_fast_path_uses_scanned_tables_coords_not_user_template(
 
 
 def test_round_trip_preserves_descending_lat_on_lazy_path(air_dataset_small):
-    """Lazy round-trip preserves source dim order (xarray-sql#171).
+    """Lazy round-trip preserves source dim order.
 
     NCEP ``air_temperature`` ships descending lat (75.0 -> 15.0). The
     discovery path's ``.distinct().sort()`` previously flipped lat to
@@ -481,7 +462,7 @@ def test_template_aggregation_alias_no_attrs(air_dataset_small):
     ctx.from_dataset("air", ds)
     out = ctx.sql(
         "SELECT lat, lon, AVG(air) AS air_avg FROM air GROUP BY lat, lon"
-    ).to_dataset(dims=["lat", "lon"])
+    ).to_dataset()
     assert "air_avg" in out.data_vars
     assert out["air_avg"].attrs == {}
 
