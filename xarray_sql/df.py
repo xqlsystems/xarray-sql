@@ -231,7 +231,10 @@ def pivot(ds: xr.Dataset) -> pd.DataFrame:
 
 
 def dataset_to_record_batch(
-    ds: xr.Dataset, schema: pa.Schema
+    ds: xr.Dataset,
+    schema: pa.Schema,
+    *,
+    index_offsets: Mapping[str, int] | None = None,
 ) -> pa.RecordBatch:
     """Convert an xarray Dataset partition to an Arrow RecordBatch.
 
@@ -267,10 +270,24 @@ def dataset_to_record_batch(
         dim_names = list(ds.sizes.keys())
         shape = tuple(ds.sizes[d] for d in dim_names)
 
+    offsets = index_offsets or {}
+    index_fields = {
+        index_column_name(d): (k, int(offsets.get(d, 0)))
+        for k, d in enumerate(dim_names)
+    }
+
     arrays = []
     for field in schema:
         name = field.name
-        if name in ds.coords and name in ds.dims:
+        if name in index_fields:
+            # Absolute integer grid position for this dim, broadcast+ravelled.
+            axis, offset = index_fields[name]
+            idx = offset + np.arange(shape[axis], dtype=np.int64)
+            reshape = [1] * len(shape)
+            reshape[axis] = shape[axis]
+            arr = np.broadcast_to(idx.reshape(reshape), shape).ravel()
+            arrays.append(pa.array(arr, type=field.type))
+        elif name in ds.coords and name in ds.dims:
             # Broadcast 1-D coordinate to the full N-D partition shape, then ravel.
             axis = dim_names.index(name)
             coord = ds.coords[name].values
@@ -302,6 +319,8 @@ def iter_record_batches(
     ds: xr.Dataset,
     schema: pa.Schema,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    *,
+    index_offsets: Mapping[str, int] | None = None,
 ) -> Iterator[pa.RecordBatch]:
     """Yield RecordBatches of at most *batch_size* rows from a partition Dataset.
 
@@ -350,11 +369,21 @@ def iter_record_batches(
     # Flat row index i → coordinate index for dim k: (i // stride[k]) % shape[k].
     strides = [int(np.prod(shape[k + 1 :])) for k in range(len(shape))]
 
+    # Integer grid-position (`<dim>_idx`) columns, if the schema requests them:
+    # map the column name to its dim position and absolute block offset so the
+    # emitted index is global (partition-independent), which is what a join key
+    # across partitions requires.
+    offsets = index_offsets or {}
+    index_fields = {
+        index_column_name(d): (k, int(offsets.get(d, 0)))
+        for k, d in enumerate(dim_names)
+    }
+
     # Load data-variable arrays fully (triggers Dask/Zarr compute once).
     # ravel() is a zero-copy view for C-contiguous arrays.
     data_arrays = {}
     for field in schema:
-        if field.name not in ds.dims:
+        if field.name not in ds.dims and field.name not in index_fields:
             raw = ds[field.name].values
             if cft.is_cftime(raw):
                 data_arrays[field.name] = cft.convert_for_field(raw, field)
@@ -368,7 +397,11 @@ def iter_record_batches(
         arrays = []
         for field in schema:
             name = field.name
-            if name in ds.coords and name in ds.dims:
+            if name in index_fields:
+                k, offset = index_fields[name]
+                idx = offset + (row_idx // strides[k]) % shape[k]
+                arrays.append(pa.array(idx, type=field.type))
+            elif name in ds.coords and name in ds.dims:
                 k = dim_names.index(name)
                 coord_idx = (row_idx // strides[k]) % shape[k]
                 arrays.append(
@@ -400,13 +433,29 @@ def _arrow_type_for_object(values: np.ndarray) -> pa.DataType:
     return pa.array(np.asarray(values).ravel()).type
 
 
-def _parse_schema(ds: xr.Dataset) -> pa.Schema:
+#: Suffix for the integer grid-position column of a dimension.
+INDEX_COLUMN_SUFFIX = "_idx"
+
+
+def index_column_name(dim: str) -> str:
+    """Name of the integer grid-position column for dimension ``dim``."""
+    return f"{dim}{INDEX_COLUMN_SUFFIX}"
+
+
+def _parse_schema(ds: xr.Dataset, *, index_columns: bool = False) -> pa.Schema:
     """Extracts a `pa.Schema` from the Dataset, treating dims and data_vars as columns.
 
     Only *dimension coordinates* become dimension columns, so a dimension
     without a coordinate would be dropped. Callers must run the Dataset through
     :func:`_ensure_default_indexes` first (the readers do) so every dimension
     has a coordinate and appears as a column.
+
+    When ``index_columns`` is set, an ``int32`` ``<dim>_idx`` column is appended
+    for every dimension, carrying each row's absolute integer position along that
+    axis. These are exact integer keys for grid joins (regridding weight tables,
+    forecast alignment) — faster than, and free of the float-equality fragility
+    of, joining on the floating-point coordinate values, while the coordinate
+    columns remain available for value predicates and display.
 
     Uses the xarray index type to detect cftime coordinates without
     materializing their data — important for Dask/Zarr-backed datasets
@@ -454,6 +503,17 @@ def _parse_schema(ds: xr.Dataset) -> pa.Schema:
         else:
             pa_type = pa.from_numpy_dtype(var.dtype)
             columns.append(pa.field(var_name, pa_type))
+
+    if index_columns:
+        existing = {f.name for f in columns}
+        for dim in ds.dims:
+            name = index_column_name(str(dim))
+            if name in existing:
+                raise ValueError(
+                    f"cannot add index column {name!r}: a column with that "
+                    f"name already exists (dimension {dim!r})"
+                )
+            columns.append(pa.field(name, pa.int32()))
 
     return pa.schema(columns)
 

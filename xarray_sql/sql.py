@@ -29,6 +29,7 @@ class XarrayContext(SessionContext):
         *,
         table_names: dict[tuple[str, ...], str] | None = None,
         chunks: Chunks = None,
+        index_columns: bool = False,
     ):
         """Register an xarray Dataset as one or more queryable SQL tables.
 
@@ -83,6 +84,13 @@ class XarrayContext(SessionContext):
                 variables with differing dimensions.
             chunks: Xarray-like chunks specification. If not provided, uses
                 the Dataset's existing chunks.
+            index_columns: When True, add an ``int32`` ``<dim>_idx`` column for
+                every dimension, carrying each row's absolute integer position
+                on that axis. These are exact, overflow-free integer keys for
+                grid joins (regridding weight tables, forecast alignment) — join
+                on them instead of the floating-point coordinates to avoid
+                float-equality mismatches, while the coordinate columns stay
+                available for value predicates and display.
 
         Returns:
             self, to allow chaining.
@@ -99,7 +107,11 @@ class XarrayContext(SessionContext):
         if len(groups) <= 1:
             self._registered_datasets[name] = input_table
             return self._from_dataset(
-                name, input_table, chunks, coord_arrays=coord_arrays
+                name,
+                input_table,
+                chunks,
+                coord_arrays=coord_arrays,
+                index_columns=index_columns,
             )
 
         table_names = table_names or {}
@@ -117,6 +129,7 @@ class XarrayContext(SessionContext):
                 chunks,
                 schema=schema,
                 coord_arrays=coord_arrays,
+                index_columns=index_columns,
             )
             # Track the fully-qualified name so XarrayDataFrame metadata
             # recovery can find this Dataset on round-trip.
@@ -131,6 +144,7 @@ class XarrayContext(SessionContext):
         chunks: Chunks = None,
         schema: Schema | None = None,
         coord_arrays: dict | None = None,
+        index_columns: bool = False,
     ):
         """Register a Dataset as a single SQL table.
 
@@ -142,7 +156,12 @@ class XarrayContext(SessionContext):
         )
         register(
             table_name,
-            read_xarray_table(input_table, chunks, coord_arrays=coord_arrays),
+            read_xarray_table(
+                input_table,
+                chunks,
+                index_columns=index_columns,
+                coord_arrays=coord_arrays,
+            ),
         )
         self._maybe_register_cftime_udf(input_table)
         return self

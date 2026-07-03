@@ -196,6 +196,7 @@ def read_xarray_table(
     chunks: Chunks = None,
     *,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    index_columns: bool = False,
     coord_arrays: dict[str, np.ndarray] | None = None,
     _iteration_callback: (
         Callable[[Block, list[str] | None], None] | None
@@ -257,7 +258,7 @@ def read_xarray_table(
     from ._native import LazyArrowStreamTable
 
     ds = _ensure_default_indexes(ds)
-    schema = _parse_schema(ds)
+    schema = _parse_schema(ds, index_columns=index_columns)
 
     # Hoist coordinate reads once; avoids N_partitions remote I/O calls for
     # Zarr-backed datasets (e.g. ARCO-ERA5 on GCS).  When the caller supplies
@@ -281,15 +282,16 @@ def read_xarray_table(
 
             if projection_names is not None:
                 # Restrict to the data variables mentioned in the projection.
-                # Dimension coordinates come along automatically via coords.
+                # Dimension coordinates come along automatically via coords;
+                # index columns are computed from position, not loaded.
                 data_vars_needed = [
                     c for c in projection_names if c in data_var_names
                 ]
                 if data_vars_needed:
                     ds_block = ds[data_vars_needed].isel(block)
                 else:
-                    # Only dimension coords requested — drop all data vars to avoid
-                    # loading them unnecessarily (e.g. for queries like SELECT lat, lon).
+                    # Only dimension coords / index columns requested — drop all
+                    # data vars to avoid loading them (e.g. SELECT lat, lon_idx).
                     ds_block = ds.drop_vars(list(ds.data_vars)).isel(block)
                 batch_schema = pa.schema(
                     [schema.field(name) for name in projection_names]
@@ -298,9 +300,17 @@ def read_xarray_table(
                 ds_block = ds.isel(block)
                 batch_schema = schema
 
+            # Absolute start of this block on each axis, so `<dim>_idx` columns
+            # carry global positions that line up across partitions.
+            index_offsets = {str(dim): (block[dim].start or 0) for dim in block}
             return pa.RecordBatchReader.from_batches(
                 batch_schema,
-                iter_record_batches(ds_block, batch_schema, batch_size),
+                iter_record_batches(
+                    ds_block,
+                    batch_schema,
+                    batch_size,
+                    index_offsets=index_offsets,
+                ),
             )
 
         return make_stream
