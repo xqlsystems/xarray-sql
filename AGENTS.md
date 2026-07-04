@@ -16,8 +16,6 @@ summarizes recurring maintainer review feedback so changes land clean.
 
 - Mark internal helpers private with a leading underscore when they are not part
   of the public API.
-- Prefer doing setup work in the functional entry point (e.g. `read_xarray`)
-  rather than in a class constructor; keep constructors minimal.
 
 ## Tests
 
@@ -32,8 +30,8 @@ summarizes recurring maintainer review feedback so changes land clean.
   registered Datasets, or a test that is specifically exercising those
   arguments).
 
-## Commits
+## Imports
 
-- Use conventional commit prefixes: `fix:`, `feat:`, `refactor:`, `chore:`,
-  `docs:`, `test:`.
-- Keep imports at the top of the file.
+- Keep imports at the top of the file. Assume transitive dependencies are safe
+  to import non-locally, rather than deferring imports into functions to avoid
+  a dependency.

@@ -34,8 +34,10 @@ clim = ctx.sql('''
 clim.to_pandas().head()
 
 # Option 2: round-trip back to an Xarray Dataset and plot the annual cycle as
-# a time series. `month` is a derived column, so name it as the dimension; the
-# variable's units are recovered from the registered table.
+# a time series. `to_dataset()` infers dimensions from the registered table's
+# surviving dims, so a GROUP BY on a real dimension needs no `dims=`. Here
+# `month` is a derived column, not a registered dim, so name it explicitly;
+# the variable's units are recovered from the registered table.
 clim_ds = clim.to_dataset(dims=["month"])
 clim_ds["air"].plot()
 ```
