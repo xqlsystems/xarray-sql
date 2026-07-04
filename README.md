@@ -47,9 +47,8 @@ clim = ctx.sql('''
   ORDER BY month
 ''')
 
-# Write the SQL result back to an Xarray Dataset. `month` is a derived
-# column, so name it as the dimension; the variable's units are recovered
-# from the registered table. The result is one value per month: air(month).
+# Round-trip the result back to Xarray. `month` is a derived column, so name
+# it as the dimension.
 clim_ds = clim.to_dataset(dims=["month"])
 
 # Plot the annual cycle as a time series.
@@ -138,7 +137,9 @@ ctx.sql('''
                  AND TIMESTAMP '2020-01-01 05:00:00'
   GROUP BY latitude, longitude
   ORDER BY latitude DESC, longitude
-''').to_dataset(dims=['latitude', 'longitude'], template=ds)
+# `latitude`/`longitude` are inferred from the registered table's surviving
+# dims; `template` is kept only to recover metadata (attrs, encoding).
+''').to_dataset(template=ds)
 # <xarray.Dataset> Size: 8MB
 # Dimensions:    (latitude: 721, longitude: 1440)
 # Coordinates:

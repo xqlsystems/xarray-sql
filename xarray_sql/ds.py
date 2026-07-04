@@ -757,10 +757,12 @@ class XarrayDataFrame:
 
         Args:
             dims: Result columns to use as Dataset dimensions. When
-                ``None``, defaults to the dims of the registered Dataset
-                referenced by the SQL ``FROM`` clause (if exactly one
-                matches), or any single registered Dataset whose dims are
-                all present in the result columns.
+                ``None``, defaults to a registered Dataset's dimensions that
+                survive into the result columns, so an aggregation that drops
+                dims (e.g. ``GROUP BY time`` over a ``(time, lat, lon)`` grid)
+                round-trips on the remaining dim. Raises when no dimension
+                survives, or when several registered Datasets imply different
+                dims (pass ``dims`` explicitly then).
             template: Source to recover metadata (attrs, encoding, non-dim
                 coordinates, dim-coord dtype) from. Either an ``xr.Dataset``
                 used directly, or the name of a registered table (e.g.
@@ -879,33 +881,37 @@ class XarrayDataFrame:
     ) -> list[str]:
         """Pick a default ``dimension_columns`` from the registry, or raise.
 
-        Uses the data variable's dim order (via :func:`_ds_var_dims`) so
-        the round-trip preserves the original axis order.
+        A registered Dataset's dims that survive into the result columns
+        become the dimensions, so aggregations that drop dims (e.g.
+        ``GROUP BY time`` over a ``(time, lat, lon)`` grid) round-trip on the
+        surviving dim(s). Uses the data variable's dim order (via
+        :func:`_ds_var_dims`) so the original axis order is preserved.
         """
         result_cols = set(self._result_columns())
-        if (
-            preferred_template is not None
-            and set(preferred_template.dims) <= result_cols
-        ):
-            return _ds_var_dims(preferred_template)
+
+        def surviving(template: xr.Dataset) -> list[str]:
+            # Template dims still present in the result, in var axis order.
+            return [d for d in _ds_var_dims(template) if d in result_cols]
+
+        if preferred_template is not None:
+            preferred = surviving(preferred_template)
+            if preferred:
+                return preferred
         if not self._templates:
             raise ValueError(
                 "dims cannot be inferred (no registered "
                 "Dataset on this result); pass dims=[...] "
                 "explicitly."
             )
-        candidates = [
-            _ds_var_dims(t)
-            for t in self._templates.values()
-            if set(t.dims) <= result_cols
-        ]
+        candidates = {tuple(surviving(t)) for t in self._templates.values()}
+        candidates.discard(())  # templates with no surviving dim
         if len(candidates) == 1:
-            return candidates[0]
+            return list(next(iter(candidates)))
         if not candidates:
             raise ValueError(
-                "dims cannot be inferred: no registered "
-                "Dataset has all of its dims present in the result "
-                "columns. Pass dims=[...] explicitly."
+                "dims cannot be inferred: no registered Dataset "
+                "dimension survives in the result columns. Pass "
+                "dims=[...] explicitly."
             )
         raise ValueError(
             "dims cannot be inferred unambiguously: multiple "
