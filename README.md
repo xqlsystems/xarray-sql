@@ -47,12 +47,8 @@ clim = ctx.sql('''
   ORDER BY month
 ''')
 
-# Write the SQL result back to an Xarray Dataset. `to_dataset()` infers the
-# dimensions from the registered table's dims that survive the query, so a
-# GROUP BY on a real dimension (e.g. `time`) needs no `dims=`. Here `month`
-# is a derived column, not a registered dim, so name it explicitly. The
-# variable's units are recovered from the registered table. One value per
-# month: air(month).
+# Round-trip the result back to Xarray. `month` is a derived column, so name
+# it as the dimension.
 clim_ds = clim.to_dataset(dims=["month"])
 
 # Plot the annual cycle as a time series.
