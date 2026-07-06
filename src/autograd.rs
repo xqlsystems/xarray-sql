@@ -51,7 +51,6 @@
 
 #![allow(dead_code)]
 
-use std::any::Any;
 use std::collections::HashMap;
 use std::f64::consts::{LN_10, LN_2};
 use std::ops::ControlFlow;
@@ -67,10 +66,10 @@ use datafusion::logical_expr::{
     ScalarUDF, ScalarUDFImpl, Signature, Volatility,
 };
 use datafusion::prelude::SessionContext;
+use datafusion::sql::sqlparser::ast::{Expr as SqlExpr, Visit, VisitMut, Visitor, VisitorMut};
+use datafusion::sql::sqlparser::dialect::GenericDialect;
+use datafusion::sql::sqlparser::parser::Parser;
 use datafusion::sql::unparser::expr_to_sql;
-use sqlparser::ast::{Expr as SqlExpr, Visit, VisitMut, Visitor, VisitorMut};
-use sqlparser::dialect::GenericDialect;
-use sqlparser::parser::Parser;
 
 // ---------------------------------------------------------------------------
 // Constant helpers and the 0/1-folding builders
@@ -220,7 +219,10 @@ fn linearize(expr: &Expr, leaf: &Leaf) -> Result<Expr> {
         // A numeric cast is (locally) linear: tangent of cast(u) = cast(du).
         Expr::Cast(c) => {
             let du = linearize(&c.expr, leaf)?;
-            Ok(Expr::Cast(Cast::new(Box::new(du), c.data_type.clone())))
+            Ok(Expr::Cast(Cast::new(
+                Box::new(du),
+                c.field.data_type().clone(),
+            )))
         }
 
         // tangent of -u = -(du).
@@ -402,10 +404,6 @@ impl MarkerUdf {
 }
 
 impl ScalarUDFImpl for MarkerUdf {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn name(&self) -> &str {
         &self.name
     }

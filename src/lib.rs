@@ -43,7 +43,6 @@
 
 mod autograd;
 
-use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::ffi::CString;
 use std::fmt::Debug;
@@ -55,16 +54,11 @@ use arrow::pyarrow::{FromPyArrow, ToPyArrow};
 use async_stream::try_stream;
 use async_trait::async_trait;
 use datafusion::catalog::streaming::StreamingTable;
-use datafusion::catalog::{MemorySchemaProvider, Session};
-use datafusion::common::{
-    DFSchema, DataFusionError, Result as DFResult, ScalarValue, TableReference,
-};
 use datafusion::catalog::Session;
 use datafusion::common::stats::Precision;
 use datafusion::common::{
-    ColumnStatistics, DataFusionError, Result as DFResult, ScalarValue, Statistics,
+    ColumnStatistics, DFSchema, DataFusionError, Result as DFResult, ScalarValue, Statistics,
 };
-use datafusion::datasource::empty::EmptyTable;
 use datafusion::datasource::TableProvider;
 use datafusion::execution::TaskContext;
 use datafusion::logical_expr::expr::InList;
