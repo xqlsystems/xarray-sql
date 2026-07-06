@@ -51,8 +51,8 @@ def fashion_mnist():
         images = ds["images"].astype("float64").values
         labels = ds["labels"].values.astype("int64")
     except Exception:
-        # Offline fallback: a separable synthetic set (per-class template + noise),
-        # so the same pipeline still learns without the network.
+        # Offline fallback: a separable synthetic set (per-class template +
+        # noise), so the same pipeline still learns without the network.
         rng = np.random.default_rng(0)
         n = N_TRAIN + N_TEST
         templates = rng.standard_normal((10, SIDE, SIDE))
@@ -115,7 +115,7 @@ def main():
         },
     )
 
-    frac = N_TRAIN / (N_TRAIN + N_TEST)  # ratio: ~0.7
+    frac = N_TRAIN / (N_TRAIN + N_TEST)  # default ratio: ~0.7
     # Train-test split
     data = ctx.sql(f"""
     SELECT sample,
@@ -130,7 +130,7 @@ def main():
     ).to_pandas()["n"][0]
 
     def init_weight(inp: int, out: int):
-        """Small random weights over ``inp`` inputs, with a zero bias row appended."""
+        """Small random weights with a zero bias row appended."""
         weight = rng.standard_normal((inp, out)) * 0.1
         bias = np.zeros((1, out))
         return np.concatenate((weight, bias), axis=0)  # (inp + 1, out)
@@ -161,20 +161,23 @@ def main():
         # Each layer augments its activation with a constant-1 bias unit (
         # index = width), contracts with the weight table (JOIN on the shared
         # index + grouped SUM), and keeps the pre-activation z (tanh(z) for
-        # hidden, softmax later). .cache() materialises each stage so the
+        # hidden, linear output). .cache() materialises each stage so the
         # per-step plan stays flat.
+        #
+        # The forward runs over ALL samples: train rows drive learning, test
+        # rows ride along so we can score them from the same logits. Only delta2
+        # is restricted to train, so the gradients (and the trained weights) are
+        # identical to a train-only forward — test is never backpropagated.
         fwd0 = ctx.sql(f"""
         WITH a AS (
           SELECT sample, height * {SIDE} + width AS inp, images AS val
           FROM mnist.pixels
-          WHERE sample IN (SELECT sample FROM data WHERE split = 'train')
           UNION ALL
           -- the constant-1 bias unit
           SELECT sample,
             (SELECT DISTINCT width FROM weight WHERE layer = 0) AS inp,
             1.0 AS val
           FROM mnist.labels
-          WHERE sample IN (SELECT sample FROM data WHERE split = 'train')
         )
         SELECT a.sample, w.out AS out, SUM(a.val * w.val) AS z,
                tanh(SUM(a.val * w.val)) AS val
@@ -230,6 +233,8 @@ def main():
                e.e / s.s - CASE WHEN e.out = y.labels THEN 1.0 ELSE 0.0 END AS val
         FROM e JOIN s ON e.sample = s.sample
                JOIN mnist.labels y ON y.sample = e.sample
+        -- restrict the error to train, so every downstream gradient is train-only
+        WHERE e.sample IN (SELECT sample FROM data WHERE split = 'train')
         """).cache()
         ctx.deregister_table("delta2")
         ctx.register_table("delta2", delta2)
@@ -337,6 +342,7 @@ def main():
         ctx.register_table("weight", w)
 
         if step % 5 == 0 or step == STEPS - 1:
+            # Train cross-entropy (logits span all samples, so filter to train).
             loss = ctx.sql(f"""
               WITH m AS (SELECT sample, MAX(z) AS m FROM logits GROUP BY sample),
                    e AS (SELECT logits.sample, logits.out, exp(logits.z - m.m) AS e
@@ -346,17 +352,30 @@ def main():
               FROM e JOIN s ON e.sample = s.sample
                      JOIN mnist.labels y ON y.sample = e.sample
               WHERE e.out = y.labels
+                AND e.sample IN (SELECT sample FROM data WHERE split = 'train')
               """).to_pandas()["loss"][0]
-            acc = ctx.sql(f"""
+            # Accuracy per split: argmax the shared logits, join the split label.
+            # Both come from the one all-samples forward — no second pass.
+            acc = (
+                ctx.sql(f"""
               WITH pred AS (
                 SELECT sample, out,
                        ROW_NUMBER() OVER (PARTITION BY sample ORDER BY z DESC) AS rk
                 FROM logits)
-              SELECT AVG(CASE WHEN p.out = y.labels THEN 1.0 ELSE 0.0 END) AS acc
+              SELECT d.split,
+                     AVG(CASE WHEN p.out = y.labels THEN 1.0 ELSE 0.0 END) AS acc
               FROM pred p JOIN mnist.labels y ON p.sample = y.sample
+                          JOIN data d ON d.sample = p.sample
               WHERE p.rk = 1
-              """).to_pandas()["acc"][0]
-            print(f"step {step:2d}: loss {loss:.3f}  train_acc {acc:.3f}")
+              GROUP BY d.split
+              """)
+                .to_pandas()
+                .set_index("split")["acc"]
+            )
+            print(
+                f"step {step:2d}: loss {loss:.3f}  "
+                f"train_acc {acc['train']:.3f}  test_acc {acc['test']:.3f}"
+            )
 
     # The trained weights come back out as xarray as one relation: a ragged
     # weight(layer, inp, out) array (absent cells are NaN where layers are narrower).
