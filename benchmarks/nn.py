@@ -4,6 +4,8 @@
 #   "xarray_sql",
 #   "xarray",
 #   "numpy",
+#   "s3fs",
+#   "zarr<3",
 # ]
 #
 # [tool.uv.sources]
@@ -20,51 +22,65 @@ import xarray as xr
 
 import xarray_sql as xql
 
-# N_TRAIN, N_TEST = 1000, 500
-LR, STEPS, CHUNK = 0.5, 60, 250
+SIDE = 28  # images are 28x28; flatten index is height * SIDE + width
+WIDTHS = (SIDE * SIDE, 196, 32, 10)  # 784 pixels -> 196 -> 32 tanh -> 10 softmax
+N_TRAIN, N_TEST = 500, 200
+LR, STEPS, CHUNK = 0.5, 20, 250
 
 
 def fashion_mnist():
   try:
-    return xr.open_dataset(
+    ds = xr.open_dataset(
       's3://carbonplan-share/xbatcher/fashion-mnist-train.zarr',
       engine='zarr',
       chunks=None,
       backend_kwargs={'storage_options': {'anon': True}},
-    )
-  except:
-    N = 12
-    return xr.Dataset(
-      {
-        'images': (('sample', 'channel', 'height', 'width'), np.random.rand(N, 1, 28, 28)),
-        'labels': (('sample',), np.array([i % 10 for i in range(N)])),
-      },
-    )
+    ).isel(sample=slice(N_TRAIN + N_TEST)).load()
+    if 'channel' in ds.dims:
+      ds = ds.isel(channel=0, drop=True)
+    images = ds['images'].astype('float64').values
+    labels = ds['labels'].values.astype('int64')
+  except Exception:
+    # Offline fallback: a separable synthetic set (per-class template + noise),
+    # so the same pipeline still learns without the network.
+    rng = np.random.default_rng(0)
+    n = N_TRAIN + N_TEST
+    templates = rng.standard_normal((10, SIDE, SIDE))
+    labels = rng.integers(0, 10, n).astype('int64')
+    images = templates[labels] + 0.6 * rng.standard_normal((n, SIDE, SIDE))
+  if images.max() > 1.0:
+    images = images / 255.0
+  return xr.Dataset(
+    {
+      'images': (('sample', 'height', 'width'), images),
+      'labels': (('sample',), labels),
+    },
+    coords={
+      'sample': np.arange(images.shape[0]),
+      'height': np.arange(SIDE),
+      'width': np.arange(SIDE),
+    },
+  )
 
 
 def build_model_with_table_names(
     init_weight: Callable[[int, int], np.array],
-    widths = (28 * 28, 196, 32, 10)
+    widths=WIDTHS,
 ) -> tuple[xr.Dataset, dict[tuple[str, ...], str]]:
-  """The whole network as one ``weight(layer, inp, out)`` Dataset."""
+  """The network as one Dataset that splits into one table per layer.
+
+  Layer ``i`` is ``layer_i (inp_i, out_i)`` with the folded bias as an extra
+  ``inp_i = widths[i]`` row, so ``inp_i`` has ``widths[i] + 1`` entries.
+  """
   weights = {
     f'layer_{i}': ((f'inp_{i}', f'out_{i}'), init_weight(inp, out))
     for i, (inp, out) in enumerate(zip(widths[:-1], widths[1:]))
   }
-  # model metadata
   coords = {}
-  coords.update({f"inp_{i}": np.arange(inp) for i, inp in enumerate(widths[:-1])})
-  coords.update({f"out_{i}": np.arange(out) for i, out in enumerate(widths[1:])})
-
-  ds = (
-    xr.Dataset(weights, coords=coords)
-    .expand_dims({"layer": np.arange(len(weights))})
-  )
-
-  names = {
-    ("layer", f"inp_{i}", f"out_{i}"): f"layer{i}" for i in range(len(ds))
-  }
-
+  coords.update({f'inp_{i}': np.arange(inp + 1) for i, inp in enumerate(widths[:-1])})
+  coords.update({f'out_{i}': np.arange(out) for i, out in enumerate(widths[1:])})
+  ds = xr.Dataset(weights, coords=coords)
+  names = {(f'inp_{i}', f'out_{i}'): f'layer{i}' for i in range(len(weights))}
   return ds, names
 
 
@@ -73,136 +89,252 @@ def main():
   mnist = fashion_mnist()
 
   ctx = xql.XarrayContext()
+  # One Dataset splits into two tables: pixels (sample, height, width) and
+  # labels (sample). The dim names are the join keys.
   ctx.from_dataset(
-    "mnist",
+    'mnist',
     mnist,
-    chunks=dict(sample=1),
+    chunks=dict(sample=CHUNK),
     table_names={
-      ("sample", "channel", "height", "width"): "X",
-      ("sample",): "y"
-    }
+      ('sample', 'height', 'width'): 'pixels',
+      ('sample',): 'labels',
+    },
   )
 
   def init_weight(inp: int, out: int):
-    """inp contains is inclusive of a bias term."""
-    weight = rng.standard_normal((inp - 1, out)) * 0.1
+    """Small random weights over ``inp`` inputs, with a zero bias row appended."""
+    weight = rng.standard_normal((inp, out)) * 0.1
     bias = np.zeros((1, out))
-    return np.concatenate((weight, bias), axis=0)
+    return np.concatenate((weight, bias), axis=0)  # (inp + 1, out)
 
   model, table_names = build_model_with_table_names(init_weight)
-  ctx.from_dataset("model", model, table_names=table_names, chunks=dict(layer=1))
+  ctx.from_dataset(
+    'model', model, table_names=table_names,
+    chunks={f'inp_{i}': model.sizes[f'inp_{i}'] for i in range(len(WIDTHS) - 1)},
+  )
 
-  # # TOOD(alxmrs): Add (train,val,test)-split column
-  # data = ctx.sql(
-  #   """
-  #   SELECT *
-  #   FROM mnist.'X' x
-  #   JOIN mnist.y y
-  #   ON x.sample = y.sample
-  #   """
-  # )
-  # ctx.register_table("data", data)
+  # Copy each layer into a working w{i}(inp, out, val) table the loop rewrites
+  # in place. (A schema table can't be re-registered from Python, and the
+  # weights change every step, so they live at top level.)
+  for i in range(len(WIDTHS) - 1):
+    w = ctx.sql(
+      f'SELECT inp_{i} AS inp, out_{i} AS out, layer_{i} AS val FROM model.layer{i}'
+    ).cache()
+    ctx.register_table(f'w{i}', w)
 
-  for _ in range(STEPS):
+  for step in range(STEPS):
     #
     # --- forward pass ---------------------------------------------------------
     #
+    # Each layer augments its activation with a constant-1 bias unit (index =
+    # width), contracts with the weight table (JOIN on the shared index + grouped
+    # SUM), and keeps the pre-activation z (tanh(z) for hidden, softmax later).
+    # .cache() materialises each stage so the per-step plan stays flat.
+    #
     fwd0 = ctx.sql(
+      f"""
+      WITH a AS (
+        SELECT sample, height * {SIDE} + width AS inp, images AS val
+        FROM mnist.pixels WHERE sample < {N_TRAIN}
+        UNION ALL
+        SELECT sample, {WIDTHS[0]} AS inp, 1.0 AS val
+        FROM mnist.labels WHERE sample < {N_TRAIN}
+      )
+      SELECT a.sample, w.out AS out, SUM(a.val * w.val) AS z,
+             tanh(SUM(a.val * w.val)) AS val
+      FROM a JOIN w0 w ON a.inp = w.inp
+      GROUP BY a.sample, w.out
       """
-      SELECT x.sample, (x.height + x.width) as inp, h.out_0 as out,
-       tanh(SUM(x.images * h.layer_0)) as val
-      FROM mnist.'X' x JOIN model.layer0 h ON (x.height + x.width) = h.inp_0
-      GROUP BY x.sample, x.height, x.width, out
-      """
-    )
-    ctx.deregister_table("fwd0")
-    ctx.register_table("fwd0", fwd0)
+    ).cache()
+    ctx.deregister_table('fwd0')
+    ctx.register_table('fwd0', fwd0)
 
     fwd1 = ctx.sql(
+      f"""
+      WITH a AS (
+        SELECT sample, out AS inp, val FROM fwd0
+        UNION ALL
+        SELECT DISTINCT sample, {WIDTHS[1]} AS inp, 1.0 AS val FROM fwd0
+      )
+      SELECT a.sample, w.out AS out, SUM(a.val * w.val) AS z,
+             tanh(SUM(a.val * w.val)) AS val
+      FROM a JOIN w1 w ON a.inp = w.inp
+      GROUP BY a.sample, w.out
       """
-        SELECT x.sample, x.inp as inp, h.out_1 as out,
-         tanh(SUM(x.val * h.layer_1)) AS val
-        FROM fwd0 x JOIN model.layer1 h ON x.out = h.inp_1
-        GROUP BY x.sample, inp, h.out_1
-      """
-    )
-    ctx.deregister_table("fwd1")
+    ).cache()
+    ctx.deregister_table('fwd1')
     ctx.register_table('fwd1', fwd1)
 
-    fwd2 = ctx.sql(
+    # Output layer is linear (softmax lives in the loss / output error).
+    logits = ctx.sql(
+      f"""
+      WITH a AS (
+        SELECT sample, out AS inp, val FROM fwd1
+        UNION ALL
+        SELECT DISTINCT sample, {WIDTHS[2]} AS inp, 1.0 AS val FROM fwd1
+      )
+      SELECT a.sample, w.out AS out, SUM(a.val * w.val) AS z
+      FROM a JOIN w2 w ON a.inp = w.inp
+      GROUP BY a.sample, w.out
       """
-      SELECT x.sample, x.inp as inp, h.out_2 as out,
-       tanh(SUM(x.val * h.layer_2)) AS val
-      FROM fwd1 x JOIN model.layer2 h ON x.out = h.inp_2
-      GROUP BY x.sample, inp, h.out_2
-      """
-    )
-    ctx.deregister_table("logits")
-    ctx.register_table('logits', fwd2)
+    ).cache()
+    ctx.deregister_table('logits')
+    ctx.register_table('logits', logits)
 
     #
     # --- backward pass --------------------------------------------------------
     #
-
-    # TODO(alxmrs): Taken from an agent -- this is suspect.
-    # Output error = softmax(logits) - onehot(label).
-    err = ctx.sql(
-      """
-      WITH m AS (SELECT sample, MAX(val) AS m FROM logits GROUP BY sample),
-           e AS (SELECT logits.sample, logits.out, exp(logits.val - m.m) AS e
+    # Output error delta2 = softmax(logits) - onehot(label). The one hand-derived
+    # rule: softmax couples classes through a per-sample normaliser.
+    delta2 = ctx.sql(
+      f"""
+      WITH m AS (SELECT sample, MAX(z) AS m FROM logits GROUP BY sample),
+           e AS (SELECT logits.sample, logits.out, exp(logits.z - m.m) AS e
                  FROM logits JOIN m ON logits.sample = m.sample),
            s AS (SELECT sample, SUM(e) AS s FROM e GROUP BY sample)
       SELECT e.sample, e.out,
-             e.e / s.s - (
-              CASE WHEN e.out = mnist.y.labels THEN 1.0 ELSE 0.0 END
-             ) AS val
-      FROM e 
-      JOIN s ON e.sample = s.sample JOIN mnist.y ON mnist.y.sample = e.sample
+             e.e / s.s - CASE WHEN e.out = y.labels THEN 1.0 ELSE 0.0 END AS val
+      FROM e JOIN s ON e.sample = s.sample
+             JOIN mnist.labels y ON y.sample = e.sample AND y.sample < {N_TRAIN}
       """
-    )
-    ctx.deregister_table("err")
-    ctx.register_table('err', err)
+    ).cache()
+    ctx.deregister_table('delta2')
+    ctx.register_table('delta2', delta2)
 
-    bwd2 = ctx.sql(
-      """
-      with dh as (
-        SELECT h.inp, e.out, SUM(h.val * e.val) as val,
-        FROM logits h JOIN err e ON h.sample = e.sample
-        GROUP BY h.inp, e.out
+    # Weight gradient of layer 2: (bias-augmented fwd1).T @ delta2 / N. The bias
+    # row (inp = width) falls out for free — its gradient is the mean error.
+    g2 = ctx.sql(
+      f"""
+      WITH a AS (
+        SELECT sample, out AS inp, val FROM fwd1
+        UNION ALL
+        SELECT DISTINCT sample, {WIDTHS[2]} AS inp, 1.0 AS val FROM fwd1
       )
-      SELECT dh.inp, dh.out, dh.val * grad(tanh(logits.val), logits.val) as val
-      FROM dh JOIN logits ON dh.inp = logits.inp AND dh.out = logits.out
+      SELECT a.inp AS inp, d.out AS out, SUM(a.val * d.val) / {N_TRAIN} AS val
+      FROM a JOIN delta2 d ON a.sample = d.sample
+      GROUP BY a.inp, d.out
       """
-    )
-    ctx.deregister_table("bwd2")
-    ctx.register_table('bwd2', bwd2)
+    ).cache()
+    ctx.deregister_table('g2')
+    ctx.register_table('g2', g2)
 
-    bwd1 = ctx.sql(
-      """
-      WITH dh AS (
-        SELECT h.inp, e.out, SUM(h.val * e.val) as val,
-        FROM fwd1 h JOIN bwd2 e ON h.inp = e.inp
-        GROUP BY h.inp, e.out
+    # Propagate to layer 1: delta1 = (delta2 @ W2[non-bias].T) * tanh'(z1). The
+    # local derivative is grad(tanh(z), z) at fwd1's pre-activation.
+    delta1 = ctx.sql(
+      f"""
+      WITH dc AS (
+        SELECT d.sample, w.inp AS out, SUM(d.val * w.val) AS val
+        FROM delta2 d JOIN w2 w ON d.out = w.out
+        WHERE w.inp < {WIDTHS[2]}
+        GROUP BY d.sample, w.inp
       )
-      SELECT dh.inp, dh.out, dh.val * grad(tanh(fwd1.val), fwd1.val) as val
-      FROM dh JOIN fwd1 ON dh.inp = fwd1.inp AND dh.out = fwd1.out
+      SELECT dc.sample, dc.out,
+             dc.val * grad(tanh(fwd1.z), fwd1.z) AS val
+      FROM dc JOIN fwd1 ON dc.sample = fwd1.sample AND dc.out = fwd1.out
       """
-    )
-    ctx.deregister_table("bwd1")
-    ctx.register_table('bwd1', bwd1)
+    ).cache()
+    ctx.deregister_table('delta1')
+    ctx.register_table('delta1', delta1)
 
-    bwd0 = ctx.sql(
-      """
-      WITH dh AS (
-        SELECT h.inp, e.out, SUM(h.val * e.val) as val,
-        FROM fwd0 h JOIN bwd1 e ON h.inp = e.inp
-        GROUP BY h.inp, e.out
+    g1 = ctx.sql(
+      f"""
+      WITH a AS (
+        SELECT sample, out AS inp, val FROM fwd0
+        UNION ALL
+        SELECT DISTINCT sample, {WIDTHS[1]} AS inp, 1.0 AS val FROM fwd0
       )
-      SELECT dh.inp, dh.out, dh.val * grad(tanh(fwd0.val), fwd0.val) as val
-      FROM dh JOIN fwd0 ON dh.inp = fwd0.inp AND dh.out = fwd0.out 
+      SELECT a.inp AS inp, d.out AS out, SUM(a.val * d.val) / {N_TRAIN} AS val
+      FROM a JOIN delta1 d ON a.sample = d.sample
+      GROUP BY a.inp, d.out
       """
-    )
-    ctx.deregister_table("bwd0")
-    ctx.register_table('bwd0', bwd0)
+    ).cache()
+    ctx.deregister_table('g1')
+    ctx.register_table('g1', g1)
+
+    # Propagate to layer 0: delta0 = (delta1 @ W1[non-bias].T) * tanh'(z0).
+    delta0 = ctx.sql(
+      f"""
+      WITH dc AS (
+        SELECT d.sample, w.inp AS out, SUM(d.val * w.val) AS val
+        FROM delta1 d JOIN w1 w ON d.out = w.out
+        WHERE w.inp < {WIDTHS[1]}
+        GROUP BY d.sample, w.inp
+      )
+      SELECT dc.sample, dc.out,
+             dc.val * grad(tanh(fwd0.z), fwd0.z) AS val
+      FROM dc JOIN fwd0 ON dc.sample = fwd0.sample AND dc.out = fwd0.out
+      """
+    ).cache()
+    ctx.deregister_table('delta0')
+    ctx.register_table('delta0', delta0)
+
+    g0 = ctx.sql(
+      f"""
+      WITH a AS (
+        SELECT sample, height * {SIDE} + width AS inp, images AS val
+        FROM mnist.pixels WHERE sample < {N_TRAIN}
+        UNION ALL
+        SELECT sample, {WIDTHS[0]} AS inp, 1.0 AS val
+        FROM mnist.labels WHERE sample < {N_TRAIN}
+      )
+      SELECT a.inp AS inp, d.out AS out, SUM(a.val * d.val) / {N_TRAIN} AS val
+      FROM a JOIN delta0 d ON a.sample = d.sample
+      GROUP BY a.inp, d.out
+      """
+    ).cache()
+    ctx.deregister_table('g0')
+    ctx.register_table('g0', g0)
+
+    #
+    # --- SGD update: weight <- weight - lr * gradient -------------------------
+    #
+    for i in range(len(WIDTHS) - 1):
+      w = ctx.sql(
+        f"""
+        SELECT w.inp, w.out, w.val - {LR} * g.val AS val
+        FROM w{i} w JOIN g{i} g ON w.inp = g.inp AND w.out = g.out
+        """
+      ).cache()
+      ctx.deregister_table(f'w{i}')
+      ctx.register_table(f'w{i}', w)
+
+    if step % 5 == 0 or step == STEPS - 1:
+      loss = ctx.sql(
+        f"""
+        WITH m AS (SELECT sample, MAX(z) AS m FROM logits GROUP BY sample),
+             e AS (SELECT logits.sample, logits.out, exp(logits.z - m.m) AS e
+                   FROM logits JOIN m ON logits.sample = m.sample),
+             s AS (SELECT sample, SUM(e) AS s FROM e GROUP BY sample)
+        SELECT -AVG(ln(e.e / s.s)) AS loss
+        FROM e JOIN s ON e.sample = s.sample
+               JOIN mnist.labels y ON y.sample = e.sample AND y.sample < {N_TRAIN}
+        WHERE e.out = y.labels
+        """
+      ).to_pandas()['loss'][0]
+      acc = ctx.sql(
+        f"""
+        WITH pred AS (
+          SELECT sample, out,
+                 ROW_NUMBER() OVER (PARTITION BY sample ORDER BY z DESC) AS rk
+          FROM logits)
+        SELECT AVG(CASE WHEN p.out = y.labels THEN 1.0 ELSE 0.0 END) AS acc
+        FROM pred p JOIN mnist.labels y ON p.sample = y.sample
+        WHERE p.rk = 1
+        """
+      ).to_pandas()['acc'][0]
+      print(f'step {step:2d}: loss {loss:.3f}  train_acc {acc:.3f}')
+
+  # The trained weights come back out as xarray, one table per layer.
+  trained = xr.Dataset(
+    {
+      f'layer_{i}': ctx.sql(
+        f'SELECT inp AS inp_{i}, out AS out_{i}, val AS layer_{i} FROM w{i}'
+      ).to_dataset(dims=[f'inp_{i}', f'out_{i}'])[f'layer_{i}']
+      for i in range(len(WIDTHS) - 1)
+    }
+  )
+  print(f'trained {WIDTHS} MLP; weights -> xarray {dict(trained.sizes)}.')
 
 
+if __name__ == '__main__':
+  main()
