@@ -25,7 +25,7 @@ import xarray_sql as xql
 SIDE = 28  # images are 28x28; flatten index is height * SIDE + width
 WIDTHS = (SIDE * SIDE, 196, 32, 10)  # 784 pixels -> 196 -> 32 tanh -> 10 softmax
 N_TRAIN, N_TEST = 500, 200
-LR, STEPS, CHUNK = 0.5, 20, 250
+LR, STEPS, CHUNK = 0.5, 60, 250
 
 
 def fashion_mnist():
@@ -113,14 +113,14 @@ def main():
     chunks={f'inp_{i}': model.sizes[f'inp_{i}'] for i in range(len(WIDTHS) - 1)},
   )
 
-  # Copy each layer into a working w{i}(inp, out, val) table the loop rewrites
-  # in place. (A schema table can't be re-registered from Python, and the
-  # weights change every step, so they live at top level.)
-  for i in range(len(WIDTHS) - 1):
-    w = ctx.sql(
-      f'SELECT inp_{i} AS inp, out_{i} AS out, layer_{i} AS val FROM model.layer{i}'
-    ).cache()
-    ctx.register_table(f'w{i}', w)
+  # Unify the per-layer tables into one working weight(layer, inp, out, val)
+  # relation the loop rewrites in place, tagging each layer with its index.
+  seed = ' UNION ALL '.join(
+    f'SELECT {i} AS layer, inp_{i} AS inp, out_{i} AS out, layer_{i} AS val, '
+    f'{width} AS width FROM model.layer{i}'
+    for i, width in enumerate(WIDTHS[:-1])
+  )
+  ctx.register_table('weight', ctx.sql(seed).cache())
 
   for step in range(STEPS):
     #
@@ -137,12 +137,15 @@ def main():
         SELECT sample, height * {SIDE} + width AS inp, images AS val
         FROM mnist.pixels WHERE sample < {N_TRAIN}
         UNION ALL
-        SELECT sample, {WIDTHS[0]} AS inp, 1.0 AS val
+        -- the constant-1 bias unit
+        SELECT sample, 
+          (SELECT DISTINCT width FROM weight WHERE layer = 0) AS inp,
+          1.0 AS val
         FROM mnist.labels WHERE sample < {N_TRAIN}
       )
       SELECT a.sample, w.out AS out, SUM(a.val * w.val) AS z,
              tanh(SUM(a.val * w.val)) AS val
-      FROM a JOIN w0 w ON a.inp = w.inp
+      FROM a JOIN weight w ON a.inp = w.inp AND w.layer = 0
       GROUP BY a.sample, w.out
       """
     ).cache()
@@ -154,11 +157,13 @@ def main():
       WITH a AS (
         SELECT sample, out AS inp, val FROM fwd0
         UNION ALL
-        SELECT DISTINCT sample, {WIDTHS[1]} AS inp, 1.0 AS val FROM fwd0
+        SELECT DISTINCT sample,
+               (SELECT DISTINCT width FROM weight WHERE layer = 1) AS inp,
+               1.0 AS val FROM fwd0
       )
       SELECT a.sample, w.out AS out, SUM(a.val * w.val) AS z,
              tanh(SUM(a.val * w.val)) AS val
-      FROM a JOIN w1 w ON a.inp = w.inp
+      FROM a JOIN weight w ON a.inp = w.inp AND w.layer = 1
       GROUP BY a.sample, w.out
       """
     ).cache()
@@ -171,10 +176,12 @@ def main():
       WITH a AS (
         SELECT sample, out AS inp, val FROM fwd1
         UNION ALL
-        SELECT DISTINCT sample, {WIDTHS[2]} AS inp, 1.0 AS val FROM fwd1
+        SELECT DISTINCT sample,
+               (SELECT DISTINCT width FROM weight WHERE layer = 2) AS inp,
+               1.0 AS val FROM fwd1
       )
       SELECT a.sample, w.out AS out, SUM(a.val * w.val) AS z
-      FROM a JOIN w2 w ON a.inp = w.inp
+      FROM a JOIN weight w ON a.inp = w.inp AND w.layer = 2
       GROUP BY a.sample, w.out
       """
     ).cache()
@@ -208,7 +215,9 @@ def main():
       WITH a AS (
         SELECT sample, out AS inp, val FROM fwd1
         UNION ALL
-        SELECT DISTINCT sample, {WIDTHS[2]} AS inp, 1.0 AS val FROM fwd1
+        SELECT DISTINCT sample,
+               (SELECT DISTINCT width FROM weight WHERE layer = 2) AS inp,
+               1.0 AS val FROM fwd1
       )
       SELECT a.inp AS inp, d.out AS out, SUM(a.val * d.val) / {N_TRAIN} AS val
       FROM a JOIN delta2 d ON a.sample = d.sample
@@ -224,8 +233,8 @@ def main():
       f"""
       WITH dc AS (
         SELECT d.sample, w.inp AS out, SUM(d.val * w.val) AS val
-        FROM delta2 d JOIN w2 w ON d.out = w.out
-        WHERE w.inp < {WIDTHS[2]}
+        FROM delta2 d JOIN weight w ON d.out = w.out AND w.layer = 2
+        WHERE w.inp < w.width
         GROUP BY d.sample, w.inp
       )
       SELECT dc.sample, dc.out,
@@ -241,7 +250,9 @@ def main():
       WITH a AS (
         SELECT sample, out AS inp, val FROM fwd0
         UNION ALL
-        SELECT DISTINCT sample, {WIDTHS[1]} AS inp, 1.0 AS val FROM fwd0
+        SELECT DISTINCT sample,
+               (SELECT DISTINCT width FROM weight WHERE layer = 1) AS inp,
+               1.0 AS val FROM fwd0
       )
       SELECT a.inp AS inp, d.out AS out, SUM(a.val * d.val) / {N_TRAIN} AS val
       FROM a JOIN delta1 d ON a.sample = d.sample
@@ -256,8 +267,8 @@ def main():
       f"""
       WITH dc AS (
         SELECT d.sample, w.inp AS out, SUM(d.val * w.val) AS val
-        FROM delta1 d JOIN w1 w ON d.out = w.out
-        WHERE w.inp < {WIDTHS[1]}
+        FROM delta1 d JOIN weight w ON d.out = w.out AND w.layer = 1
+        WHERE w.inp < w.width
         GROUP BY d.sample, w.inp
       )
       SELECT dc.sample, dc.out,
@@ -274,7 +285,8 @@ def main():
         SELECT sample, height * {SIDE} + width AS inp, images AS val
         FROM mnist.pixels WHERE sample < {N_TRAIN}
         UNION ALL
-        SELECT sample, {WIDTHS[0]} AS inp, 1.0 AS val
+        SELECT sample, (SELECT DISTINCT width FROM weight WHERE layer = 0) AS inp,
+               1.0 AS val
         FROM mnist.labels WHERE sample < {N_TRAIN}
       )
       SELECT a.inp AS inp, d.out AS out, SUM(a.val * d.val) / {N_TRAIN} AS val
@@ -286,17 +298,24 @@ def main():
     ctx.register_table('g0', g0)
 
     #
-    # --- SGD update: weight <- weight - lr * gradient -------------------------
+    # --- SGD update: one query over the whole relation -----------------------
     #
-    for i in range(len(WIDTHS) - 1):
-      w = ctx.sql(
-        f"""
-        SELECT w.inp, w.out, w.val - {LR} * g.val AS val
-        FROM w{i} w JOIN g{i} g ON w.inp = g.inp AND w.out = g.out
-        """
-      ).cache()
-      ctx.deregister_table(f'w{i}')
-      ctx.register_table(f'w{i}', w)
+    # weight <- weight - lr * gradient, joining every layer at once against the
+    # per-layer gradients tagged with their layer index.
+    w = ctx.sql(
+      f"""
+      WITH grad AS (
+        SELECT 0 AS layer, inp, out, val FROM g0
+        UNION ALL SELECT 1 AS layer, inp, out, val FROM g1
+        UNION ALL SELECT 2 AS layer, inp, out, val FROM g2
+      )
+      SELECT w.layer, w.inp, w.out, w.val - {LR} * g.val AS val, w.width
+      FROM weight w JOIN grad g
+        ON w.layer = g.layer AND w.inp = g.inp AND w.out = g.out
+      """
+    ).cache()
+    ctx.deregister_table('weight')
+    ctx.register_table('weight', w)
 
     if step % 5 == 0 or step == STEPS - 1:
       loss = ctx.sql(
@@ -324,14 +343,12 @@ def main():
       ).to_pandas()['acc'][0]
       print(f'step {step:2d}: loss {loss:.3f}  train_acc {acc:.3f}')
 
-  # The trained weights come back out as xarray, one table per layer.
-  trained = xr.Dataset(
-    {
-      f'layer_{i}': ctx.sql(
-        f'SELECT inp AS inp_{i}, out AS out_{i}, val AS layer_{i} FROM w{i}'
-      ).to_dataset(dims=[f'inp_{i}', f'out_{i}'])[f'layer_{i}']
-      for i in range(len(WIDTHS) - 1)
-    }
+  # The trained weights come back out as xarray as one relation: a ragged
+  # weight(layer, inp, out) array (absent cells are NaN where layers are narrower).
+  trained = (
+    ctx.sql('SELECT layer, inp, out, val FROM weight')
+    .to_dataset(dims=['layer', 'inp', 'out'])
+    .rename({'val': 'weight'})
   )
   print(f'trained {WIDTHS} MLP; weights -> xarray {dict(trained.sizes)}.')
 
