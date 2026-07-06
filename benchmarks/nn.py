@@ -392,12 +392,19 @@ def main():
                 f"train_acc {acc['train']:.3f}  test_acc {acc['test']:.3f}"
             )
 
-    # The trained weights come back out as xarray as one relation: a ragged
-    # weight(layer, inp, out) array (absent cells are NaN where layers are narrower).
-    trained = (
-        ctx.sql("SELECT layer, inp, out, val FROM weight")
-        .to_dataset(dims=["layer", "inp", "out"])
-        .rename({"val": "weight"})
+    # The trained weights come back out as xarray in the *same shape as the input
+    # model*: one data variable per layer with its own (inp_i, out_i) dims. Each
+    # layer is read from the weight relation by its `layer` column, so the result
+    # is a ragged set of per-layer matrices — no dense (layer, inp, out) array
+    # padded with NaN.
+    trained = xr.Dataset(
+        {
+            f"layer_{i}": ctx.sql(
+                f"SELECT inp AS inp_{i}, out AS out_{i}, val AS layer_{i} "
+                f"FROM weight WHERE layer = {i}"
+            ).to_dataset(dims=[f"inp_{i}", f"out_{i}"])[f"layer_{i}"]
+            for i in range(len(WIDTHS) - 1)
+        }
     )
     print(f"trained {WIDTHS} MLP; weights -> xarray {dict(trained.sizes)}.")
     print(trained)
