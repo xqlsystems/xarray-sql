@@ -386,29 +386,18 @@ def iter_record_batches(
         yield pa.RecordBatch.from_arrays(arrays, schema=schema)
 
 
-def _arrow_type_for_object(
-    values: np.ndarray, sample_size: int = 100
-) -> pa.DataType:
+def _arrow_type_for_object(values: np.ndarray) -> pa.DataType:
     """Infer an Arrow type for a non-cftime object-dtype array.
 
-    ``pa.from_numpy_dtype`` cannot map numpy object dtype and raises
-    ``ArrowNotImplementedError: Unsupported numpy type 17`` -- which is exactly
-    what a string variable or coordinate produces. Object-dtype arrays are
-    never Dask/Zarr-backed, so letting Arrow infer the type from the data with
-    ``pa.array`` (e.g. ``pa.string()`` for Python strings) is safe and triggers
-    no remote I/O.
-
-    Only the first ``sample_size`` elements are inspected so a huge in-memory
-    object column is not fully copied just to read its type. An empty or
-    all-null sample yields ``pa.null()``, which is meaningless as a column
-    type; object dtype in xarray almost always means strings, so fall back to
-    ``pa.string()`` in that case.
+    ``pa.from_numpy_dtype`` cannot map numpy object dtype, so let pyarrow infer
+    the type from the data instead: strings become ``pa.string()``, bytes
+    ``pa.binary()``, and other representable Python scalars their Arrow
+    equivalent. An all-null array stays ``pa.null()``, and a column mixing
+    incompatible types (e.g. str and int) raises, surfacing a clear error
+    rather than a silent coercion. Object-dtype arrays are never Dask/Zarr
+    backed, so this triggers no remote I/O.
     """
-    sample = np.asarray(values).ravel()[:sample_size]
-    arrow_type = pa.array(sample).type
-    if pa.types.is_null(arrow_type):
-        return pa.string()
-    return arrow_type
+    return pa.array(np.asarray(values).ravel()).type
 
 
 def _parse_schema(ds: xr.Dataset) -> pa.Schema:
@@ -448,19 +437,18 @@ def _parse_schema(ds: xr.Dataset) -> pa.Schema:
                 columns.append(pa.field(coord_name, pa_type))
 
     for var_name, var in ds.data_vars.items():
-        # Data variables are virtually never cftime, but check dtype as a
-        # cheap guard.  Only fall back to _is_cftime (which materializes
-        # element 0) when dtype is object.
+        # An object-dtype data variable may hold cftime objects (encode it like
+        # a cftime coordinate) or strings/other Python scalars (infer the Arrow
+        # type from the data). The dtype check keeps the common numeric path off
+        # the object branch.
         if var.dtype == np.dtype("O"):
             if cft.is_cftime(var.values):
-                # Rare: a data variable holding cftime objects.  Use same
-                # encoding as the first cftime dimension coordinate, or default.
+                # Encode with the same units/calendar as a cftime coordinate.
                 cal = var.values.ravel()[0].calendar
                 columns.append(
                     cft.arrow_field(var_name, cft.DEFAULT_UNITS, cal)
                 )
             else:
-                # String / other object data variable.
                 arrow_type = _arrow_type_for_object(var.values)
                 columns.append(pa.field(var_name, arrow_type))
         else:

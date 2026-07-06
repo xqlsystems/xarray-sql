@@ -170,12 +170,6 @@ def convert_for_field(values, field: pa.Field) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
-#: Bounds of a signed 64-bit integer; a pruning bound outside this range
-#: cannot be handed to the Rust ``ScalarBound`` layer.
-_INT64_MIN: int = -(2**63)
-_INT64_MAX: int = 2**63 - 1
-
-
 def partition_bounds(
     values,
 ) -> tuple[int, int, str] | None:
@@ -195,7 +189,8 @@ def partition_bounds(
     if is_gregorian_like(cal):
         us = to_microseconds(values)
         lo, hi = int(us.min()) * 1_000, int(us.max()) * 1_000
-        if lo < _INT64_MIN or hi > _INT64_MAX:
+        int64 = np.iinfo(np.int64)
+        if lo < int64.min or hi > int64.max:
             return None
         return lo, hi, "timestamp_ns"
     offsets = to_offsets(values, DEFAULT_UNITS, cal)

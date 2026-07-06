@@ -536,7 +536,7 @@ def test_compute_chunks_tuples_sum_to_dim_size():
         assert sum(tup) == ds.sizes[dim]
 
 
-# -- Object-dtype and out-of-ns-range coordinate support (issue #223) -------
+# -- Object-dtype and out-of-ns-range coordinate support --------------------
 
 
 def _field_type(schema, name):
@@ -584,10 +584,9 @@ def test_partition_metadata_skips_out_of_ns_datetime():
     assert all("time" not in m for m in meta)
 
 
-def test_parse_schema_all_null_object_var_defaults_to_string():
-    # An all-null (or empty) object column has no data to infer from; object
-    # dtype in xarray almost always means strings, so default to pa.string()
-    # rather than a null column.
+def test_parse_schema_all_null_object_var_stays_null():
+    # An all-null object column has no data to infer a type from; let null be
+    # null rather than coercing it to a string column.
     ds = _ensure_default_indexes(
         xr.Dataset(
             {"label": (["x"], np.array([None, None], dtype=object))},
@@ -595,7 +594,7 @@ def test_parse_schema_all_null_object_var_defaults_to_string():
         )
     )
     schema = _parse_schema(ds)
-    assert schema.field("label").type == pa.string()
+    assert pa.types.is_null(schema.field("label").type)
 
 
 def test_partition_metadata_prunes_cftime_coord():
