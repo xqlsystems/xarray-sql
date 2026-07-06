@@ -33,6 +33,12 @@ WIDTHS = (
 N_TRAIN, N_TEST = 500, 200
 LR, STEPS, CHUNK = 0.5, 60, 250
 
+# Drop zero-valued pixels from the (dominant) layer-0 contraction. A background
+# pixel contributes 0 * weight = 0, so skipping those rows shrinks the join
+# *exactly* — the result is identical, and the speedup scales with the fraction
+# of zeros (a dark background). On dense inputs it is a no-op. Toggle to compare.
+SKIP_ZERO_PIXELS = True
+
 
 def fashion_mnist():
     try:
@@ -154,6 +160,12 @@ def main():
     )
     ctx.register_table("weight", ctx.sql(seed).cache())
 
+    # The zero-pixel skip. fwd0 has no WHERE (it forwards all samples), so it
+    # needs a fresh `WHERE`; g0 already filters to the train split, so it
+    # appends an `AND`. Empty strings when the flag is off.
+    zero_where = "WHERE images <> 0" if SKIP_ZERO_PIXELS else ""
+    zero_and = "AND images <> 0" if SKIP_ZERO_PIXELS else ""
+
     for step in range(STEPS):
         #
         # --- forward pass -----------------------------------------------------
@@ -172,6 +184,7 @@ def main():
         WITH a AS (
           SELECT sample, height * {SIDE} + width AS inp, images AS val
           FROM mnist.pixels
+          {zero_where}
           UNION ALL
           -- the constant-1 bias unit
           SELECT sample,
@@ -309,6 +322,7 @@ def main():
           SELECT sample, height * {SIDE} + width AS inp, images AS val
           FROM mnist.pixels
           WHERE sample IN (SELECT sample FROM data WHERE split = 'train')
+          {zero_and}
           UNION ALL
           SELECT sample,
                  (SELECT DISTINCT width FROM weight WHERE layer = 0) AS inp,
@@ -334,8 +348,9 @@ def main():
           UNION ALL SELECT 1 AS layer, inp, out, val FROM g1
           UNION ALL SELECT 2 AS layer, inp, out, val FROM g2
         )
-        SELECT w.layer, w.inp, w.out, w.val - {LR} * g.val AS val, w.width
-        FROM weight w JOIN grad g
+        SELECT w.layer, w.inp, w.out,
+               w.val - {LR} * COALESCE(g.val, 0) AS val, w.width
+        FROM weight w LEFT JOIN grad g
           ON w.layer = g.layer AND w.inp = g.inp AND w.out = g.out
         """).cache()
         ctx.deregister_table("weight")
