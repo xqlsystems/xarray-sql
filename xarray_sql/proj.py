@@ -54,6 +54,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyproj
 from datafusion import udf
 
@@ -140,33 +141,50 @@ def _reproject(
     DataFusion broadcasts scalar arguments (the usual literal CRS
     strings) to full-length arrays before calling in, so all four
     arguments arrive with one value per row. The common case — one CRS
-    pair for the whole batch — is a single vectorized PROJ call; when
-    the CRS varies by row, rows are grouped by pair and transformed
-    per group.
+    pair for the whole batch — never touches the strings row by row:
+    uniqueness is established with a vectorized Arrow kernel and the
+    batch becomes a single PROJ call. (Materializing the CRS columns
+    as Python strings costs two object allocations per row, which at
+    billions of rows dwarfs the transform itself.) Only when the CRS
+    genuinely varies within the batch are rows grouped by pair and
+    transformed per group.
     """
     xs = np.asarray(x.to_numpy(zero_copy_only=False), dtype="float64")
     ys = np.asarray(y.to_numpy(zero_copy_only=False), dtype="float64")
-    pairs = list(zip(src_crs.to_pylist(), dst_crs.to_pylist()))
 
     out_x = np.full(xs.shape, np.nan)
     out_y = np.full(ys.shape, np.nan)
     valid = np.isfinite(xs) & np.isfinite(ys)
+    src_unique = pc.unique(src_crs)
+    dst_unique = pc.unique(dst_crs)
 
-    for src, dst in set(pairs):
-        if src is None or dst is None:
-            continue
-        mask = valid & np.fromiter(
-            (p == (src, dst) for p in pairs), dtype=bool, count=len(pairs)
-        )
-        if not mask.any():
-            continue
-        tx, ty = (
-            _proj_pool()
-            .submit(_transform_chunk, src, dst, xs[mask], ys[mask])
-            .result()
-        )
-        out_x[mask] = tx
-        out_y[mask] = ty
+    if len(src_unique) == 1 and len(dst_unique) == 1:
+        src, dst = src_unique[0].as_py(), dst_unique[0].as_py()
+        if src is not None and dst is not None and valid.any():
+            tx, ty = (
+                _proj_pool()
+                .submit(_transform_chunk, src, dst, xs[valid], ys[valid])
+                .result()
+            )
+            out_x[valid] = tx
+            out_y[valid] = ty
+    else:
+        pairs = list(zip(src_crs.to_pylist(), dst_crs.to_pylist()))
+        for src, dst in set(pairs):
+            if src is None or dst is None:
+                continue
+            mask = valid & np.fromiter(
+                (p == (src, dst) for p in pairs), dtype=bool, count=len(pairs)
+            )
+            if not mask.any():
+                continue
+            tx, ty = (
+                _proj_pool()
+                .submit(_transform_chunk, src, dst, xs[mask], ys[mask])
+                .result()
+            )
+            out_x[mask] = tx
+            out_y[mask] = ty
 
     # PROJ signals out-of-domain points with inf; normalize to NaN so
     # the result round-trips to xarray like any other missing value.
