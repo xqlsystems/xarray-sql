@@ -55,11 +55,9 @@ cross-check). Requires Earth Engine access; skips cleanly otherwise.
 from __future__ import annotations
 
 import numpy as np
-import pyarrow as pa
 import pyproj
 import shapely.geometry as sgeom
 import xarray as xr
-from datafusion import udf
 
 import xarray_sql as xql
 
@@ -79,35 +77,6 @@ _DST_CRS = "EPSG:4326"  # lon/lat — the target grid's CRS
 _AOI = (-122.6, 37.4, -121.6, 38.4)  # ~1° box of Northern California terrain
 _SRC_SCALE_M = 2_000.0  # ~2 km source pixels
 _DST_SCALE_DEG = 0.02  # ~2 km target cells
-
-
-def _register_reproject_udf(ctx, src_crs, dst_crs, name="reproject"):
-    """Register ``reproject(a, b) -> {x, y}`` — case 07's PROJ scalar UDF.
-
-    Vectorized over each Arrow batch; ``always_xy=True`` keeps (easting, northing)
-    /(lon, lat) order. Returns both output coordinates from one struct-returning
-    call (PROJ contexts are not thread-safe, so one UDF, evaluated serially).
-    """
-    ret = pa.struct([("x", pa.float64()), ("y", pa.float64())])
-
-    def _fn(a: pa.Array, b: pa.Array) -> pa.Array:
-        transformer = pyproj.Transformer.from_crs(
-            src_crs, dst_crs, always_xy=True
-        )
-        xs = np.asarray(a.to_numpy(zero_copy_only=False), dtype="float64")
-        ys = np.asarray(b.to_numpy(zero_copy_only=False), dtype="float64")
-        ox, oy = transformer.transform(xs, ys)
-        return pa.StructArray.from_arrays(
-            [
-                pa.array(np.asarray(ox, "float64")),
-                pa.array(np.asarray(oy, "float64")),
-            ],
-            names=["x", "y"],
-        )
-
-    ctx.register_udf(
-        udf(_fn, [pa.float64(), pa.float64()], ret, "immutable", name)
-    )
 
 
 def _open_srtm(
@@ -212,8 +181,9 @@ def main() -> None:
         f"{len(tlat)}×{len(tlon)}  ({_SRC_CRS} → {_DST_CRS})"
     )
 
+    # XarrayContext registers reproject() automatically (the pyproj
+    # extension) — the direction is spelled in the query itself.
     ctx = xql.XarrayContext()
-    _register_reproject_udf(ctx, _DST_CRS, _SRC_CRS)
 
     # The target grid as a (dst_lat, dst_lon) table.
     LON, LAT = np.meshgrid(tlon, tlat)
@@ -227,10 +197,10 @@ def main() -> None:
     ctx.from_dataset("target", target, chunks={"cell": LON.size})
 
     # 1) SQL reprojects the target grid into the source CRS (case 07's UDF).
-    reproj_sql = """
+    reproj_sql = f"""
         SELECT dst_lat, dst_lon,
-               reproject(dst_lon, dst_lat)['x'] AS sx,
-               reproject(dst_lon, dst_lat)['y'] AS sy
+               reproject(dst_lon, dst_lat, '{_DST_CRS}', '{_SRC_CRS}')['x'] AS sx,
+               reproject(dst_lon, dst_lat, '{_DST_CRS}', '{_SRC_CRS}')['y'] AS sy
         FROM target
     """
     show_sql(reproj_sql, label="SQL — reproject target grid (PROJ UDF)")

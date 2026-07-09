@@ -212,12 +212,16 @@ paradigm. They split cleanly along one line: **is the operation row-independent?
 
 **Reprojection is.** Moving a coordinate from one CRS to another depends only on
 that coordinate, so it is a *scalar function* — exactly what PostGIS and
-DuckDB-spatial already ship as `ST_Transform`. We register a PROJ-backed scalar
-UDF (mirroring the `cftime()` UDF already in `xarray_sql/cftime.py`) and
-reproject in SQL:
+DuckDB-spatial already ship as `ST_Transform`. xarray-sql ships it as an
+optional pyproj extension (`pip install xarray-sql[proj]`): with pyproj
+installed, every `XarrayContext` registers a PROJ-backed
+`reproject(x, y, src_crs, dst_crs)` scalar UDF, so the CRS pair — any CRS
+pyproj understands — is part of the query rather than baked into the function:
 
 ```sql
-SELECT x, y, reproject(x, y)['lon'] AS lon, reproject(x, y)['lat'] AS lat
+SELECT x, y,
+       reproject(x, y, 'EPSG:32610', 'EPSG:4326')['x'] AS lon,
+       reproject(x, y, 'EPSG:32610', 'EPSG:4326')['y'] AS lat
 FROM grid
 ```
 
@@ -226,8 +230,10 @@ this against **Earth Engine itself**: it opens a UTM grid through
 [Xee](https://github.com/google/Xee) carrying `ee.Image.pixelLonLat()`, so EE's
 own geodesy engine reports the true lon/lat of every pixel — an *independent*
 reprojection reference, not PROJ-vs-PROJ. The SQL UDF and EE agree to sub-metre
-precision. The script flags one practical gotcha (PROJ is not thread-safe, so the
-UDF runs serially), but the caveat that matters here is conceptual: reprojection
+precision. There is one practical gotcha — PROJ objects must not be shared
+across threads, so the extension runs all PROJ work on its own worker pool,
+keeping the UDF safe (and parallel) under DataFusion's concurrent partitions —
+but the caveat that matters here is conceptual: reprojection
 moves the coordinates without resampling the data onto a new grid — and *that* is
 the next operation.
 
@@ -257,8 +263,9 @@ into bilinear weights, and the 08 `JOIN` applies them:
 
 ```sql
 -- 1. reproject the target grid into source coordinates (the 07 UDF)
-SELECT dst_lat, dst_lon, reproject(dst_lon, dst_lat)['x'] AS sx,
-                         reproject(dst_lon, dst_lat)['y'] AS sy
+SELECT dst_lat, dst_lon,
+       reproject(dst_lon, dst_lat, 'EPSG:4326', 'EPSG:32610')['x'] AS sx,
+       reproject(dst_lon, dst_lat, 'EPSG:4326', 'EPSG:32610')['y'] AS sy
 FROM target
 -- 2. apply the bilinear weights built from those points (the 08 JOIN)
 SELECT w.dst_lat AS lat, w.dst_lon AS lon, SUM(s.value * w.weight) AS warped

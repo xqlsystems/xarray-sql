@@ -36,8 +36,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+proj = [
+  "pyproj",
+]
 test = [
   "cftime",
+  "pyproj",
   "pytest",
   "xarray[io]",
   "gcsfs",

@@ -24,9 +24,13 @@ the shape of a SQL *scalar UDF*, and it is precisely how the geospatial SQL
 world already does it — PostGIS ``ST_Transform`` and DuckDB-spatial
 ``ST_Transform`` are scalar PROJ wrappers.
 
-So we register a PROJ-backed scalar UDF and reproject in SQL::
+xarray-sql ships that UDF as its pyproj extension (``xarray_sql.proj``):
+with pyproj installed, every ``XarrayContext`` speaks CRS out of the box,
+and the CRS pair is part of the query rather than baked into the UDF::
 
-    SELECT x, y, reproject(x, y)['lon'] AS lon, reproject(x, y)['lat'] AS lat
+    SELECT x, y,
+           reproject(x, y, 'EPSG:32610', 'EPSG:4326')['x'] AS lon,
+           reproject(x, y, 'EPSG:32610', 'EPSG:4326')['y'] AS lat
     FROM grid
 
 **The reference is Earth Engine itself.** There is *one* dataset: a single UTM
@@ -39,9 +43,9 @@ UDF and check the lon/lat it returns against EE's independently-computed lon/lat
 for the *same* pixels. The reference is a different geodesy engine, not PROJ
 again, and they agree to sub-metre precision.
 
-PROJ's context is not thread-safe and DataFusion evaluates projection
-expressions concurrently, so we return *both* coordinates from one
-struct-returning UDF and keep the source in a single chunk (one serial UDF).
+The extension returns *both* coordinates from one struct-returning call
+(one PROJ transform per row) and runs all PROJ work on its own worker
+pool, so the query parallelizes across partitions safely.
 
 Requires Earth Engine access: ``earthengine authenticate`` once, then an
 initialized project (set ``EARTHENGINE_PROJECT``). Skips cleanly otherwise.
@@ -49,11 +53,7 @@ initialized project (set ``EARTHENGINE_PROJECT``). Skips cleanly otherwise.
 
 from __future__ import annotations
 
-import numpy as np
-import pyarrow as pa
-import pyproj
 import xarray as xr
-from datafusion import udf
 
 import xarray_sql as xql
 
@@ -71,46 +71,6 @@ _SRC_CRS, _DST_CRS = "EPSG:32610", "EPSG:4326"  # UTM zone 10N → lon/lat
 # A 1° box over the San Francisco Bay area, well inside UTM zone 10N.
 _AOI = (-122.6, 37.4, -121.6, 38.4)
 _SCALE_M = 2_000  # 2 km pixels → a ~50×60 grid
-
-
-def register_reproject_udf(
-    ctx, src_crs: str, dst_crs: str, name: str = "reproject"
-) -> None:
-    """Register a ``reproject(x, y) -> {lon, lat}`` PROJ scalar UDF.
-
-    Mirrors ``xarray_sql.cftime.make_cftime_udf``: a vectorized scalar UDF over
-    Arrow arrays. ``always_xy=True`` keeps argument order (easting, northing) →
-    (lon, lat) regardless of CRS axis conventions. Like PostGIS/DuckDB
-    ``ST_Transform``, it returns *both* output coordinates from one call — here
-    as an Arrow struct, so callers write ``reproject(x, y)['lon']``.
-
-    Returning a struct (rather than two separate UDFs) is deliberate: PROJ's
-    context is not thread-safe, and DataFusion evaluates independent projection
-    expressions concurrently — two PROJ UDFs in one SELECT race and crash. One
-    struct-returning UDF does the transform exactly once per row, on one thread.
-    """
-    ret = pa.struct([("lon", pa.float64()), ("lat", pa.float64())])
-
-    def _fn(x: pa.Array, y: pa.Array) -> pa.Array:
-        # Build the Transformer inside the call so it lives on the worker
-        # thread that uses it (PROJ contexts are thread-bound).
-        transformer = pyproj.Transformer.from_crs(
-            src_crs, dst_crs, always_xy=True
-        )
-        xs = np.asarray(x.to_numpy(zero_copy_only=False), dtype="float64")
-        ys = np.asarray(y.to_numpy(zero_copy_only=False), dtype="float64")
-        lon, lat = transformer.transform(xs, ys)
-        return pa.StructArray.from_arrays(
-            [
-                pa.array(np.asarray(lon, "float64")),
-                pa.array(np.asarray(lat, "float64")),
-            ],
-            names=["lon", "lat"],
-        )
-
-    ctx.register_udf(
-        udf(_fn, [pa.float64(), pa.float64()], ret, "immutable", name)
-    )
 
 
 def _open_ee_lonlat_grid() -> xr.Dataset:
@@ -153,17 +113,18 @@ def main() -> None:
         f"{_SRC_CRS} → {_DST_CRS}"
     )
 
+    # XarrayContext registers reproject() automatically (the pyproj
+    # extension). Several partitions: the extension runs PROJ on its own
+    # worker pool, so the UDF is safe under DataFusion's parallelism.
     ctx = xql.XarrayContext()
-    # Single chunk → single partition → serial UDF (PROJ is not thread-safe).
     ctx.from_dataset(
-        "grid", ds, chunks={"y": ds.sizes["y"], "x": ds.sizes["x"]}
+        "grid", ds, chunks={"y": max(1, ds.sizes["y"] // 4), "x": ds.sizes["x"]}
     )
-    register_reproject_udf(ctx, _SRC_CRS, _DST_CRS)
 
-    sql = """
+    sql = f"""
         SELECT x, y,
-               reproject(x, y)['lon'] AS lon,
-               reproject(x, y)['lat'] AS lat
+               reproject(x, y, '{_SRC_CRS}', '{_DST_CRS}')['x'] AS lon,
+               reproject(x, y, '{_SRC_CRS}', '{_DST_CRS}')['y'] AS lat
         FROM grid
         ORDER BY y, x
     """
