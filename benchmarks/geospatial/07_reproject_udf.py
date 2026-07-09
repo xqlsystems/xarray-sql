@@ -114,12 +114,13 @@ def main() -> None:
     )
 
     # XarrayContext registers reproject() automatically (the pyproj
-    # extension). Several partitions: the extension runs PROJ on its own
-    # worker pool, so the UDF is safe under DataFusion's parallelism.
+    # extension). The chunking deliberately splits the ~60-row grid into
+    # 15-row slabs → 4 partitions, forcing DataFusion to evaluate the UDF
+    # concurrently: the extension runs PROJ on its own worker pool, so
+    # parallel partitions are safe (previously this required one chunk →
+    # one partition → a serial UDF).
     ctx = xql.XarrayContext()
-    ctx.from_dataset(
-        "grid", ds, chunks={"y": max(1, ds.sizes["y"] // 4), "x": ds.sizes["x"]}
-    )
+    ctx.from_dataset("grid", ds, chunks={"y": 15, "x": ds.sizes["x"]})
 
     sql = f"""
         SELECT x, y,
