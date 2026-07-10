@@ -7,7 +7,8 @@ from . import cftime as cft
 from .df import Chunks
 from .ds import XarrayDataFrame
 from .reader import read_xarray_table
-
+from pathlib import Path
+from matplotlib.dates import date2num
 
 class XarrayContext(SessionContext):
     """A datafusion `SessionContext` that also supports `xarray.Dataset`s."""
@@ -155,6 +156,55 @@ class XarrayContext(SessionContext):
                 if not cft.is_gregorian_like(cal):
                     self.register_udf(cft.make_cftime_udf(units, cal))
                     break  # One UDF per context is enough.
+
+    @classmethod
+    def read_netcdf(
+      cls,
+      path: str | Path,
+      table_name: str | None = None,
+      chunks: dict | None = None,
+      engine: str | None = "netcdf4",
+      **open_kwargs,
+    ):
+        """
+        Open a NetCDF file and register it in an XarrayContext.
+
+        Parameters
+        ----------
+        path : str | Path
+            Path to the .nc file.
+        table_name : str | None
+            SQL table (or schema, for mixed-dimension datasets) name.
+            Defaults to the file stem (e.g. 'irma_gfs_example').
+        chunks : dict | None
+            Dask chunks. Defaults to {'time': 24} if a 'time' dim exists,
+            otherwise opens all dims as a single chunk.
+        engine : str | None
+            xarray backend engine. Default is 'netcdf4'.
+        **open_kwargs
+            Additional kwargs forwarded to xr.open_dataset.
+
+        Returns
+        -------
+        XarrayContext
+            A context with the dataset already registered.
+        """
+        path = Path(path)
+
+        ds = xr.open_dataset(path, engine=engine, **open_kwargs)
+
+        if not isinstance(ds, xr.Dataset):
+            raise TypeError(f"Expected xr.Dataset, got {type(ds).__name__}")
+        
+        if table_name is None:
+            table_name = path.stem
+
+        if chunks is None:
+            chunks = {"time": 24} if "time" in ds.dims else {d: -1 for d in ds.dims}
+
+        ctx = cls()
+        ctx.from_dataset(table_name, ds, chunks=chunks)
+        return ctx
 
     def sql(self, query: str, *args, **kwargs) -> XarrayDataFrame:
         """Run a SQL query, returning an :class:`XarrayDataFrame` wrapper.
