@@ -140,3 +140,23 @@ def test_pyramid_filter_prunes_source_scan(con):
     n = _rows(con, "SELECT SUM(n) FROM pyr")[0][0]
     direct = _rows(con, "SELECT COUNT(*) FROM grid WHERE y > -32")[0][0]
     assert n == direct
+
+
+def test_pyramid_cell_membership_is_exact_across_levels():
+    # Rebinning float origins level-over-level can alias points across
+    # cell boundaries; integer indices must halve exactly instead.
+    import math
+
+    con = duckdb.connect()
+    con.execute("CREATE TABLE pts AS SELECT -130.943 AS x, 0.0005 AS y")
+    xql.pyramid(
+        con,
+        "pyr",
+        "pts",
+        aggs={"n": ("count", "*")},
+        base_cell=0.001,
+        levels=2,
+    )
+    rows = con.sql("SELECT level, x_idx FROM pyr ORDER BY level").fetchall()
+    assert rows[0][1] == math.floor(-130.943 / 0.001)
+    assert rows[1][1] == math.floor(-130.943 / 0.002)

@@ -89,6 +89,24 @@ only the variables a query references are read. Corollaries:
 - A query with no `WHERE` on dimension columns is a full scan on any
   engine; that's physics, not a missing optimization.
 
+## Threads and DuckDB connections
+
+Registered Python objects are connection-local in DuckDB: `con.cursor()`
+does not inherit them, and one connection's result slot is not
+thread-safe. For multithreaded querying, give each thread its own
+cursor and register the *same* dataset object on it:
+
+```python
+dataset = xql.arrow_dataset(ds)
+def worker():
+    cur = con.cursor()
+    cur.register("t", dataset)   # cheap; shares the pruning index
+    ...
+```
+
+The dataset object itself is safe to share across threads (verified
+under concurrent query load).
+
 ## Stop re-scanning: materialize and pyramid
 
 Repeated statistics should pay the scan once:

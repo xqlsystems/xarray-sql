@@ -122,13 +122,22 @@ class _DimShadow:
         fragments = []
         for i, (lo_chunk, hi_chunk) in enumerate(spans):
             vals = self._coord[self._bounds[lo_chunk] : self._bounds[hi_chunk]]
-            # min/max (not first/last) so descending axes like latitude
-            # 90→-90 carry correct ranges.
-            lo = pa.scalar(vals.min(), type=self._field_type)
-            hi = pa.scalar(vals.max(), type=self._field_type)
-            guarantee = (pc.field(self._name) >= lo) & (
-                pc.field(self._name) <= hi
-            )
+            if (vals.dtype.kind == "f" and np.isnan(vals).any()) or (
+                vals.dtype.kind == "M" and np.isnat(vals).any()
+            ):
+                # NaN/NaT poisons min/max into a (dim >= NaN) guarantee
+                # that Arrow simplifies every predicate against as false,
+                # silently pruning rows. An always-true guarantee keeps
+                # the span unprunable instead.
+                guarantee = pc.scalar(True)
+            else:
+                # min/max (not first/last) so descending axes like
+                # latitude 90→-90 carry correct ranges.
+                lo = pa.scalar(vals.min(), type=self._field_type)
+                hi = pa.scalar(vals.max(), type=self._field_type)
+                guarantee = (pc.field(self._name) >= lo) & (
+                    pc.field(self._name) <= hi
+                )
             fragments.append(
                 fmt.make_fragment(str(i), fs, partition_expression=guarantee)
             )

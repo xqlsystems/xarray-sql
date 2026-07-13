@@ -349,8 +349,12 @@ def iter_record_batches(
 
     # Preload small 1-D coordinate arrays (negligible memory).
     # Convert cftime objects to numeric values matching the schema type.
+    # Projected scans may omit dimension columns from the schema; those
+    # dims still shape the iteration but never emit a column.
     coord_values = {}
     for name in dim_names:
+        if name not in schema.names:
+            continue
         vals = ds.coords[name].values
         if cft.is_cftime(vals):
             coord_values[name] = cft.convert_for_field(vals, schema.field(name))

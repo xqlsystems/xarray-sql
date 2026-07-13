@@ -131,6 +131,12 @@ Polars pushes its predicate and column selection into the dataset scan
 (verified: a filtered group-by read 1 of 20 chunks and 3 of 5 columns),
 and its results round-trip through `xql.to_dataset` unchanged.
 
+One upstream caveat: Polars' translation of `is_in` **float** literals
+into pyarrow expressions loses precision and can drop matching rows
+(reproducible without xarray-sql). Prefer range predicates
+(`is_between`) for float coordinates; integer and timestamp value sets
+are unaffected.
+
 ### Relation to duckdb-zarr
 
 [duckdb-zarr](https://github.com/xqlsystems/duckdb-zarr) reads Zarr

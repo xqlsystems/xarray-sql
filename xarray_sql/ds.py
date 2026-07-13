@@ -169,7 +169,10 @@ def _affine_axis(requested: np.ndarray) -> tuple[float, float] | None:
     if step == 0 or not np.isfinite(step):
         return None
     predicted = numeric[0] + step * np.arange(len(numeric))
-    if np.abs(numeric - predicted).max() > 0.25 * abs(step):
+    # Written as a <= comparison so a NaN anywhere in the axis (e.g. a
+    # NULL dim value in the result) fails the check and falls back to
+    # the searchsorted path, which handles it positionally.
+    if not (np.abs(numeric - predicted) <= 0.25 * abs(step)).all():
         return None
     return float(numeric[0]), float(step)
 

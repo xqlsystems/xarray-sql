@@ -110,11 +110,14 @@ def pyramid(
     the total cost beyond the single scan is negligible. The result is
     one long table::
 
-        (level INTEGER, x_bin DOUBLE, y_bin DOUBLE, <agg columns...>)
+        (level, x_idx BIGINT, y_idx BIGINT, x_bin, y_bin, <aggs...>)
 
-    where ``x_bin``/``y_bin`` are the cell origins at that level's cell
-    size (``base_cell * 2**level``). Query the level whose cells match
-    the resolution you need::
+    ``x_idx``/``y_idx`` are exact integer cell indices at that level
+    (they halve from level to level, so cell membership never drifts
+    across levels); ``x_bin``/``y_bin`` are the float cell origins
+    (``idx * base_cell * 2**level``) for human-readable querying —
+    filter them with ranges rather than equality. Query the level whose
+    cells match the resolution you need::
 
         SELECT x_bin, y_bin, class4_n / n AS share
         FROM grid_pyramid
@@ -160,6 +163,11 @@ def pyramid(
 
     run_sql = get_adapter(con).run_sql
 
+    # Cells are tracked as integer indices (x_idx, y_idx) and only
+    # labeled with float origins (x_bin, y_bin) for querying: rebinning
+    # float origins at each level occasionally lands boundary points in
+    # a different cell than direct binning would (float aliasing);
+    # integer indices halve exactly at every level.
     # Level 0: the single scan of the source.
     run_sql(
         con,
@@ -167,12 +175,20 @@ def pyramid(
         CREATE OR REPLACE TABLE {_ident(name)} AS
         SELECT
             0 AS level,
-            FLOOR({_ident(x)} / {base_cell}) * {base_cell} AS x_bin,
-            FLOOR({_ident(y)} / {base_cell}) * {base_cell} AS y_bin,
+            x_idx,
+            y_idx,
+            x_idx * {base_cell} AS x_bin,
+            y_idx * {base_cell} AS y_bin,
             {base_aggs}
-        FROM {_ident(table)}
-        {where}
-        GROUP BY 2, 3
+        FROM (
+            SELECT
+                CAST(FLOOR({_ident(x)} / {base_cell}) AS BIGINT) AS x_idx,
+                CAST(FLOOR({_ident(y)} / {base_cell}) AS BIGINT) AS y_idx,
+                *
+            FROM {_ident(table)}
+            {where}
+        )
+        GROUP BY x_idx, y_idx
         """,
     )
 
@@ -183,18 +199,27 @@ def pyramid(
             f"{_ROLLUP[kind]}({_ident(n)}) AS {_ident(n)}"
             for n, (kind, _) in aggs.items()
         )
+        pass_cols = ", ".join(_ident(n) for n in aggs)
         run_sql(
             con,
             f"""
             INSERT INTO {_ident(name)}
             SELECT
                 {level} AS level,
-                FLOOR(x_bin / {cell}) * {cell} AS x_bin,
-                FLOOR(y_bin / {cell}) * {cell} AS y_bin,
+                x_idx,
+                y_idx,
+                x_idx * {cell} AS x_bin,
+                y_idx * {cell} AS y_bin,
                 {rollup_aggs}
-            FROM {_ident(name)}
-            WHERE level = {level - 1}
-            GROUP BY 2, 3
+            FROM (
+                SELECT
+                    CAST(FLOOR(x_idx / 2.0) AS BIGINT) AS x_idx,
+                    CAST(FLOOR(y_idx / 2.0) AS BIGINT) AS y_idx,
+                    {pass_cols}
+                FROM {_ident(name)}
+                WHERE level = {level - 1}
+            )
+            GROUP BY x_idx, y_idx
             """,
         )
     return con

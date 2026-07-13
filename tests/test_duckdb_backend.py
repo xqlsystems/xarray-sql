@@ -344,3 +344,44 @@ def test_register_dispatches_to_datafusion():
 def test_register_rejects_unknown_connection(ds):
     with pytest.raises(TypeError, match="No xarray-sql engine adapter"):
         xql.register(object(), "weather", ds)
+
+
+def test_nan_coordinate_chunk_is_not_pruned():
+    # NaN in a chunk's coordinate must disable pruning for that span,
+    # never poison the range guarantee (which would silently drop rows).
+    ds = xr.Dataset(
+        {"v": (["lat"], np.arange(6.0))},
+        coords={"lat": [np.nan, 5.0, 10.0, 20.0, 30.0, 40.0]},
+    ).chunk({"lat": 2})
+    con = duckdb.connect()
+    xql.register(con, "t", ds)
+    assert con.sql("SELECT v FROM t WHERE lat = 5.0").fetchall() == [(1.0,)]
+
+
+def test_cftime_dataset_aggregates_under_projection():
+    cftime = pytest.importorskip("cftime")
+
+    times = xr.date_range(
+        "2000-01-01", periods=6, calendar="360_day", use_cftime=True
+    )
+    ds = xr.Dataset(
+        {"v": (["time"], np.arange(6.0))}, coords={"time": times}
+    ).chunk({"time": 3})
+    con = duckdb.connect()
+    xql.register(con, "t", ds)
+    # The scan projects only `v`; the cftime dim column is absent from
+    # the scan schema but still shapes the iteration.
+    assert con.sql("SELECT SUM(v) FROM t").fetchone()[0] == 15.0
+
+
+def test_null_dimension_value_round_trips_positionally():
+    # A NULL in a result's dim column must reject the affine fast path
+    # and fall back to positional scatter.
+    table = pa.table(
+        {
+            "lat": pa.array([0.0, None, 1.0, 3.0], type=pa.float64()),
+            "v": [10.0, 99.0, 11.0, 13.0],
+        }
+    )
+    out = xql.to_dataset(table, dims=["lat"])
+    np.testing.assert_allclose(out["v"].values, [10.0, 99.0, 11.0, 13.0])
