@@ -36,7 +36,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-proj = [
+geo = [
   "pyproj",
 ]
 test = [

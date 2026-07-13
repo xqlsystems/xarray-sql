@@ -8,7 +8,7 @@ from .df import Chunks
 from .ds import XarrayDataFrame
 from .reader import read_xarray_table
 
-try:  # pyproj is an optional dependency (`pip install xarray-sql[proj]`).
+try:  # pyproj is an optional dependency (`pip install xarray-sql[geo]`).
     from . import proj as _proj
 except ImportError:  # pragma: no cover - depends on the environment
     _proj = None

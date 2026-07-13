@@ -40,7 +40,7 @@ Design notes:
 * Non-finite or NULL input coordinates yield NaN output (PROJ itself
   would return ``inf``); NULL CRS arguments yield NaN as well.
 
-Requires ``pyproj`` (``pip install xarray-sql[proj]``). When pyproj is
+Requires ``pyproj`` (``pip install xarray-sql[geo]``). When pyproj is
 installed, :class:`xarray_sql.XarrayContext` registers ``reproject()``
 automatically; :func:`register` is the explicit hook for plain
 DataFusion ``SessionContext`` objects or custom UDF names.

@@ -213,7 +213,7 @@ paradigm. They split cleanly along one line: **is the operation row-independent?
 **Reprojection is.** Moving a coordinate from one CRS to another depends only on
 that coordinate, so it is a *scalar function* — exactly what PostGIS and
 DuckDB-spatial already ship as `ST_Transform`. xarray-sql ships it as an
-optional pyproj extension (`pip install xarray-sql[proj]`): with pyproj
+optional pyproj extension (`pip install xarray-sql[geo]`): with pyproj
 installed, every `XarrayContext` registers a PROJ-backed
 `reproject(x, y, src_crs, dst_crs)` scalar UDF, so the CRS pair — any CRS
 pyproj understands — is part of the query rather than baked into the function:

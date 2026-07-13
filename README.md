@@ -212,7 +212,7 @@ against an xarray/array reference** to floating-point tolerance:
   table of regions.
 * **Reprojection and regridding** — a `reproject(x, y, src_crs, dst_crs)`
   scalar PROJ UDF, shipped as the optional pyproj extension
-  (`pip install xarray-sql[proj]`, validated against Earth Engine's own
+  (`pip install xarray-sql[geo]`, validated against Earth Engine's own
   geodesy via [Xee](https://github.com/google/Xee)) and a
   sparse-weight-table `JOIN` (regridding real SRTM terrain).
 
