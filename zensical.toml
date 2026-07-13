@@ -10,6 +10,7 @@ nav = [
   {"Home" = "index.md"},
   {"Examples" = "examples.md"},
   {"Geospatial in SQL" = "geospatial.md"},
+  {"Engines" = "engines.md"},
   {"Contributing" = "contributing.md"},
   {"Reference" = "reference/xarray_sql.md"}
 ]

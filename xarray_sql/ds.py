@@ -376,23 +376,20 @@ class SQLBackendArray(xr.backends.BackendArray):
         )
 
 
-def _materialize(
-    inner_df: Any,
+def _dataset_from_batches(
+    batches: list[pa.RecordBatch],
     dimension_columns: list[str],
     field_names: list[str],
     field_types: dict[str, Any],
 ) -> xr.Dataset:
-    """Execute the query once and build a dense in-memory Dataset.
+    """Build a dense in-memory Dataset from Arrow ``RecordBatch`` es.
 
-    Runs the plan exactly once via ``execute_stream()`` -- streaming the result
-    as Arrow ``RecordBatch`` es (``datafusion.RecordBatch.to_pyarrow()``) -- then
-    derives both the coordinates and every data variable from that single pass.
-    This is the eager path, used when no output chunking is requested. It never
-    re-executes, so an aggregation over a remote Zarr scan costs exactly one
-    scan, regardless of how many dimensions or variables the result has.
+    The engine-agnostic core of the eager round-trip: derives the
+    coordinates and every data variable from a single already-executed
+    result, whichever engine produced it. ``field_types`` values only
+    need a ``to_pandas_dtype()`` method (both ``pyarrow.DataType`` and
+    DataFusion's Arrow type wrappers qualify).
     """
-    batches = [b.to_pyarrow() for b in inner_df.execute_stream()]
-
     coord_arrays: dict[str, np.ndarray] = {}
     for d in dimension_columns:
         if not batches:
@@ -430,6 +427,27 @@ def _materialize(
 
     coords_arg = {d: coord_arrays[d] for d in dimension_columns}
     return xr.Dataset(data_vars=data_vars, coords=coords_arg)
+
+
+def _materialize(
+    inner_df: Any,
+    dimension_columns: list[str],
+    field_names: list[str],
+    field_types: dict[str, Any],
+) -> xr.Dataset:
+    """Execute the query once and build a dense in-memory Dataset.
+
+    Runs the plan exactly once via ``execute_stream()`` -- streaming the result
+    as Arrow ``RecordBatch`` es (``datafusion.RecordBatch.to_pyarrow()``) -- then
+    derives both the coordinates and every data variable from that single pass.
+    This is the eager path, used when no output chunking is requested. It never
+    re-executes, so an aggregation over a remote Zarr scan costs exactly one
+    scan, regardless of how many dimensions or variables the result has.
+    """
+    batches = [b.to_pyarrow() for b in inner_df.execute_stream()]
+    return _dataset_from_batches(
+        batches, dimension_columns, field_names, field_types
+    )
 
 
 _PURE_SCAN_NODES = {"Projection", "Sort", "TableScan", "SubqueryAlias"}
