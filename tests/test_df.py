@@ -403,20 +403,22 @@ def test_read_xarray_loads_one_chunk_at_a_time(large_ds):
             peaks.append(cur_peak)
 
         for size in sizes:
-            # Observed range: 1.59–1.83× on macOS, up to ~2.7× on Linux
-            # (glibc + Arrow allocate more intermediate buffers).
-            # iter_record_batches holds data-variable arrays (≈1× chunk) while
-            # yielding sub-batches, plus the current Arrow batch (≈0.65× chunk).
+            # iter_record_batches' whole-partition fast path holds the
+            # data-variable arrays (≈1× chunk) plus repeat/tile-expanded
+            # coordinate columns (n_dims × 8 bytes × rows, ≈1.5× chunk
+            # for this 3-dim float64 dataset) for the partition being
+            # streamed; batches themselves are zero-copy slices.
             assert chunk_size * 1.3 < size, f"size {size} unexpectedly low"
-            assert chunk_size * 3.5 > size, f"size {size} unexpectedly high"
+            assert chunk_size * 4.0 > size, f"size {size} unexpectedly high"
 
         for peak in peaks:
-            # Observed range: 1.84–3.28× on macOS, up to ~4.15× on Linux
-            # (glibc + Arrow hold more intermediate buffers at peak).
-            # Peak includes data arrays + Arrow batch + temporary coordinate index
-            # arrays; the first batch of each chunk is highest (Dask compute overhead).
+            # Peak adds transient buffers on top of the steady state:
+            # np.repeat/np.tile intermediates for the coordinate columns
+            # and Arrow's from_pandas null scan; the first batch of each
+            # chunk is highest (Dask compute overhead). Observed ~5.04×
+            # on macOS.
             assert chunk_size * 1.5 < peak, f"peak {peak} unexpectedly low"
-            assert chunk_size * 5.0 > peak, f"peak {peak} unexpectedly high"
+            assert chunk_size * 6.5 > peak, f"peak {peak} unexpectedly high"
 
         assert max(peaks) < large_ds.nbytes
     finally:

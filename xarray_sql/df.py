@@ -297,6 +297,17 @@ def dataset_to_record_batch(
 #: 64 K rows balances DataFusion pipeline depth against per-batch overhead.
 DEFAULT_BATCH_SIZE: int = 65_536
 
+#: Row cap for the whole-partition coordinate fast path in
+#: iter_record_batches. Below this, coordinate columns are materialised
+#: for the full partition with repeat/tile (sequential writes, ~3x
+#: faster than per-batch index arithmetic) and batches are zero-copy
+#: slices; the cost is holding every coordinate column of the partition
+#: in memory at once (rows x 8 bytes x n_dims). Above it — e.g.
+#: single-time-step reanalysis partitions with tens of millions of
+#: rows — the per-batch path keeps peak memory at O(batch_size) per
+#: coordinate instead.
+_FULL_PIVOT_MAX_ROWS: int = 8_388_608
+
 
 def iter_record_batches(
     ds: xr.Dataset,
@@ -360,6 +371,38 @@ def iter_record_batches(
                 data_arrays[field.name] = cft.convert_for_field(raw, field)
             else:
                 data_arrays[field.name] = raw.ravel()
+
+    if 0 < total_rows <= _FULL_PIVOT_MAX_ROWS:
+        # Fast path: build each coordinate column once for the whole
+        # partition. In C order, dim k's flat column is its coord values
+        # each repeated prod(shape[k+1:]) times, with that pattern tiled
+        # prod(shape[:k]) times — two sequential-write kernels, much
+        # faster than per-batch division/modulo plus gather. Batches are
+        # then zero-copy slices of the full-partition Arrow arrays.
+        full_arrays = []
+        for field in schema:
+            name = field.name
+            if name in ds.coords and name in ds.dims:
+                k = dim_names.index(name)
+                outer = int(np.prod(shape[:k]))
+                col = np.repeat(coord_values[name], strides[k])
+                if outer > 1:
+                    col = np.tile(col, outer)
+                full_arrays.append(pa.array(col, type=field.type))
+            else:
+                full_arrays.append(
+                    pa.array(
+                        data_arrays[name],
+                        type=field.type,
+                        from_pandas=True,
+                    )
+                )
+        for row_start in range(0, total_rows, batch_size):
+            yield pa.RecordBatch.from_arrays(
+                [a.slice(row_start, batch_size) for a in full_arrays],
+                schema=schema,
+            )
+        return
 
     for row_start in range(0, total_rows, batch_size):
         row_end = min(row_start + batch_size, total_rows)
