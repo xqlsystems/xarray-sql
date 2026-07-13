@@ -93,6 +93,12 @@ Details that matter in production:
   the consumer (memory ≈ `prefetch` × pivoted chunk size), `batch_size`
   caps rows per Arrow batch.
 - Requires `duckdb >= 1.4` (tested on 1.5) and `pyarrow.dataset`.
+- **Source parallelism matters as much as the adapter's**: rioxarray
+  serializes GDAL tile reads behind a lock by default, which caps any
+  scan at single-stream speed regardless of `prefetch`. Open rasters
+  with `rioxarray.open_rasterio(..., lock=False)` — measured 6× on
+  full scans of a 9-billion-pixel cloud GeoTIFF, making remote reads
+  as fast as a local copy.
 
 `xql.to_dataset` is engine-agnostic: it accepts DuckDB relations,
 `pyarrow.Table`/`RecordBatchReader`, or any object implementing the
