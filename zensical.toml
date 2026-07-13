@@ -11,6 +11,7 @@ nav = [
   {"Examples" = "examples.md"},
   {"Geospatial in SQL" = "geospatial.md"},
   {"Engines" = "engines.md"},
+  {"Performance" = "performance.md"},
   {"Contributing" = "contributing.md"},
   {"Reference" = "reference/xarray_sql.md"}
 ]
