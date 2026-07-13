@@ -42,6 +42,16 @@ class EngineAdapter(Protocol):
         """Register *ds* as table *name* on *con*; returns *con*."""
         ...
 
+    @staticmethod
+    def run_sql(con: Any, sql: str) -> None:
+        """Execute a SQL statement on *con* for its side effects.
+
+        Used by cross-engine helpers (:func:`xarray_sql.materialize`,
+        :func:`xarray_sql.pyramid`) that issue DDL/DML in the engine's
+        own dialect.
+        """
+        ...
+
 
 _ADAPTERS: list[type[EngineAdapter]] = []
 

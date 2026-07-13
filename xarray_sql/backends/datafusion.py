@@ -44,3 +44,8 @@ class DataFusionAdapter:
             return con.from_dataset(name, ds, chunks=chunks, **kwargs)
         con.register_table(name, read_xarray_table(ds, chunks, **kwargs))
         return con
+
+    @staticmethod
+    def run_sql(con: SessionContext, sql: str) -> None:
+        # DDL executes on planning; DML (INSERT) is lazy until collected.
+        con.sql(sql).collect()
