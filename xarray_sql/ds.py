@@ -147,6 +147,33 @@ def _apply_template(ds: xr.Dataset, template: xr.Dataset) -> xr.Dataset:
     return out
 
 
+def _axis_numeric(values: np.ndarray) -> np.ndarray:
+    """View an axis as float64 for affine position arithmetic."""
+    if values.dtype.kind == "M":
+        return values.astype("datetime64[ns]").view("int64").astype("float64")
+    return values.astype("float64", copy=False)
+
+
+def _affine_axis(requested: np.ndarray) -> tuple[float, float] | None:
+    """``(origin, step)`` when *requested* is uniformly spaced, else None.
+
+    Uniform spacing must hold exactly enough that ``rint((v - origin) /
+    step)`` recovers every index: the deviation of each element from its
+    affine prediction is checked against a quarter step. Non-numeric
+    axes (strings, cftime objects) never qualify.
+    """
+    if requested.dtype.kind not in ("i", "u", "f", "M") or len(requested) < 2:
+        return None
+    numeric = _axis_numeric(requested)
+    step = (numeric[-1] - numeric[0]) / (len(numeric) - 1)
+    if step == 0 or not np.isfinite(step):
+        return None
+    predicted = numeric[0] + step * np.arange(len(numeric))
+    if np.abs(numeric - predicted).max() > 0.25 * abs(step):
+        return None
+    return float(numeric[0]), float(step)
+
+
 def _scatter_batches_to_ndarray(
     batches: list[pa.RecordBatch],
     dimension_columns: list[str],
@@ -182,8 +209,17 @@ def _scatter_batches_to_ndarray(
     # positions, and template coords like air_temperature.lat are descending).
     # ``np.searchsorted`` requires ascending input, so we sort each requested
     # array once, search there, and remap back to the original positions.
-    sorted_idx = {d: np.argsort(requested[d]) for d in dimension_columns}
-    sorted_req = {d: requested[d][sorted_idx[d]] for d in dimension_columns}
+    # Uniformly spaced axes (the norm for rasters and regular time steps,
+    # ascending or descending) skip the search entirely: the position is
+    # ``rint((value - origin) / step)``, a fused vector op several times
+    # faster than a per-row binary search.
+    affine = {d: _affine_axis(requested[d]) for d in dimension_columns}
+    sorted_idx = {
+        d: np.argsort(requested[d])
+        for d in dimension_columns
+        if affine[d] is None
+    }
+    sorted_req = {d: requested[d][sorted_idx[d]] for d in sorted_idx}
 
     for batch in batches:
         if batch.num_rows == 0:
@@ -195,8 +231,15 @@ def _scatter_batches_to_ndarray(
         for d in dimension_columns:
             col_arr = batch.column(schema_names.index(d))
             vals = col_arr.to_numpy(zero_copy_only=False)
-            pos_in_sorted = np.searchsorted(sorted_req[d], vals)
-            positions.append(sorted_idx[d][pos_in_sorted])
+            if affine[d] is not None:
+                origin, step = affine[d]
+                pos = np.rint((_axis_numeric(vals) - origin) / step).astype(
+                    np.intp
+                )
+                positions.append(pos)
+            else:
+                pos_in_sorted = np.searchsorted(sorted_req[d], vals)
+                positions.append(sorted_idx[d][pos_in_sorted])
         value_arr = batch.column(schema_names.index(var_name)).to_numpy(
             zero_copy_only=False
         )
@@ -376,6 +419,33 @@ class SQLBackendArray(xr.backends.BackendArray):
         )
 
 
+def _c_order_grid(
+    dim_cols: dict[str, np.ndarray],
+    coord_arrays: dict[str, np.ndarray],
+    dimension_columns: list[str],
+    total_rows: int,
+) -> bool:
+    """Whether the result rows form the complete grid in C order.
+
+    True iff the row count is exactly the coordinate product and every
+    dimension column is its coordinates repeated/tiled in C order — the
+    shape any unfiltered or bbox-windowed scan produces. When it holds,
+    data variables are dense row-major arrays already and can be
+    reshaped instead of scatter-written (one memcpy versus a
+    ``searchsorted`` per dimension per row).
+    """
+    shape = tuple(len(coord_arrays[d]) for d in dimension_columns)
+    if total_rows != int(np.prod(shape)) or total_rows == 0:
+        return False
+    for k, d in enumerate(dimension_columns):
+        inner = int(np.prod(shape[k + 1 :]))
+        outer = int(np.prod(shape[:k]))
+        view = dim_cols[d].reshape(outer, shape[k], inner)
+        if not (view == coord_arrays[d][None, :, None]).all():
+            return False
+    return True
+
+
 def _dataset_from_batches(
     batches: list[pa.RecordBatch],
     dimension_columns: list[str],
@@ -389,10 +459,17 @@ def _dataset_from_batches(
     result, whichever engine produced it. ``field_types`` values only
     need a ``to_pandas_dtype()`` method (both ``pyarrow.DataType`` and
     DataFusion's Arrow type wrappers qualify).
+
+    Complete grid-ordered results (unfiltered scans, bbox windows) are
+    reshaped directly; anything else — sparse results from filtered
+    queries, engine-reordered rows — falls back to the positional
+    scatter, which handles arbitrary row order.
     """
+    dim_cols: dict[str, np.ndarray] = {}
     coord_arrays: dict[str, np.ndarray] = {}
     for d in dimension_columns:
         if not batches:
+            dim_cols[d] = np.asarray([])
             coord_arrays[d] = np.asarray([])
             continue
         vals = np.concatenate(
@@ -401,6 +478,7 @@ def _dataset_from_batches(
                 for b in batches
             ]
         )
+        dim_cols[d] = vals
         # Preserve the order coordinate values first appear in the result so an
         # ORDER BY direction (e.g. ``ORDER BY level DESC``) carries through to
         # the Dataset dimension instead of being force-sorted ascending.
@@ -408,21 +486,37 @@ def _dataset_from_batches(
         # internally, so arbitrarily-ordered coordinates are placed correctly.
         coord_arrays[d] = np.asarray(pd.unique(vals))
     shape = tuple(len(coord_arrays[d]) for d in dimension_columns)
+    total_rows = sum(b.num_rows for b in batches)
+
+    grid_ordered = _c_order_grid(
+        dim_cols, coord_arrays, dimension_columns, total_rows
+    )
 
     data_vars: dict[str, xr.Variable] = {}
     for name in field_names:
         if name in dimension_columns:
             continue
         np_dtype = np.dtype(field_types[name].to_pandas_dtype())
-        dense = _scatter_batches_to_ndarray(
-            batches=batches,
-            dimension_columns=dimension_columns,
-            requested=coord_arrays,
-            var_name=name,
-            out_shape=shape,
-            dtype=np_dtype,
-            drop_axes=[],
-        )
+        if grid_ordered:
+            flat = np.concatenate(
+                [
+                    b.column(b.schema.names.index(name)).to_numpy(
+                        zero_copy_only=False
+                    )
+                    for b in batches
+                ]
+            )
+            dense = flat.astype(np_dtype, copy=False).reshape(shape)
+        else:
+            dense = _scatter_batches_to_ndarray(
+                batches=batches,
+                dimension_columns=dimension_columns,
+                requested=coord_arrays,
+                var_name=name,
+                out_shape=shape,
+                dtype=np_dtype,
+                drop_axes=[],
+            )
         data_vars[name] = xr.Variable(dimension_columns, dense)
 
     coords_arg = {d: coord_arrays[d] for d in dimension_columns}
