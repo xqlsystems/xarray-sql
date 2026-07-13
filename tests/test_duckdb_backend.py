@@ -14,7 +14,10 @@ import pytest
 import xarray as xr
 
 import xarray_sql as xql
-from xarray_sql.backends.duckdb import XarrayArrowStream
+from xarray_sql.backends.duckdb import (
+    XarrayArrowStream,
+    XarrayPushdownDataset,
+)
 
 
 @pytest.fixture
@@ -147,6 +150,85 @@ def test_register_rejects_mixed_dimension_variables(ds):
     con = duckdb.connect()
     with pytest.raises(ValueError, match="dimensions must be equal"):
         xql.register(con, "weather", mixed)
+
+
+def _tracked_connection(ds):
+    """Register ds with an iteration callback; returns (con, reads)."""
+    reads: list = []
+    dataset = XarrayPushdownDataset(
+        ds, _iteration_callback=lambda block, cols: reads.append((block, cols))
+    )
+    con = duckdb.connect()
+    con.register("weather", dataset)
+    return con, reads
+
+
+def test_projection_pushdown_skips_unrequested_variables(ds):
+    con, reads = _tracked_connection(ds)
+    con.sql("SELECT AVG(temperature) FROM weather").fetchall()
+    assert reads  # data was read
+    for _, cols in reads:
+        assert "precipitation" not in cols
+
+
+def test_filter_pushdown_prunes_chunks(ds):
+    # ds is chunked {"time": 4} -> 2 chunks; this predicate covers only
+    # the first chunk, so the second is never loaded.
+    con, reads = _tracked_connection(ds)
+    n = con.sql(
+        "SELECT COUNT(*) FROM weather WHERE time < '2021-01-01 04:00:00'"
+    ).fetchone()[0]
+    assert n == 4 * 5 * 6
+    assert len(reads) == 1
+
+
+def test_pushed_filter_is_applied_exactly(ds):
+    # DuckDB trusts pushed comparison filters and does not re-apply
+    # them, so the scan itself must enforce the predicate row-exactly —
+    # including inside chunks that pruning keeps.
+    con, _ = _tracked_connection(ds)
+    out = con.sql(
+        "SELECT COUNT(*) FROM weather "
+        "WHERE time = '2021-01-01 02:00:00' AND lat > 0"
+    ).fetchone()[0]
+    expected = int(
+        (ds.time == np.datetime64("2021-01-01T02:00:00")).sum()
+        * (ds.lat > 0).sum()
+        * ds.sizes["lon"]
+    )
+    assert out == expected
+
+
+def test_filter_on_variable_outside_projection(ds):
+    # The filter references `temperature`, the projection only `lat`;
+    # the scan must widen its columns to evaluate the predicate.
+    con, _ = _tracked_connection(ds)
+    got = con.sql(
+        "SELECT COUNT(DISTINCT lat) FROM weather WHERE temperature > 20"
+    ).fetchone()[0]
+    expected = len(
+        np.unique(
+            ds.lat.values[np.where((ds.temperature > 20).any(["time", "lon"]))]
+        )
+    )
+    assert got == expected
+
+
+def test_or_and_in_filters_round_trip(ds):
+    con, _ = _tracked_connection(ds)
+    rel = con.sql(
+        "SELECT time, lat, lon, temperature FROM weather "
+        "WHERE lat < -5 OR lat > 5 ORDER BY time, lat, lon"
+    )
+    out = xql.to_dataset(rel, template=ds)
+    mask = (ds.lat < -5) | (ds.lat > 5)
+    expected = ds[["temperature"]].sel(lat=ds.lat[mask]).compute()
+    xr.testing.assert_allclose(out, expected)
+
+
+def test_pushdown_dataset_rejects_unchunked_dataset(ds):
+    with pytest.raises(ValueError, match="must be chunked"):
+        XarrayPushdownDataset(ds.compute())
 
 
 def test_register_dispatches_to_datafusion():

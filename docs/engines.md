@@ -60,12 +60,22 @@ rel = con.sql("""
 out = xql.to_dataset(rel, template=ds)              # seam 2
 ```
 
-The adapter registers a re-scannable Arrow C-stream view over the
-Dataset: DuckDB pulls fresh record batches on every scan, so the table
-is lazy and can be queried any number of times. This first version does
-**no** projection or filter pushdown — every scan streams all columns of
-all partitions and DuckDB filters afterwards. Prefer selecting variable
-subsets (`xql.register(con, "t", ds[["t2m"]])`) for wide datasets.
+The adapter registers an `XarrayPushdownDataset` — a
+`pyarrow.dataset.Dataset` subclass (the same pattern Lance uses), so
+DuckDB hands each query's column list and pushed predicate to the
+source. The scan then loads only the data variables the query mentions,
+prunes chunks whose coordinate ranges cannot satisfy the predicate
+(via Arrow's own guarantee simplification — sound for every predicate
+shape), and prefetches surviving chunks on a thread pool. The table is
+lazy, re-queryable, and a bounding-box query over a billions-of-pixels
+raster answers in about a second because only the intersecting chunks
+are ever read.
+
+Pushed comparison filters are a correctness contract in DuckDB (it
+deletes them from its own plan), so the scanner always applies the
+exact expression via pyarrow — pruning is only an optimization on top.
+`XarrayArrowStream`, the dependency-light re-scannable C-stream wrapper
+without pushdown, remains available as a fallback.
 
 `xql.to_dataset` is engine-agnostic: it accepts DuckDB relations,
 `pyarrow.Table`/`RecordBatchReader`, or any object implementing the
