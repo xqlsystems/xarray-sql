@@ -310,14 +310,37 @@ class XarrayPushdownDataset(pads.Dataset):
         how much data is read to get there. Extra keyword arguments from
         other pyarrow-dataset consumers are accepted and ignored.
         """
+        kept = None if filter is None else self._prune(filter)
+        return self._scanner_for_blocks(self._blocks(kept), columns, filter)
+
+    def _scanner_for_blocks(
+        self,
+        blocks: Iterator[Block] | list[Block],
+        columns: list[str] | None,
+        filter: pc.Expression | None,
+    ) -> pads.Scanner:
+        """A scanner over the given blocks; shared by dataset and fragments."""
         proj = list(columns) if columns else list(self._schema.names)
         scan_names = self._scan_columns(proj, filter)
         scan_schema = pa.schema([self._schema.field(n) for n in scan_names])
-        kept = None if filter is None else self._prune(filter)
-        batches = self._batch_generator(scan_schema, kept)
+        batches = self._batch_generator(scan_schema, blocks)
         return pads.Scanner.from_batches(
             batches, schema=scan_schema, columns=proj, filter=filter
         )
+
+    def get_fragments(
+        self, filter: pc.Expression | None = None
+    ) -> list["_XarrayFragment"]:
+        """One fragment per chunk of the source grid, pruned by ``filter``.
+
+        This is how DataFusion consumes the dataset
+        (``SessionContext.register_dataset`` plans one partition per
+        fragment and scans them in parallel), and enables the Dask
+        pattern ``from_map(lambda f: f.to_table().to_pandas(),
+        ds.get_fragments())``.
+        """
+        kept = None if filter is None else self._prune(filter)
+        return [_XarrayFragment(self, block) for block in self._blocks(kept)]
 
     # Inherited convenience methods (to_table, head, count_rows,
     # to_batches, take) route through scanner() and keep working; the
@@ -328,11 +351,6 @@ class XarrayPushdownDataset(pads.Dataset):
         # The dataset-level guarantee: trivially true. The base class
         # getter reads native state this object does not have.
         return pc.scalar(True)
-
-    def get_fragments(self, filter: pc.Expression | None = None):
-        raise NotImplementedError(
-            "XarrayPushdownDataset is not fragment-based; use scanner()."
-        )
 
     def filter(self, expression: pc.Expression):
         raise NotImplementedError(
@@ -465,7 +483,7 @@ class XarrayPushdownDataset(pads.Dataset):
     def _batch_generator(
         self,
         scan_schema: pa.Schema,
-        kept: dict[str, list[int]] | None,
+        blocks: Iterator[Block] | list[Block],
     ) -> Iterator[pa.RecordBatch]:
         names = list(scan_schema.names)
         data_vars = [n for n in names if n in self._ds.data_vars]
@@ -487,7 +505,6 @@ class XarrayPushdownDataset(pads.Dataset):
             )
 
         def generate() -> Iterator[pa.RecordBatch]:
-            blocks = self._blocks(kept)
             if self._prefetch <= 1:
                 for block in blocks:
                     yield from load(block)
@@ -507,6 +524,54 @@ class XarrayPushdownDataset(pads.Dataset):
                 pool.shutdown(wait=False, cancel_futures=True)
 
         return generate()
+
+
+class _XarrayFragment:
+    """One chunk of the source grid, presented as a dataset fragment.
+
+    Fragment consumers (DataFusion's ``DatasetExec`` plans one partition
+    per fragment; Dask maps over them) call :meth:`scanner` with the
+    columns and predicate for this piece; the pushed filter is applied
+    row-exactly, same as the parent dataset's scanner.
+    """
+
+    def __init__(self, dataset: XarrayPushdownDataset, block: Block):
+        self._dataset = dataset
+        self._block = block
+
+    @property
+    def physical_schema(self) -> pa.Schema:
+        return self._dataset.schema
+
+    def scanner(
+        self,
+        schema: pa.Schema | None = None,
+        columns: list[str] | None = None,
+        filter: pc.Expression | None = None,
+        **kwargs: Any,
+    ) -> pads.Scanner:
+        return self._dataset._scanner_for_blocks([self._block], columns, filter)
+
+    def to_batches(self, **kwargs: Any) -> Iterator[pa.RecordBatch]:
+        return self.scanner(**kwargs).to_batches()
+
+    def to_table(self, **kwargs: Any) -> pa.Table:
+        return self.scanner(**kwargs).to_table()
+
+    def count_rows(self, **kwargs: Any) -> int:
+        return self.scanner(**kwargs).count_rows()
+
+    def __dask_tokenize__(self) -> tuple:
+        # Dask hashes from_map inputs; the parent dataset is unpicklable,
+        # so provide a deterministic token from the fragment's identity.
+        return (
+            "xarray_sql._XarrayFragment",
+            repr(self._block),
+            self._dataset.schema.to_string(),
+        )
+
+    def __repr__(self) -> str:
+        return f"_XarrayFragment({self._block!r})"
 
 
 def arrow_dataset(
