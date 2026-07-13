@@ -37,11 +37,11 @@ dependencies = [
 
 [project.optional-dependencies]
 duckdb = [
-  "duckdb>=1.1.0",
+  "duckdb>=1.4.0",
 ]
 test = [
   "cftime",
-  "duckdb>=1.1.0",
+  "duckdb>=1.4.0",
   "pytest",
   "xarray[io]",
   "gcsfs",

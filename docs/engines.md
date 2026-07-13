@@ -77,6 +77,23 @@ exact expression via pyarrow — pruning is only an optimization on top.
 `XarrayArrowStream`, the dependency-light re-scannable C-stream wrapper
 without pushdown, remains available as a fallback.
 
+Details that matter in production:
+
+- **Mixed-dimension datasets** split into one table per dimension
+  group, named `<name>_<dim1>_<dim2>_...` (DuckDB registration has no
+  schema namespace); dimension coordinates are read once and shared
+  across the sub-tables.
+- **Finely partitioned axes** (e.g. hourly-chunked reanalysis time with
+  hundreds of thousands of chunks) prune through a two-level shadow:
+  a coarse pass over at most 1024 buckets, refined per surviving
+  bucket — so pruning cost is bounded regardless of chunk count, and
+  refinement is skipped when a predicate matches most of the axis.
+- **Tuning** via `xql.register(con, name, ds, batch_size=...,
+  prefetch=...)`: `prefetch` bounds how many chunk loads run ahead of
+  the consumer (memory ≈ `prefetch` × pivoted chunk size), `batch_size`
+  caps rows per Arrow batch.
+- Requires `duckdb >= 1.4` (tested on 1.5) and `pyarrow.dataset`.
+
 `xql.to_dataset` is engine-agnostic: it accepts DuckDB relations,
 `pyarrow.Table`/`RecordBatchReader`, or any object implementing the
 Arrow PyCapsule stream protocol, and is eager (the result is

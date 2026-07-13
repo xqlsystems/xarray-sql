@@ -35,11 +35,12 @@ class DataFusionAdapter:
         ds: xr.Dataset,
         *,
         chunks: Chunks = None,
+        **kwargs: Any,
     ) -> SessionContext:
         # XarrayContext.from_dataset adds dim-group splitting, cftime UDF
         # registration, and round-trip metadata tracking on top of the
         # plain table registration; use it when available.
         if isinstance(con, XarrayContext):
-            return con.from_dataset(name, ds, chunks=chunks)
-        con.register_table(name, read_xarray_table(ds, chunks))
+            return con.from_dataset(name, ds, chunks=chunks, **kwargs)
+        con.register_table(name, read_xarray_table(ds, chunks, **kwargs))
         return con

@@ -145,11 +145,21 @@ def test_to_dataset_rejects_missing_dim_column():
         xql.to_dataset(table, dims=["z"])
 
 
-def test_register_rejects_mixed_dimension_variables(ds):
+def test_register_splits_mixed_dimension_variables(ds):
     mixed = ds.assign(surface=ds["temperature"].isel(time=0, drop=True))
     con = duckdb.connect()
+    xql.register(con, "weather", mixed)
+
+    n_full = con.sql("SELECT COUNT(*) FROM weather_time_lat_lon").fetchone()[0]
+    n_surface = con.sql("SELECT COUNT(*) FROM weather_lat_lon").fetchone()[0]
+    assert n_full == 8 * 5 * 6
+    assert n_surface == 5 * 6
+
+
+def test_pushdown_dataset_rejects_mixed_dimension_variables(ds):
+    mixed = ds.assign(surface=ds["temperature"].isel(time=0, drop=True))
     with pytest.raises(ValueError, match="dimensions must be equal"):
-        xql.register(con, "weather", mixed)
+        XarrayPushdownDataset(mixed)
 
 
 def _tracked_connection(ds):
@@ -229,6 +239,95 @@ def test_or_and_in_filters_round_trip(ds):
 def test_pushdown_dataset_rejects_unchunked_dataset(ds):
     with pytest.raises(ValueError, match="must be chunked"):
         XarrayPushdownDataset(ds.compute())
+
+
+def test_fully_pruned_scan_returns_empty(con, ds):
+    n = con.sql(
+        "SELECT COUNT(*) FROM weather WHERE time >= '2022-01-01'"
+    ).fetchone()[0]
+    assert n == 0
+    rel = con.sql(
+        "SELECT time, lat, lon, temperature FROM weather "
+        "WHERE time >= '2022-01-01'"
+    )
+    out = xql.to_dataset(rel, template=ds)
+    assert out.sizes.get("time", 0) == 0
+
+
+def test_limit_terminates_early(con):
+    rows = con.sql("SELECT time, temperature FROM weather LIMIT 5").fetchall()
+    assert len(rows) == 5
+
+
+def test_descending_coordinate_pruning_is_correct(ds):
+    # Latitude stored north→south, like most rasters and ERA5.
+    flipped = ds.isel(lat=slice(None, None, -1)).chunk({"lat": 2})
+    con = duckdb.connect()
+    xql.register(con, "weather", flipped)
+    got = con.sql("SELECT COUNT(*) FROM weather WHERE lat > 4").fetchone()[0]
+    expected = int((ds.lat > 4).sum()) * ds.sizes["time"] * ds.sizes["lon"]
+    assert got == expected
+
+
+def test_integer_and_string_variables_round_trip():
+    ds = xr.Dataset(
+        {
+            "klass": (["y", "x"], np.arange(12, dtype=np.uint8).reshape(3, 4)),
+            "label": (
+                ["y", "x"],
+                np.array([["a"] * 4, ["b"] * 4, ["c"] * 4]),
+            ),
+        },
+        coords={"y": np.arange(3), "x": np.arange(4)},
+    ).chunk({"y": 2})
+    con = duckdb.connect()
+    xql.register(con, "grid", ds)
+    rows = con.sql(
+        "SELECT label, SUM(klass) AS total FROM grid "
+        "WHERE klass >= 4 GROUP BY label ORDER BY label"
+    ).fetchall()
+    assert rows == [("b", 22), ("c", 38)]
+
+
+def test_finely_chunked_dimension_uses_bucketed_pruning():
+    # 5000 single-step time chunks exceeds the shadow fanout (1024), so
+    # pruning goes through the coarse-then-refine path; an equality in
+    # the middle of the axis must load exactly one chunk.
+    n = 5000
+    ds = xr.Dataset(
+        {"v": (["time", "x"], np.random.rand(n, 2))},
+        coords={
+            "time": pd.date_range("2000-01-01", periods=n, freq="h"),
+            "x": np.arange(2),
+        },
+    ).chunk({"time": 1})
+    reads: list = []
+    dataset = XarrayPushdownDataset(
+        ds, _iteration_callback=lambda block, cols: reads.append(block)
+    )
+    con = duckdb.connect()
+    con.register("t", dataset)
+
+    got = con.sql(
+        "SELECT COUNT(*) FROM t WHERE time = '2000-03-15 07:00:00'"
+    ).fetchone()[0]
+    assert got == 2
+    assert len(reads) == 1
+
+    # A range spanning most of the axis stays correct (refinement is
+    # skipped when it cannot pay for itself).
+    reads.clear()
+    got = con.sql(
+        "SELECT COUNT(*) FROM t WHERE time >= '2000-01-01 12:00:00'"
+    ).fetchone()[0]
+    assert got == (n - 12) * 2
+
+
+def test_register_kwargs_are_forwarded(ds):
+    con = duckdb.connect()
+    xql.register(con, "weather", ds, prefetch=1, batch_size=7)
+    n = con.sql("SELECT COUNT(*) FROM weather").fetchone()[0]
+    assert n == 8 * 5 * 6
 
 
 def test_register_dispatches_to_datafusion():

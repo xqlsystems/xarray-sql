@@ -32,7 +32,12 @@ class EngineAdapter(Protocol):
 
     @staticmethod
     def register(
-        con: Any, name: str, ds: xr.Dataset, *, chunks: Chunks = None
+        con: Any,
+        name: str,
+        ds: xr.Dataset,
+        *,
+        chunks: Chunks = None,
+        **kwargs: Any,
     ) -> Any:
         """Register *ds* as table *name* on *con*; returns *con*."""
         ...
@@ -60,7 +65,12 @@ def get_adapter(con: Any) -> type[EngineAdapter]:
 
 
 def register(
-    con: Any, name: str, ds: xr.Dataset, *, chunks: Chunks = None
+    con: Any,
+    name: str,
+    ds: xr.Dataset,
+    *,
+    chunks: Chunks = None,
+    **kwargs: Any,
 ) -> Any:
     """Register a lazy xarray Dataset as a table on an engine connection.
 
@@ -84,13 +94,18 @@ def register(
         con: An engine connection: a ``datafusion.SessionContext`` (or
             :class:`xarray_sql.XarrayContext`) or a
             ``duckdb.DuckDBPyConnection``.
-        name: The table name to register the Dataset under.
-        ds: An xarray Dataset. All data variables must share the same
-            dimensions (select a variable subset first otherwise).
+        name: The table name to register the Dataset under. Datasets
+            whose variables have differing dimensions are split into one
+            table per dimension group (a SQL schema ``name.group`` on
+            DataFusion; ``name_group`` tables on DuckDB).
+        ds: An xarray Dataset.
         chunks: Xarray-like chunks specification controlling partition
             granularity. Defaults to the Dataset's existing chunks.
+        **kwargs: Adapter-specific options, forwarded as-is — e.g.
+            ``table_names`` on DataFusion, ``batch_size`` / ``prefetch``
+            on DuckDB.
 
     Returns:
         The connection, to allow chaining.
     """
-    return get_adapter(con).register(con, name, ds, chunks=chunks)
+    return get_adapter(con).register(con, name, ds, chunks=chunks, **kwargs)
