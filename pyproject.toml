@@ -42,6 +42,7 @@ duckdb = [
 test = [
   "cftime",
   "duckdb>=1.4.0",
+  "polars",
   "pytest",
   "xarray[io]",
   "gcsfs",

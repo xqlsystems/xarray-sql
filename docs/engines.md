@@ -106,6 +106,31 @@ Arrow PyCapsule stream protocol, and is eager (the result is
 materialized once, the right shape for aggregations and filtered
 selections).
 
+## Polars (via the pyarrow dataset protocol)
+
+`xql.arrow_dataset(ds)` returns a real `pyarrow.dataset.Dataset`, so
+any engine that consumes that protocol gets the same lazy scan with
+projection pushdown and coordinate-range chunk pruning — no adapter
+code at all. Polars works today:
+
+```python
+import polars as pl
+import xarray_sql as xql
+
+lf = pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))
+out = (
+    lf.filter(pl.col("lat") > 0)
+    .group_by("time")
+    .agg(pl.col("t2m").mean())
+    .collect()
+)
+xql.to_dataset(out, template=ds)   # polars frames speak Arrow PyCapsule
+```
+
+Polars pushes its predicate and column selection into the dataset scan
+(verified: a filtered group-by read 1 of 20 chunks and 3 of 5 columns),
+and its results round-trip through `xql.to_dataset` unchanged.
+
 ### Relation to duckdb-zarr
 
 [duckdb-zarr](https://github.com/xqlsystems/duckdb-zarr) reads Zarr

@@ -16,12 +16,17 @@ type.
 from .base import EngineAdapter, get_adapter, register, register_adapter
 from . import datafusion as _datafusion  # noqa: F401  (self-registers)
 from . import duckdb as _duckdb  # noqa: F401  (self-registers)
-from .duckdb import XarrayArrowStream, XarrayPushdownDataset
+from .pyarrow import (
+    XarrayArrowStream,
+    XarrayPushdownDataset,
+    arrow_dataset,
+)
 
 __all__ = [
     "EngineAdapter",
     "XarrayArrowStream",
     "XarrayPushdownDataset",
+    "arrow_dataset",
     "get_adapter",
     "register",
     "register_adapter",
