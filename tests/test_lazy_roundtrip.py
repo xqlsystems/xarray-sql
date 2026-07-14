@@ -176,3 +176,31 @@ def test_polars_float_value_windows_are_exact():
     np.testing.assert_allclose(
         picked.values, src.v.isel(lat=slice(1, 12, 2)).values
     )
+
+
+def test_max_result_bytes_guards_stream_collection(source, registered):
+    con, _ = registered
+    rel = con.sql("SELECT * FROM t")
+    with pytest.raises(ValueError, match="max_result_bytes"):
+        xql.to_dataset(rel, template=source, max_result_bytes=1_000)
+    # A generous budget passes untouched.
+    out = xql.to_dataset(rel, template=source, max_result_bytes=10**9)
+    xr.testing.assert_allclose(out, source)
+
+
+def test_max_result_bytes_guards_dense_blowup(registered):
+    con, _ = registered
+    # A sparse diagonal: tiny Arrow payload, huge dense grid (the
+    # coordinate product), so the dense-size check must fire even
+    # though the stream fits the budget.
+    diag = pa.table(
+        {
+            "a": np.arange(3000.0),
+            "b": np.arange(3000.0),
+            "v": np.ones(3000),
+        }
+    )
+    with pytest.raises(ValueError, match="dense reconstruction"):
+        xql.to_dataset(
+            diag, dims=["a", "b"], max_result_bytes=10_000_000
+        )

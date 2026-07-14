@@ -38,7 +38,35 @@ from .ds import (
 from .lazyscan import resolve_lazy_handle
 
 
-def _result_to_batches(result: Any) -> tuple[pa.Schema, list[pa.RecordBatch]]:
+def _guarded(
+    batches: Any, schema: pa.Schema, max_bytes: int | None
+) -> list[pa.RecordBatch]:
+    """Collect a batch iterable, erroring cleanly past ``max_bytes``.
+
+    The bounded-memory ladder's middle rung: a result that would blow
+    past the budget raises with the running size instead of exhausting
+    memory, before the (larger) dense reconstruction is even attempted.
+    """
+    if max_bytes is None:
+        return list(batches)
+    out: list[pa.RecordBatch] = []
+    total = 0
+    for batch in batches:
+        total += batch.nbytes
+        if total > max_bytes:
+            raise ValueError(
+                f"result exceeded max_result_bytes={max_bytes:,} while "
+                f"materializing (>= {total:,} bytes after "
+                f"{sum(b.num_rows for b in out) + batch.num_rows:,} rows). "
+                "Aggregate further, or reconstruct lazily with chunks=."
+            )
+        out.append(batch)
+    return out
+
+
+def _result_to_batches(
+    result: Any, max_bytes: int | None = None
+) -> tuple[pa.Schema, list[pa.RecordBatch]]:
     """Normalize an engine result into ``(schema, record batches)``.
 
     Accepts, in probe order:
@@ -57,13 +85,13 @@ def _result_to_batches(result: Any) -> tuple[pa.Schema, list[pa.RecordBatch]]:
     if isinstance(result, pa.Table):
         return result.schema, result.to_batches()
     if isinstance(result, pa.RecordBatchReader):
-        return result.schema, list(result)
+        return result.schema, _guarded(result, result.schema, max_bytes)
     if hasattr(result, "__arrow_c_stream__"):
         reader = pa.RecordBatchReader.from_stream(result)
-        return reader.schema, list(reader)
+        return reader.schema, _guarded(reader, reader.schema, max_bytes)
     if hasattr(result, "fetch_record_batch"):
         reader = result.fetch_record_batch()
-        return reader.schema, list(reader)
+        return reader.schema, _guarded(reader, reader.schema, max_bytes)
     if hasattr(result, "to_arrow_table"):
         table = result.to_arrow_table()
         return table.schema, table.to_batches()
@@ -72,7 +100,8 @@ def _result_to_batches(result: Any) -> tuple[pa.Schema, list[pa.RecordBatch]]:
         # Re-executable results without a stream protocol (a Polars
         # LazyFrame): execute once through the handle, unnarrowed.
         schema = handle.schema()
-        return schema, handle.fetch({}, list(schema.names))
+        batches = handle.fetch({}, list(schema.names))
+        return schema, _guarded(batches, schema, max_bytes)
     raise TypeError(
         f"Cannot read an Arrow stream from {type(result).__qualname__}; "
         "expected a pyarrow Table/RecordBatch/RecordBatchReader, an object "
@@ -89,6 +118,7 @@ def to_dataset(
     fill_value: Any = np.nan,
     chunks: Mapping[str, int] | str | None = None,
     coords: Literal["discover", "template"] = "discover",
+    max_result_bytes: int | None = None,
 ) -> xr.Dataset:
     """Convert an engine's Arrow result into a labeled ``xr.Dataset``.
 
@@ -140,6 +170,12 @@ def to_dataset(
             template's coord arrays instead, skipping discovery; only
             valid when the result spans the template's full extent (an
             unfiltered scan), and requires ``template=``.
+        max_result_bytes: Optional budget for the eager path. Raises a
+            clean ``ValueError`` (with the running size) as soon as the
+            materializing result exceeds it — both while collecting the
+            Arrow stream and before allocating the dense arrays —
+            instead of exhausting memory. ``None`` (default) means
+            unlimited.
 
     Returns:
         An ``xr.Dataset`` with ``dims`` as dimensions and the remaining
@@ -172,16 +208,55 @@ def to_dataset(
             result, dims, template, sparsity, fill_value, chunks, coords
         )
 
-    schema, batches = _result_to_batches(result)
+    schema, batches = _result_to_batches(result, max_result_bytes)
     field_names = [f.name for f in schema]
     field_types = {f.name: f.type for f in schema}
 
     dims = _resolve_dims(dims, template, field_names)
 
+    if max_result_bytes is not None:
+        _check_dense_size(
+            batches, dims, field_names, field_types, max_result_bytes
+        )
     ds = _dataset_from_batches(batches, dims, field_names, field_types)
     return _finish_dataset(
         ds, dims, template, sparsity, fill_value, None, field_types
     )
+
+
+def _check_dense_size(
+    batches: list[pa.RecordBatch],
+    dims: list[str],
+    field_names: list[str],
+    field_types: dict[str, Any],
+    max_bytes: int,
+) -> None:
+    """Error before allocating dense arrays larger than the budget.
+
+    The dense grid is the coordinate product, which for sparse results
+    can dwarf the Arrow input; check it against the same budget before
+    a single output array is allocated.
+    """
+    sizes = []
+    for d in dims:
+        values = set()
+        for batch in batches:
+            column = batch.column(batch.schema.names.index(d))
+            values.update(column.to_pylist())
+        sizes.append(len(values))
+    cells = int(np.prod(sizes)) if sizes else 0
+    total = sum(
+        cells * np.dtype(field_types[n].to_pandas_dtype()).itemsize
+        for n in field_names
+        if n not in dims
+    )
+    if total > max_bytes:
+        raise ValueError(
+            f"dense reconstruction needs {total:,} bytes "
+            f"({cells:,} grid cells), over max_result_bytes="
+            f"{max_bytes:,}. Aggregate further, or reconstruct lazily "
+            "with chunks=."
+        )
 
 
 def _resolve_dims(
