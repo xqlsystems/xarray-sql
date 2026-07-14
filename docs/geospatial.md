@@ -296,7 +296,7 @@ bbox prunes first and the exact polygon test is nearly free.
 geometry's envelope (shapely objects or plain
 `(xmin, ymin, xmax, ymax)` tuples), with `pad=` for
 `ST_DWithin`-style margins — so the idiom is one f-string. The full
-reasoning lives in [Behaviors & limitations](limitations.md).
+reasoning lives in [Known issues & limitations](limitations.md#geometry-predicates-alone-cannot-prune).
 
 `geometry_encoding="point"` emits GeoArrow-native separated coordinates
 instead (the struct children *are* the coordinate arrays): zero-parse

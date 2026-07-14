@@ -8,13 +8,19 @@ repo_name = "alxmrs/xarray-sql"
 edit_uri = "edit/main/docs/"
 nav = [
   {"Home" = "index.md"},
-  {"Examples" = "examples.md"},
-  {"Geospatial in SQL" = "geospatial.md"},
-  {"Engines" = "engines.md"},
-  {"Performance" = "performance.md"},
-  {"Behaviors & limitations" = "limitations.md"},
-  {"Contributing" = "contributing.md"},
-  {"Reference" = "reference/xarray_sql.md"}
+  {"Getting started" = "examples.md"},
+  {"Concepts" = [
+    {"Engines" = "engines.md"},
+  ]},
+  {"Guides" = [
+    {"Geospatial in SQL" = "geospatial.md"},
+    {"Performance" = "performance.md"},
+  ]},
+  {"Reference" = [
+    {"API" = "reference/xarray_sql.md"},
+    {"Known issues" = "limitations.md"},
+    {"Contributing" = "contributing.md"},
+  ]}
 ]
 
 # Theme configuration

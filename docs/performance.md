@@ -5,6 +5,27 @@ number below was measured on real cloud rasters (billions of pixels);
 your mileage scales with network and core count, but the *ratios* are
 structural.
 
+## How a scan decides what to read
+
+Every engine query over a registered table flows through one pipeline;
+each tuning knob on this page acts on one of its stages:
+
+```mermaid
+flowchart TB
+    Q["engine calls scanner(columns, filter)"] --> P["prune chunks<br/>per-dim coordinate ranges +<br/>Arrow guarantee simplification"]
+    Q --> J["project<br/>only referenced variables are read"]
+    P --> C["coalesce (opt-in)<br/>merge consecutive surviving chunks<br/>into single reads"]
+    C --> F["prefetch pool<br/>bounded by prefetch (threads)<br/>and prefetch_bytes (memory)"]
+    J --> F
+    F --> X["exact filter<br/>the pushed expression is applied<br/>row-exactly — pruning is only<br/>ever an optimization"]
+    X --> B["Arrow batches → engine"]
+```
+
+Two invariants hold everywhere: pruning never decides correctness (the
+exact expression is always applied — engines delete pushed conjuncts
+from their own plans), and only what reaches `scanner()` can prune
+(engines push plain comparisons, never function calls).
+
 ## Make the source read in parallel
 
 The single biggest lever is usually the reader, not the engine.
@@ -95,8 +116,7 @@ same scan while cutting wall time ~1.5-2x). Size the two together.
 `count(*)`-shaped queries never pay scan memory at all: unfiltered
 counts are pure chunk arithmetic, and filtered counts scan only the
 boundary chunks the filter cannot prove — at any filter breadth; see
-the classification diagram in
-[Behaviors & limitations](limitations.md#count-cost-depends-on-what-the-filter-references).
+[What counting costs](#what-counting-costs).
 ## Let pushdown do its job
 
 Selective queries are fast *because of their predicates*: bounding-box
@@ -127,6 +147,25 @@ def worker():
 
 The dataset object itself is safe to share across threads (verified
 under concurrent query load).
+
+## What counting costs
+
+`count(*)` never pays scan memory, and usually no I/O either:
+
+```mermaid
+flowchart TB
+    C["count_rows(filter)"] --> U{"filter?"}
+    U -- none --> A["pure arithmetic<br/>0 reads"]
+    U -- "coordinate ranges" --> H["hierarchical strictness:<br/>bucket-products proven or pruned<br/>whole; only mixed cells recurse"]
+    H --> E["boundary chunks scanned exactly<br/>(usually 0-2 per range edge,<br/>at any axis size)"]
+    U -- "data variables" --> S["every surviving chunk scanned<br/>(values carry no coordinate<br/>guarantee — see Known issues)"]
+```
+
+Coordinate-range counts stay arithmetic at any breadth (a
+near-universal filter over a million single-row chunks counts with
+zero reads), and the strictness pass applies cross-dimension
+information, so paired-range predicates count without reading the
+cross combinations.
 
 ## Stop re-scanning: materialize and pyramid
 

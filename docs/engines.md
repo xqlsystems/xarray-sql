@@ -137,7 +137,10 @@ chunked round-trip is fully supported: windows re-execute on Polars'
 streaming engine.
 
 
-## Behaviors and limitations by engine
+## Engine support matrix
+
+What each integration provides. Known issues and constraints live on
+[Known issues & limitations](limitations.md).
 
 | | DataFusion | DuckDB | Polars |
 |---|---|---|---|
@@ -145,42 +148,16 @@ streaming engine.
 | Projection pushdown | yes | yes | yes |
 | Chunk pruning on dim predicates | yes | yes | yes |
 | Eager round-trip (`xql.to_dataset`) | yes | yes | yes |
-| Chunked round-trip (`chunks=`) | re-execution | `spill=True` only [^duckdb-spill] | re-execution (streaming engine) |
-| `geometry` column | passes through as annotated WKB | native `GEOMETRY` (`"wkb"` encoding only) [^geometry] | plain binary/struct; no geo types |
-| Float `is_in` value sets | exact | exact | upstream precision bug — use `is_between` [^polars-isin] |
-| Concurrency | re-executable across threads | one dedicated engine thread per handle [^duckdb-serial] | single-threaded pull; parallelism from the scan's prefetch pool |
-| Mixed-dimension datasets | one schema, `name.group` tables | split into `<name>_<dims>` tables | filter `data_vars` before `arrow_dataset` |
+| Chunked round-trip (`chunks=`) | re-execution | `spill=True` [^spill-only] | re-execution (streaming engine) |
+| `geometry` column ([geospatial](geospatial.md#geoarrow-point-geometry-columns)) | annotated WKB passes through | native `GEOMETRY` (`"wkb"` encoding) | plain binary/struct |
+| Mixed-dimension datasets | one schema, `name.group` tables | `<name>_<dims>` tables | filter `data_vars` before `arrow_dataset` |
 | Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` |
 
-[^duckdb-spill]: Re-executing a relation from worker threads deadlocks
-    intermittently inside duckdb-python (reproduced on duckdb 1.4–1.5 /
-    CPython 3.12); without `spill=` the library raises instead of
-    hanging. Details under
-    [Round-trip behaviors](limitations.md#round-trip-behaviors).
-
-[^geometry]: DuckDB does not consume GeoArrow-native points; Polars has
-    no geo support at all. Pick the encoding per destination — see
-    [Geospatial in SQL](geospatial.md#geoarrow-point-geometry-columns).
-
-[^polars-isin]: Polars' translation of `is_in` **float** literals into
-    pyarrow expressions can silently drop matching rows (reproducible
-    without xarray-sql); integer and timestamp value sets are
-    unaffected. The lazy round-trip's own window queries render float
-    value lists as ranges internally for this reason.
-
-[^duckdb-serial]: Derived relations share execution state upstream, so
-    the round-trip handle serializes all engine calls on one dedicated
-    thread; concurrent materialization of derived relations raises
-    otherwise.
-
-The general scan behaviors every engine shares — pruning soundness,
-`count(*)` cost, NaN and non-numeric dimensions, memory bounds — are
-cataloged in [Behaviors & limitations](limitations.md).
+[^spill-only]: Why DuckDB relations do not re-execute — and two other
+    engine-specific issues worth knowing — is explained on
+    [Known issues & limitations](limitations.md#upstream-issues).
 
 ## The lazy round-trip across engines
-
-(The decision tree, and every edge of it, is diagrammed in
-[Behaviors & limitations](limitations.md#round-trip-behaviors).)
 
 `xql.to_dataset(result, chunks=...)` reconstructs a query result as a
 *chunked, lazy* `xr.Dataset`: each output chunk re-executes the engine's
@@ -189,9 +166,22 @@ table registered through xarray-sql, the window's range predicate flows
 back into chunk pruning at the source — accessing one output chunk reads
 only the source chunks it maps onto.
 
-One-shot results (`pyarrow` tables/readers, C-stream objects) are
-eager-only unless spilled; engine support for `chunks=` is in the
-matrix above.
+```mermaid
+flowchart TB
+    R["xql.to_dataset(result, ...)"] --> K{"chunks=?"}
+    K -- "None (default)" --> E["eager: materialize once<br/>max_result_bytes= guards both the<br/>Arrow stream and the dense grid"]
+    K -- "mapping / auto / inherit" --> SP{"spill=?"}
+    SP -- "False (default)" --> HD{"result type"}
+    HD -- "Polars LazyFrame/DataFrame<br/>DataFusion DataFrame" --> RX["re-execution: each window<br/>re-runs the query narrowed to its<br/>coordinate range (flows back into<br/>chunk pruning at the source)"]
+    HD -- "DuckDB relation" --> NO["NotImplementedError<br/>(upstream deadlock — see<br/>Known issues)"]
+    HD -- "one-shot Arrow stream" --> NO2["TypeError<br/>(nothing to re-execute)"]
+    SP -- "True / directory" --> SPL["one-pass spill: stream once<br/>(bounded memory) → temp Parquet →<br/>windows re-execute against the file<br/>(row-group pruning); file deleted<br/>with the Dataset"]
+```
+
+**Choosing:** re-execution pays per window — right when you'll touch a
+few windows of a huge result. Spill pays one full pass plus temporary
+disk — right when you'll touch most of the result, when the producer
+is a DuckDB relation, or when all you have is a one-shot stream.
 
 Two knobs matter at scale:
 
