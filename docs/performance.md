@@ -147,6 +147,8 @@ data scanned. Measured on ARCO-ERA5 over anonymous GCS: a one-month
 full-globe aggregation (772M rows) peaks at the same RSS as the
 one-week scan (174M rows), ~0.75 GB with the defaults.
 
+`prefetch_bytes` caps *estimated bytes* in flight instead of block
+count — set it when `coalesce_rows` makes blocks large or ragged.
 The block size is the source chunk size unless `coalesce_rows` is set,
 in which case in-flight units are merged blocks: raising
 `coalesce_rows` buys fewer round-trips at proportionally higher peak

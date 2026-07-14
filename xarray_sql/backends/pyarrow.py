@@ -275,6 +275,7 @@ class XarrayPushdownDataset(pads.Dataset):
         *,
         batch_size: int = DEFAULT_BATCH_SIZE,
         prefetch: int = DEFAULT_PREFETCH,
+        prefetch_bytes: int | None = None,
         coalesce_rows: int | None = None,
         geometry: tuple[str, str] | None = None,
         geometry_encoding: str = "wkb",
@@ -331,6 +332,7 @@ class XarrayPushdownDataset(pads.Dataset):
                 self._coord_arrays[str(d)] = ds.coords[d].values
         self._batch_size = batch_size
         self._prefetch = prefetch
+        self._prefetch_bytes = prefetch_bytes
         self._coalesce_rows = coalesce_rows
         self._iteration_callback = _iteration_callback
         self._shadows: dict[str, _DimShadow] | None = None
@@ -903,6 +905,17 @@ class XarrayPushdownDataset(pads.Dataset):
                 iter_record_batches(base.isel(block), scan_schema, batch_size)
             )
 
+        # Estimated pivoted bytes per row: gates admission when a
+        # byte budget is set, so peak memory tracks bytes in flight
+        # rather than block count (blocks vary in size under
+        # coalesce_rows).
+        row_width = 0
+        for field in scan_schema:
+            try:
+                row_width += np.dtype(field.type.to_pandas_dtype()).itemsize
+            except (TypeError, NotImplementedError):
+                row_width += 8
+
         def generate() -> Iterator[pa.RecordBatch]:
             block_iter = iter(blocks)
             first = next(block_iter, None)
@@ -918,22 +931,40 @@ class XarrayPushdownDataset(pads.Dataset):
                     for block in block_iter:
                         yield from load(block)
                 return
+            budget = self._prefetch_bytes
             pending: deque = deque()
+            inflight = 0
+
+            def submit(block: Block) -> None:
+                nonlocal inflight
+                estimate = self._block_rows(block) * row_width
+                pending.append((self._pool.submit(load, block), estimate))
+                inflight += estimate
+
+            def drain_one() -> Iterator[pa.RecordBatch]:
+                nonlocal inflight
+                future, estimate = pending.popleft()
+                inflight -= estimate
+                yield from future.result()
+
             try:
-                pending.append(self._pool.submit(load, first))
-                pending.append(self._pool.submit(load, second))
+                submit(first)
+                submit(second)
                 for block in block_iter:
-                    pending.append(self._pool.submit(load, block))
-                    if len(pending) >= self._prefetch:
-                        yield from pending.popleft().result()
+                    submit(block)
+                    while len(pending) > 1 and (
+                        len(pending) >= self._prefetch
+                        or (budget is not None and inflight > budget)
+                    ):
+                        yield from drain_one()
                 while pending:
-                    yield from pending.popleft().result()
+                    yield from drain_one()
             finally:
                 # Consumer may stop early (e.g. LIMIT): drop queued work
                 # without waiting for in-flight loads. The pool itself is
                 # shared across scans and stays up.
-                for f in pending:
-                    f.cancel()
+                for future, _ in pending:
+                    future.cancel()
 
         return generate()
 
@@ -995,6 +1026,7 @@ def arrow_dataset(
     *,
     batch_size: int = DEFAULT_BATCH_SIZE,
     prefetch: int = DEFAULT_PREFETCH,
+    prefetch_bytes: int | None = None,
     coalesce_rows: int | None = None,
     geometry: tuple[str, str] | None = None,
     geometry_encoding: str = "wkb",
@@ -1021,6 +1053,11 @@ def arrow_dataset(
         batch_size: Maximum rows per emitted Arrow RecordBatch.
         prefetch: Chunk loads kept in flight ahead of the consumer
             (memory scales with ``prefetch`` x pivoted chunk size).
+        prefetch_bytes: Optional cap on *estimated pivoted bytes* in
+            flight; admission then tracks bytes rather than block count,
+            which keeps peak memory steady when ``coalesce_rows`` makes
+            blocks large or uneven. ``prefetch`` still bounds
+            concurrency (thread count).
         coalesce_rows: When set, merge runs of consecutive surviving
             chunks along the most finely chunked dimension into single
             reads of at most this many rows. Fewer, larger source
@@ -1049,6 +1086,7 @@ def arrow_dataset(
         chunks,
         batch_size=batch_size,
         prefetch=prefetch,
+        prefetch_bytes=prefetch_bytes,
         coalesce_rows=coalesce_rows,
         geometry=geometry,
         geometry_encoding=geometry_encoding,

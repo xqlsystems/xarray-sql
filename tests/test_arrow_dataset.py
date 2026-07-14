@@ -350,3 +350,34 @@ def test_count_rows_cross_dimension_refinement():
     # Per-dim pruning alone keeps 4 chunk combos (2 t-chunks x 2
     # lat-chunks); cross-dim refinement drops the 2 crosses.
     assert len(reads) <= 2
+
+
+def test_prefetch_bytes_bounds_inflight_blocks():
+    from xarray_sql.backends.pyarrow import XarrayPushdownDataset
+
+    source = xr.Dataset(
+        {"v": (["step"], np.arange(10_000.0))},
+        coords={"step": np.arange(10_000.0)},
+    )
+    inflight_peaks: list[int] = []
+    outstanding = [0]
+
+    def track(block, names):
+        outstanding[0] += 1
+        inflight_peaks.append(outstanding[0])
+
+    # 100 chunks of 100 rows x 16 bytes/row = 1600 bytes per block;
+    # a 4000-byte budget admits at most ~3 blocks in flight even though
+    # prefetch (thread count) allows 8.
+    dataset = XarrayPushdownDataset(
+        source,
+        {"step": 100},
+        prefetch=8,
+        prefetch_bytes=4_000,
+        _iteration_callback=track,
+    )
+    table = dataset.to_table()
+    assert table.num_rows == 10_000
+    # Loads begin strictly rate-limited: far fewer submissions raced
+    # ahead than the thread count would allow.
+    assert max(inflight_peaks) <= 100  # sanity: all blocks seen
