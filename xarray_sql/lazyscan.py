@@ -248,6 +248,15 @@ class PolarsHandle:
         for dim, (kind, a, b) in specs.items():
             if kind == "range":
                 exprs.append(pl.col(dim).is_between(_plain(a), _plain(b)))
+            elif getattr(a, "dtype", None) is not None and a.dtype.kind == "f":
+                # Upstream Polars translates float ``is_in`` literals
+                # imprecisely (silently matching nothing); degenerate
+                # ranges compare exactly. Reproduced on polars 1.42.
+                vals = iter(a)
+                expr = pl.col(dim).is_between(*(_plain(next(vals)),) * 2)
+                for v in vals:
+                    expr = expr | pl.col(dim).is_between(*(_plain(v),) * 2)
+                exprs.append(expr)
             else:
                 exprs.append(pl.col(dim).is_in([_plain(v) for v in a]))
         lf = self._lf.filter(*exprs) if exprs else self._lf

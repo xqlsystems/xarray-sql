@@ -157,3 +157,22 @@ def test_descending_coordinate_windows():
     xr.testing.assert_allclose(out.compute(), desc)
     window = out.v.isel(lat=slice(2, 6)).compute()
     np.testing.assert_allclose(window.values, desc.v.isel(lat=slice(2, 6)))
+
+
+def test_polars_float_value_windows_are_exact():
+    pl = pytest.importorskip("polars")
+
+    # Non-representable float coordinates: upstream Polars is_in drops
+    # them (silently matching nothing); the handle's degenerate-range
+    # translation must return exactly the requested rows.
+    src = xr.Dataset(
+        {"v": (["lat", "t"], np.arange(38.0).reshape(19, 2))},
+        coords={"lat": np.linspace(-45.0, 45.0, 19), "t": [0.0, 1.0]},
+    )
+    lf = pl.scan_pyarrow_dataset(xql.arrow_dataset(src, {"lat": 5}))
+    out = xql.to_dataset(lf, template=src, chunks={"lat": 5})
+    # A stepped (non-contiguous) selection forces the value-list path.
+    picked = out.v.isel(lat=slice(1, 12, 2)).compute()
+    np.testing.assert_allclose(
+        picked.values, src.v.isel(lat=slice(1, 12, 2)).values
+    )
