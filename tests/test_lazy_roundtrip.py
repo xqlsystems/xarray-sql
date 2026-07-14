@@ -116,9 +116,7 @@ def test_one_shot_stream_with_chunks_raises(source, registered):
         xql.to_dataset(table, template=source, chunks={"time": 10})
 
 
-def test_inherit_without_chunked_source_falls_back_to_eager(
-    source, registered
-):
+def test_inherit_without_chunked_source_falls_back_to_eager(source, registered):
     con, _ = registered
     rel = con.sql("SELECT * FROM t")
     out = xql.to_dataset(rel, template=source, chunks="inherit")
@@ -201,9 +199,7 @@ def test_max_result_bytes_guards_dense_blowup(registered):
         }
     )
     with pytest.raises(ValueError, match="dense reconstruction"):
-        xql.to_dataset(
-            diag, dims=["a", "b"], max_result_bytes=10_000_000
-        )
+        xql.to_dataset(diag, dims=["a", "b"], max_result_bytes=10_000_000)
 
 
 def test_duckdb_spill_chunked_round_trip(source, registered, tmp_path):

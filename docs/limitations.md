@@ -1,10 +1,10 @@
 # Behaviors & limitations
 
-The multi-engine backends make deliberate trade-offs. This page is the
-definitive catalog: what each behavior is, *why* it holds, and what to
-do about it. Everything here is pinned by tests; the "why" sections
-name the mechanism so you can predict behavior on cases this page
-doesn't list.
+The multi-engine backends make deliberate trade-offs. This page
+catalogs them: what each behavior is, *why* it holds, and what to do
+about it. Everything here is pinned by tests, and each "why" names the
+mechanism, so behavior on cases this page doesn't list can be predicted
+from the same rules.
 
 ## How a scan decides what to read
 
@@ -23,7 +23,7 @@ flowchart TB
     X --> B["Arrow batches → engine"]
 ```
 
-The two invariants worth memorizing:
+Two invariants explain most of what follows:
 
 1. **Pruning never decides correctness.** Engines (DuckDB in
    particular) delete the filter conjuncts they push down and never

@@ -376,9 +376,7 @@ class SQLBackendArray(xr.backends.BackendArray):
                     and (arr == np.arange(len(coord))).all()
                 ):
                     continue
-                contiguous = len(arr) > 1 and bool(
-                    (np.diff(arr) == 1).all()
-                )
+                contiguous = len(arr) > 1 and bool((np.diff(arr) == 1).all())
             specs[dim] = _dim_spec(requested[dim], contiguous)
 
         out_shape = tuple(len(requested[d]) for d in self._dimension_columns)
@@ -600,7 +598,7 @@ def _maybe_template_coords(
     table and the registered Dataset carries all requested dims. Returns
     ``None`` otherwise so the caller falls back to per-dim discovery.
     Skipping discovery avoids one full plan execution per dim and
-    preserves the source's coordinate order (xarray-sql#171).
+    preserves the source's coordinate order.
 
     Coord values come from the **scanned** registered Dataset, not from
     any user-supplied ``template=`` (which is for metadata recovery

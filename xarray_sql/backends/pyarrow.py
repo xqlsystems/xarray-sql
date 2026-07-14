@@ -304,9 +304,7 @@ class XarrayPushdownDataset(pads.Dataset):
                     f"geometry= would shadow an existing column named "
                     f"{GEOMETRY_COLUMN!r}."
                 )
-            missing = [
-                d for d in self._geometry if d not in self._schema.names
-            ]
+            missing = [d for d in self._geometry if d not in self._schema.names]
             if missing:
                 raise ValueError(
                     f"geometry dims {missing} are not columns of the "
@@ -351,8 +349,7 @@ class XarrayPushdownDataset(pads.Dataset):
         if self._prefetch > 1:
             self._pool = ThreadPoolExecutor(max_workers=self._prefetch)
             spawn = [
-                self._pool.submit(lambda: None)
-                for _ in range(self._prefetch)
+                self._pool.submit(lambda: None) for _ in range(self._prefetch)
             ]
             for f in spawn:
                 f.result()
@@ -480,9 +477,9 @@ class XarrayPushdownDataset(pads.Dataset):
             return int(np.prod([self._ds.sizes[d] for d in self._ds.dims]))
         kept = self._prune(filter)
         proven, boundary = self._strict_partition(kept, filter)
-        return proven + self._scanner_for_blocks(
-            boundary, [], filter
-        ).count_rows()
+        return (
+            proven + self._scanner_for_blocks(boundary, [], filter).count_rows()
+        )
 
     # Inherited convenience methods (to_table, head, to_batches, take)
     # route through scanner() and keep working; the members below would
@@ -699,9 +696,7 @@ class XarrayPushdownDataset(pads.Dataset):
             buckets = {
                 d: np.array_split(np.asarray(cell[d]), ks[d]) for d in dims
             }
-            combos = list(
-                itertools.product(*(range(ks[d]) for d in dims))
-            )
+            combos = list(itertools.product(*(range(ks[d]) for d in dims)))
             guarantees: list[pc.Expression | None] = []
             for combo in combos:
                 g: pc.Expression | None = None
@@ -714,9 +709,7 @@ class XarrayPushdownDataset(pads.Dataset):
                         continue
                     g = gd if g is None else g & gd
                 guarantees.append(g if (g is not None and complete) else None)
-            decidable = [
-                i for i, g in enumerate(guarantees) if g is not None
-            ]
+            decidable = [i for i, g in enumerate(guarantees) if g is not None]
             satisfiable = set(decidable)
             unstrict = set(decidable)
             if decidable:
@@ -735,13 +728,10 @@ class XarrayPushdownDataset(pads.Dataset):
                     int(f.path) for f in shadow.get_fragments(filter=filter)
                 }
                 unstrict = {
-                    int(f.path)
-                    for f in shadow.get_fragments(filter=~filter)
+                    int(f.path) for f in shadow.get_fragments(filter=~filter)
                 }
             for i, combo in enumerate(combos):
-                subcell = {
-                    d: list(buckets[d][b]) for d, b in zip(dims, combo)
-                }
+                subcell = {d: list(buckets[d][b]) for d, b in zip(dims, combo)}
                 if guarantees[i] is not None:
                     if i not in satisfiable:
                         continue  # provably empty: cross-dim refinement
@@ -825,9 +815,7 @@ class XarrayPushdownDataset(pads.Dataset):
         merge_dim = max(dims, key=lambda d: len(self._resolved[d]))
         others = [d for d in dims if d != merge_dim]
         ranges = {
-            d: list(
-                (kept or {}).get(str(d), range(len(self._resolved[d])))
-            )
+            d: list((kept or {}).get(str(d), range(len(self._resolved[d]))))
             for d in dims
         }
         merge_bounds = self._chunk_bounds[merge_dim]
@@ -858,8 +846,7 @@ class XarrayPushdownDataset(pads.Dataset):
             for i in ranges[merge_dim]:
                 rows = int(merge_bounds[i + 1] - merge_bounds[i]) * per_row
                 if run and (
-                    i != run[-1] + 1
-                    or run_rows + rows > self._coalesce_rows
+                    i != run[-1] + 1 or run_rows + rows > self._coalesce_rows
                 ):
                     yield flush(prefix, run)
                     run, run_rows = [], 0

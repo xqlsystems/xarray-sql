@@ -134,8 +134,8 @@ def test_scanner_honors_batch_size(ds):
 
 def test_schema_never_uses_view_types(ds):
     # A single view-typed column disables DuckDB's filter pushdown for
-    # the whole table (duckdb-python#227); pin the schema to offset
-    # layouts so a pyarrow upgrade cannot regress this silently.
+    # the whole table; pin the schema to offset layouts so a pyarrow
+    # upgrade cannot regress this silently.
     for field in xql.arrow_dataset(ds).schema:
         assert field.type not in (pa.string_view(), pa.binary_view())
 
@@ -273,8 +273,11 @@ def test_coalesce_merges_consecutive_chunk_runs():
     # 0-2 and 7-9 yields one merged read per consecutive run.
     reads.clear()
     keep = (
-        (pc.field("time") < pa.scalar(pd.Timestamp("2020-01-02 06:00"), type=pa.timestamp("ns")))
-        | (pc.field("time") >= pa.scalar(pd.Timestamp("2020-01-03 22:00"), type=pa.timestamp("ns")))
+        pc.field("time")
+        < pa.scalar(pd.Timestamp("2020-01-02 06:00"), type=pa.timestamp("ns"))
+    ) | (
+        pc.field("time")
+        >= pa.scalar(pd.Timestamp("2020-01-03 22:00"), type=pa.timestamp("ns"))
     )
     table = dataset.to_table(filter=keep)
     assert table.num_rows == (30 + 30) * 4
@@ -292,9 +295,7 @@ def test_coalesce_only_affects_scanner_not_fragments():
             "lat": np.linspace(-30.0, 30.0, 4),
         },
     )
-    dataset = XarrayPushdownDataset(
-        source, {"time": 10}, coalesce_rows=10_000
-    )
+    dataset = XarrayPushdownDataset(source, {"time": 10}, coalesce_rows=10_000)
     # Fragment consumers (DataFusion, dask) keep one fragment per source
     # chunk for their own parallelism.
     assert len(dataset.get_fragments()) == 10
@@ -336,9 +337,9 @@ def test_count_rows_cross_dimension_refinement():
         {"t": 10, "lat": 10},
         _iteration_callback=lambda b, n: reads.append(b),
     )
-    predicate = (
-        (pc.field("t") < 5.0) & (pc.field("lat") < -40.0)
-    ) | ((pc.field("t") >= 190.0) & (pc.field("lat") > 40.0))
+    predicate = ((pc.field("t") < 5.0) & (pc.field("lat") < -40.0)) | (
+        (pc.field("t") >= 190.0) & (pc.field("lat") > 40.0)
+    )
     n = dataset.count_rows(filter=predicate)
     expected = int(
         (

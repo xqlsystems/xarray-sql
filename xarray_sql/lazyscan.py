@@ -29,11 +29,13 @@ output chunk's access reads only the source chunks it maps onto.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.parquet as pq
+from datafusion import col, literal
 
 DimSpec = tuple[str, Any, Any]
 """One dimension's window: ``("range", lo, hi)`` (inclusive bounds; the
@@ -69,7 +71,7 @@ class LazyResultHandle(Protocol):
         self, specs: dict[str, DimSpec], columns: list[str]
     ) -> list[pa.RecordBatch]: ...
 
-
+    def spill_parquet(self, path: str) -> None: ...
 
 
 class DataFusionHandle:
@@ -84,8 +86,6 @@ class DataFusionHandle:
         return self._df.schema()
 
     def distinct(self, column: str) -> np.ndarray:
-        from datafusion import col
-
         dim_only = self._df.select(col(f'"{column}"')).distinct()
         batches = [b.to_pyarrow() for b in dim_only.execute_stream()]
         if not batches:
@@ -97,8 +97,6 @@ class DataFusionHandle:
     def fetch(
         self, specs: dict[str, DimSpec], columns: list[str]
     ) -> list[pa.RecordBatch]:
-        from datafusion import col, literal
-
         predicate = None
         for dim, (kind, a, b) in specs.items():
             c = col(f'"{dim}"')
@@ -117,8 +115,6 @@ class DataFusionHandle:
         return [b.to_pyarrow() for b in out.execute_stream()]
 
     def spill_parquet(self, path: str) -> None:
-        import pyarrow.parquet as pq
-
         with pq.ParquetWriter(path, self.schema()) as writer:
             for batch in self._df.execute_stream():
                 writer.write_batch(batch.to_pyarrow())
@@ -202,9 +198,7 @@ class DuckDBHandle:
                     c <= duckdb.ConstantExpression(_plain(b))
                 )
             else:
-                p = c.isin(
-                    *(duckdb.ConstantExpression(_plain(v)) for v in a)
-                )
+                p = c.isin(*(duckdb.ConstantExpression(_plain(v)) for v in a))
             predicate = p if predicate is None else predicate & p
         rel = self._rel if predicate is None else self._rel.filter(predicate)
         rel = rel.project(*(duckdb.ColumnExpression(n) for n in columns))
@@ -217,11 +211,9 @@ class DuckDBHandle:
             )
             return list(reader)
 
-        return self._run(materialize)
+        return cast(list[pa.RecordBatch], self._run(materialize))
 
     def spill_parquet(self, path: str) -> None:
-        import pyarrow.parquet as pq
-
         def run() -> None:
             reader = (
                 self._rel.to_arrow_reader()
@@ -285,7 +277,7 @@ class PolarsHandle:
         out = lf.select([pl.col(n) for n in columns]).collect(
             engine="streaming"
         )
-        return out.to_arrow().to_batches()
+        return cast(list[pa.RecordBatch], out.to_arrow().to_batches())
 
     def spill_parquet(self, path: str) -> None:
         self._lf.sink_parquet(path)

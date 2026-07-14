@@ -23,6 +23,7 @@ correct tag for plain longitude/latitude grids.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import numpy as np
 import pyarrow as pa
@@ -53,9 +54,7 @@ def geometry_field(encoding: str, crs: str | None) -> pa.Field:
     return pa.field(GEOMETRY_COLUMN, storage, metadata=metadata)
 
 
-def build_geometry(
-    encoding: str, x: pa.Array, y: pa.Array
-) -> pa.Array:
+def build_geometry(encoding: str, x: pa.Array, y: pa.Array) -> pa.Array:
     """Point geometries for one batch's x/y coordinate columns."""
     if encoding == "point":
         return pa.StructArray.from_arrays(
@@ -72,7 +71,7 @@ def _wkb_points(x: np.ndarray, y: np.ndarray) -> pa.Array:
     n = len(x)
     buf = np.empty((n, 21), dtype=np.uint8)
     buf[:, 0] = 1  # little-endian byte order mark
-    buf[:, 1:5] = np.array([1, 0, 0, 0], dtype=np.uint8)  # type: Point
+    buf[:, 1:5] = np.array([1, 0, 0, 0], dtype=np.uint8)  # WKB type 1: Point
     buf[:, 5:13] = x.view(np.uint8).reshape(n, 8)
     buf[:, 13:21] = y.view(np.uint8).reshape(n, 8)
     offsets = pa.py_buffer(

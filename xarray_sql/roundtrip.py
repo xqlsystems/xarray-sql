@@ -27,6 +27,7 @@ from typing import Any, Literal
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.parquet as pq
 import xarray as xr
 
 from .ds import (
@@ -46,9 +47,9 @@ def _guarded(
 ) -> list[pa.RecordBatch]:
     """Collect a batch iterable, erroring cleanly past ``max_bytes``.
 
-    The bounded-memory ladder's middle rung: a result that would blow
-    past the budget raises with the running size instead of exhausting
-    memory, before the (larger) dense reconstruction is even attempted.
+    A result that would blow past the budget raises with the running
+    size instead of exhausting memory, before the (larger) dense
+    reconstruction is even attempted.
     """
     if max_bytes is None:
         return list(batches)
@@ -224,8 +225,14 @@ def to_dataset(
     if chunks is not None:
         if spill:
             return _to_dataset_spilled(
-                result, dims, template, sparsity, fill_value, chunks,
-                coords, spill,
+                result,
+                dims,
+                template,
+                sparsity,
+                fill_value,
+                chunks,
+                coords,
+                spill,
             )
         return _to_dataset_lazy(
             result, dims, template, sparsity, fill_value, chunks, coords
@@ -343,9 +350,7 @@ def _to_dataset_lazy(
                 f"coords='template' requires the template to carry coords "
                 f"for every dim; missing {missing}."
             )
-        coord_arrays = {
-            d: np.asarray(template.coords[d].values) for d in dims
-        }
+        coord_arrays = {d: np.asarray(template.coords[d].values) for d in dims}
 
     resolved = XarrayDataFrame._resolve_chunks(chunks, template, dims)
     if resolved is None:
@@ -398,7 +403,7 @@ def _to_dataset_spilled(
     """
     import polars as pl
 
-    directory = None if spill is True else os.fspath(spill)
+    directory = os.fspath(spill) if not isinstance(spill, bool) else None
     fd, path = tempfile.mkstemp(suffix=".parquet", dir=directory)
     os.close(fd)
     try:
@@ -413,7 +418,13 @@ def _to_dataset_spilled(
     spilled = PolarsHandle(pl.scan_parquet(path))
     weakref.finalize(spilled, _unlink_quietly, path)
     return _to_dataset_lazy(
-        result, dims, template, sparsity, fill_value, chunks, coords,
+        result,
+        dims,
+        template,
+        sparsity,
+        fill_value,
+        chunks,
+        coords,
         _handle=spilled,
     )
 
@@ -427,8 +438,6 @@ def _unlink_quietly(path: str) -> None:
 
 def _stream_to_parquet(result: Any, path: str) -> None:
     """Write a one-shot Arrow result to Parquet, batch by batch."""
-    import pyarrow.parquet as pq
-
     if isinstance(result, pa.RecordBatch):
         schema, batches = result.schema, iter([result])
     elif isinstance(result, pa.Table):
