@@ -206,6 +206,43 @@ def test_max_result_bytes_guards_stream_collection(source, registered):
     xr.testing.assert_allclose(out, source)
 
 
+def test_max_result_bytes_guards_polars_lazyframe(source):
+    pl = pytest.importorskip("polars")
+
+    # The LazyFrame eager fallback collects inside the engine before
+    # any batch surfaces; with a budget set it must stream through
+    # collect_batches so the guard fires before full materialization.
+    lf = pl.scan_pyarrow_dataset(xql.arrow_dataset(source, {"time": 10}))
+    with pytest.raises(ValueError, match="max_result_bytes"):
+        xql.to_dataset(lf, template=source, max_result_bytes=1_000)
+    out = xql.to_dataset(lf, template=source, max_result_bytes=10**9)
+    xr.testing.assert_allclose(out, source)
+
+
+def test_max_result_bytes_guards_table_only_results(source, registered):
+    con, _ = registered
+    table = con.sql("SELECT * FROM t").to_arrow_table()
+
+    class TableOnly:
+        # The narrowest result surface: to_arrow_table() materializes
+        # in full before the budget can see a batch, so the guard runs
+        # on the materialized size.
+        def __init__(self, t):
+            self._t = t
+
+        def to_arrow_table(self):
+            return self._t
+
+    with pytest.raises(ValueError, match="max_result_bytes"):
+        xql.to_dataset(
+            TableOnly(table), template=source, max_result_bytes=1_000
+        )
+    out = xql.to_dataset(
+        TableOnly(table), template=source, max_result_bytes=10**9
+    )
+    xr.testing.assert_allclose(out, source)
+
+
 def test_max_result_bytes_guards_dense_blowup(registered):
     con, _ = registered
     # A sparse diagonal: tiny Arrow payload, huge dense grid (the

@@ -28,6 +28,7 @@ output chunk's access reads only the source chunks it maps onto.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Protocol, cast
 
@@ -73,6 +74,12 @@ class LazyResultHandle(Protocol):
 
     def spill_parquet(self, path: str) -> None: ...
 
+    # Handles may additionally offer ``stream(columns)``, yielding the
+    # unfiltered result's Arrow batches incrementally instead of
+    # materializing it first. The eager round-trip uses it to enforce
+    # ``max_result_bytes`` while collecting; handles without it refuse
+    # the budget rather than blow past it after collecting.
+
 
 class DataFusionHandle:
     """Handle over a ``datafusion.DataFrame``."""
@@ -113,6 +120,11 @@ class DataFusionHandle:
         out = self._df if predicate is None else self._df.filter(predicate)
         out = out.select(*(col(f'"{n}"') for n in columns))
         return [b.to_pyarrow() for b in out.execute_stream()]
+
+    def stream(self, columns: list[str]) -> Iterator[pa.RecordBatch]:
+        """Execute once, yielding Arrow batches as the plan produces them."""
+        out = self._df.select(*(col(f'"{n}"') for n in columns))
+        return (b.to_pyarrow() for b in out.execute_stream())
 
     def spill_parquet(self, path: str) -> None:
         with pq.ParquetWriter(path, self.schema()) as writer:
@@ -275,6 +287,31 @@ class PolarsHandle:
             engine="streaming"
         )
         return cast(list[pa.RecordBatch], out.to_arrow().to_batches())
+
+    def stream(self, columns: list[str]) -> Iterator[pa.RecordBatch]:
+        """Execute once, yielding Arrow batches incrementally.
+
+        Unlike :meth:`fetch`, whose ``collect`` materializes the whole
+        result inside the engine before any batch surfaces, this yields
+        batches as the streaming engine produces them, so a byte budget
+        can fire before the result is fully in memory. Requires
+        ``LazyFrame.collect_batches`` (polars >= 1.33); older Polars
+        raises here, before anything is collected.
+        """
+        import polars as pl
+
+        lf = self._lf.select([pl.col(n) for n in columns])
+        if not hasattr(lf, "collect_batches"):
+            raise ValueError(
+                "streaming collection of a Polars LazyFrame requires "
+                "polars >= 1.33 (LazyFrame.collect_batches)."
+            )
+
+        def generate() -> Iterator[pa.RecordBatch]:
+            for frame in lf.collect_batches(engine="streaming"):
+                yield from frame.to_arrow().to_batches()
+
+        return generate()
 
     def spill_parquet(self, path: str) -> None:
         self._lf.sink_parquet(path)

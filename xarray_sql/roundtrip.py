@@ -111,14 +111,41 @@ def _result_to_batches(
             # (the dense-size check still applies downstream).
             return schema, list(batches)
         return schema, _guarded(batches, max_bytes)
-    if hasattr(result, "to_arrow_table"):
-        table = result.to_arrow_table()
-        return table.schema, table.to_batches()
     handle = resolve_lazy_handle(result)
+    if hasattr(result, "to_arrow_table") and (
+        max_bytes is None or handle is None
+    ):
+        # This branch materializes the whole result in one call before
+        # the budget can observe a single batch, so with a budget set a
+        # re-executable result streams through its handle below instead;
+        # the post-materialization nbytes check is the fallback guard
+        # for one-shot results whose only surface is to_arrow_table().
+        table = result.to_arrow_table()
+        if max_bytes is not None and table.nbytes > max_bytes:
+            raise ValueError(
+                f"result materialized to {table.nbytes:,} bytes, over "
+                f"max_result_bytes={max_bytes:,}. Aggregate further, or "
+                "reconstruct lazily with chunks=."
+            )
+        return table.schema, table.to_batches()
     if handle is not None:
         schema = handle.schema()
-        batches = handle.fetch({}, list(schema.names))
-        return schema, _guarded(batches, max_bytes)
+        names = list(schema.names)
+        if max_bytes is None:
+            return schema, handle.fetch({}, names)
+        # fetch() may materialize the whole result inside the engine
+        # before any batch surfaces (Polars collect()), which would
+        # defeat the budget; enforce it on a true batch stream, or
+        # refuse up front instead of erroring after the memory is spent.
+        stream = getattr(handle, "stream", None)
+        if stream is None:
+            raise ValueError(
+                "max_result_bytes cannot be enforced for "
+                f"{type(result).__qualname__}: the result materializes "
+                "fully before batches surface. Drop max_result_bytes=, "
+                "or reconstruct lazily with chunks=."
+            )
+        return schema, _guarded(stream(names), max_bytes)
     raise TypeError(
         f"Cannot read an Arrow stream from {type(result).__qualname__}; "
         "expected a pyarrow Table/RecordBatch/RecordBatchReader, an object "
@@ -194,7 +221,11 @@ def to_dataset(
             materializing result exceeds it — both while collecting the
             Arrow stream and before allocating the dense arrays —
             instead of exhausting memory. ``None`` (default) means
-            unlimited.
+            unlimited. Results whose only surface is
+            ``to_arrow_table()`` necessarily materialize in full before
+            the budget can be checked (the check then runs on the
+            materialized size); re-executable results stream instead,
+            so the budget fires before full materialization.
         spill: Chunked reconstruction from a one-pass on-disk spill
             instead of per-window re-execution: the result is streamed
             *once* (bounded memory) into a temporary Parquet file, and
