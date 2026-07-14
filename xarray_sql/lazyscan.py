@@ -287,11 +287,14 @@ class PolarsHandle:
                 # Upstream Polars translates float ``is_in`` literals
                 # imprecisely (silently matching nothing); degenerate
                 # ranges compare exactly. Reproduced on polars 1.42.
-                vals = iter(a)
-                expr = pl.col(dim).is_between(*(_plain(next(vals)),) * 2)
-                for v in vals:
-                    expr = expr | pl.col(dim).is_between(*(_plain(v),) * 2)
-                exprs.append(expr)
+                # ``any_horizontal`` keeps the disjunction flat — a
+                # left-deep OR chain plans quadratically in the number
+                # of values.
+                exprs.append(
+                    pl.any_horizontal(
+                        [pl.col(dim).is_between(*(_plain(v),) * 2) for v in a]
+                    )
+                )
             else:
                 exprs.append(pl.col(dim).is_in([_plain(v) for v in a]))
         lf = self._lf.filter(*exprs) if exprs else self._lf

@@ -206,6 +206,25 @@ def test_max_result_bytes_guards_stream_collection(source, registered):
     xr.testing.assert_allclose(out, source)
 
 
+def test_polars_large_float_value_lists_stay_flat():
+    pl = pytest.importorskip("polars")
+
+    # 5000 stepped float values in a single window: a left-deep OR
+    # chain plans quadratically at this size (seconds per window); the
+    # flat any_horizontal translation must stay exact and quick.
+    n = 10_000
+    src = xr.Dataset(
+        {"v": (["x"], np.arange(float(n)))},
+        coords={"x": np.linspace(-45.0, 45.0, n)},
+    )
+    lf = pl.scan_pyarrow_dataset(xql.arrow_dataset(src, {"x": n}))
+    out = xql.to_dataset(lf, template=src, chunks={"x": n})
+    picked = out.v.isel(x=slice(1, None, 2)).compute()
+    np.testing.assert_allclose(
+        picked.values, src.v.isel(x=slice(1, None, 2)).values
+    )
+
+
 def test_collect_streaming_falls_back_on_older_polars():
     from xarray_sql.lazyscan import _collect_streaming
 
