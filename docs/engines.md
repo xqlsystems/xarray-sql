@@ -155,7 +155,7 @@ What each integration provides. Known issues and constraints live on
 
 [^spill-only]: Why DuckDB relations do not re-execute — and two other
     engine-specific issues worth knowing — is explained on
-    [Known issues & limitations](limitations.md#upstream-issues).
+    [Known issues & limitations](limitations.md#engine-specific-issues).
 
 ## The lazy round-trip across engines
 

@@ -10,7 +10,7 @@ scalar UDF.
 The array paradigm (NumPy, Xarray, Dask) is a wonderful *interface* for these
 operations. But it is not the only one, and for a large and growing audience —
 the people fluent in SQL rather than in `apply_ufunc` and rechunking — it is not
-the most accessible one. [`xarray-sql`](../README.md) lets you pose these
+the most accessible one. [`xarray-sql`](index.md) lets you pose these
 questions in SQL and answers them with a real query engine (DataFusion here;
 [the same tables serve DuckDB and Polars](engines.md)). The
 datasets are opened *lazily*, so a query against the whole archive reads only the
@@ -335,7 +335,7 @@ uv run benchmarks/geospatial/02_climatology.py   # standalone (PEP 723 deps)
 ```
 
 Each script prints its SQL, runs the array reference, and asserts the two agree.
-See [`benchmarks/geospatial/README.md`](../benchmarks/geospatial/README.md) for
+See [`benchmarks/geospatial/README.md`](https://github.com/alxmrs/xarray-sql/tree/main/benchmarks/geospatial) for
 the full list and dataset notes.
 
 ## Results
