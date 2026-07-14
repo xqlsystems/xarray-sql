@@ -72,14 +72,18 @@ matches most of the axis that cost cannot pay for itself, so the scan
 falls back to the (sound) coarse answer.
 """
 
-_STRICT_MAX_BLOCKS = 4096
-"""Cap on surviving chunks for the strictness (provably-true) analysis.
+_STRICT_LEVEL_BUDGET = 4096
+"""Maximum guarantee fragments per level of the strictness analysis.
 
-Deciding strictness builds one guarantee fragment per surviving chunk;
-above this many survivors the analysis costs more than it saves, so
-every survivor is treated as a boundary chunk (sound, just no fast
-path).
+Strictness classifies bucket-products of surviving chunks recursively:
+whole buckets prove (or prune) at once, and only mixed cells refine.
+Each level builds at most this many fragments, so grids of millions of
+chunks resolve in a handful of vectorized passes.
 """
+
+_STRICT_MAX_DEPTH = 6
+"""Recursion bound for the strictness analysis (a backstop: realistic
+grids terminate in 2-3 levels)."""
 
 
 class _DimShadow:
@@ -330,6 +334,9 @@ class XarrayPushdownDataset(pads.Dataset):
         self._coalesce_rows = coalesce_rows
         self._iteration_callback = _iteration_callback
         self._shadows: dict[str, _DimShadow] | None = None
+        self._span_cache: dict[
+            str, tuple[np.ndarray, np.ndarray, np.ndarray]
+        ] = {}
         # One long-lived pool shared by every scan, its threads spawned
         # NOW — never from inside an engine's scan callback. Creating a
         # pool (and its OS threads) per scan deadlocks when the scan is
@@ -470,13 +477,10 @@ class XarrayPushdownDataset(pads.Dataset):
         if filter is None:
             return int(np.prod([self._ds.sizes[d] for d in self._ds.dims]))
         kept = self._prune(filter)
-        strict, boundary = self._split_strict_blocks(kept, filter)
-        count = sum(self._block_rows(b) for b in strict)
-        if boundary:
-            count += self._scanner_for_blocks(
-                boundary, [], filter
-            ).count_rows()
-        return count
+        proven, boundary = self._strict_partition(kept, filter)
+        return proven + self._scanner_for_blocks(
+            boundary, [], filter
+        ).count_rows()
 
     # Inherited convenience methods (to_table, head, to_batches, take)
     # route through scanner() and keep working; the members below would
@@ -599,92 +603,167 @@ class XarrayPushdownDataset(pads.Dataset):
     # Strictness: which surviving chunks satisfy the filter entirely
     # ------------------------------------------------------------------
 
-    def _chunk_guarantee(self, name: str, i: int) -> pc.Expression | None:
-        """``name ∈ [min, max]`` for chunk ``i``, or ``None`` for no info.
-
-        Mirrors :class:`_DimShadow`'s bounds logic, including the NaN/NaT
-        poisoning guard (a NaN span carries no usable guarantee).
-        """
-        if name not in self._schema.names:
-            return None
+    def _chunk_spans(
+        self, name: str
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Cached vectorized per-chunk ``(lo, hi, poisoned)`` for a dim."""
+        cached = self._span_cache.get(name)
+        if cached is not None:
+            return cached
         coord = self._coord_arrays[name]
-        if coord.dtype.kind not in ("i", "u", "f", "M"):
-            return None
-        bounds = self._chunk_bounds[name]
-        vals = coord[bounds[i] : bounds[i + 1]]
-        if (vals.dtype.kind == "f" and np.isnan(vals).any()) or (
-            vals.dtype.kind == "M" and np.isnat(vals).any()
-        ):
-            return None
-        field_type = self._schema.field(name).type
-        lo = pa.scalar(vals.min(), type=field_type)
-        hi = pa.scalar(vals.max(), type=field_type)
-        return (pc.field(name) >= lo) & (pc.field(name) <= hi)
+        starts = self._chunk_bounds[name][:-1]
+        lo = np.minimum.reduceat(coord, starts)
+        hi = np.maximum.reduceat(coord, starts)
+        if coord.dtype.kind == "f":
+            bad_values = np.isnan(coord)
+        elif coord.dtype.kind == "M":
+            bad_values = np.isnat(coord)
+        else:
+            bad_values = np.zeros(len(coord), dtype=bool)
+        bad = np.bitwise_or.reduceat(bad_values, starts)
+        self._span_cache[name] = (lo, hi, bad)
+        return self._span_cache[name]
 
-    def _split_strict_blocks(
+    def _strict_partition(
         self,
         kept: dict[str, list[int]] | None,
         filter: pc.Expression,
-    ) -> tuple[list[Block], list[Block]]:
-        """Split surviving blocks into (provably-true, boundary).
+    ) -> tuple[int, list[Block] | Iterator[Block]]:
+        """``(rows proven to satisfy filter, boundary blocks to scan)``.
 
-        A chunk with conjunctive guarantee ``G`` satisfies ``filter``
-        everywhere iff ``G ∧ ¬filter`` is unsatisfiable; Arrow's
-        guarantee simplification decides that when the strict blocks'
-        shadow is pruned with the *inverted* filter. Everything
-        undecidable — NaN spans, non-prunable dims, oversized grids,
-        expression shapes the simplifier rejects — lands conservatively
-        in the boundary set, which the caller scans exactly.
+        A cell of the surviving chunk grid with conjunctive coordinate
+        guarantee ``G`` satisfies ``filter`` everywhere iff
+        ``G ∧ ¬filter`` is unsatisfiable, and can be *dropped* entirely
+        iff ``G ∧ filter`` is — both decided by Arrow's guarantee
+        simplification. Cells are classified hierarchically: each level
+        buckets the surviving indices into at most
+        ``_STRICT_LEVEL_BUDGET`` products, proves/prunes whole buckets
+        at once (the prune side refines the per-dimension pruning with
+        cross-dimension information), and recurses only into mixed
+        cells — so million-chunk axes resolve in two or three levels.
+        Anything undecidable (NaN spans, non-numeric dims, expression
+        shapes the simplifier rejects) conservatively lands in the
+        boundary set, which the caller scans exactly.
         """
-        combos = list(self._combos(kept))
-        if not combos or len(combos) > _STRICT_MAX_BLOCKS:
-            return [], [self._block_for_combo(c) for c in combos]
         dims = list(self._resolved.keys())
-        try:
-            inverted = ~filter
-            fmt = pads.IpcFileFormat()
-            fs = pafs.LocalFileSystem()
-            fragments = []
-            decidable: list[int] = []
-            for pos, combo in enumerate(combos):
-                guarantee: pc.Expression | None = None
-                for d, i in zip(dims, combo):
-                    g = self._chunk_guarantee(str(d), i)
-                    if g is None:
-                        guarantee = None
-                        break
-                    guarantee = g if guarantee is None else guarantee & g
-                if guarantee is None:
-                    continue  # no usable guarantee: stays boundary
-                decidable.append(pos)
-                fragments.append(
-                    fmt.make_fragment(
-                        str(pos), fs, partition_expression=guarantee
-                    )
-                )
-            strict_pos: set[int] = set()
-            if fragments:
+        lists = {
+            d: list((kept or {}).get(str(d), range(len(self._resolved[d]))))
+            for d in dims
+        }
+        if not dims or any(not v for v in lists.values()):
+            return 0, []
+        lens = {d: np.diff(self._chunk_bounds[d]) for d in dims}
+        outer = 1
+        for d in self._ds.dims:
+            if d not in self._resolved:
+                outer *= self._ds.sizes[d]
+        usable = {
+            d: str(d) in self._schema.names
+            and self._coord_arrays[str(d)].dtype.kind in ("i", "u", "f", "M")
+            for d in dims
+        }
+        fmt = pads.IpcFileFormat()
+        fs = pafs.LocalFileSystem()
+        proven = 0
+        boundary: list[Block] = []
+
+        def bucket_guarantee(
+            d: Any, indices: np.ndarray
+        ) -> pc.Expression | None:
+            if not usable[d]:
+                return None
+            lo, hi, bad = self._chunk_spans(str(d))
+            if bad[indices].any():
+                return None
+            field_type = self._schema.field(str(d)).type
+            return (
+                pc.field(str(d)) >= pa.scalar(lo[indices].min(), field_type)
+            ) & (pc.field(str(d)) <= pa.scalar(hi[indices].max(), field_type))
+
+        def rows_of(cell: dict) -> int:
+            rows = outer
+            for d in dims:
+                rows *= int(lens[d][np.asarray(cell[d])].sum())
+            return rows
+
+        def classify(cell: dict, depth: int) -> None:
+            nonlocal proven
+            ks = {d: len(cell[d]) for d in dims}
+            while int(np.prod(list(ks.values()))) > _STRICT_LEVEL_BUDGET:
+                widest = max(ks, key=lambda d: ks[d])
+                if ks[widest] == 1:
+                    break
+                ks[widest] = max(1, ks[widest] // 2)
+            buckets = {
+                d: np.array_split(np.asarray(cell[d]), ks[d]) for d in dims
+            }
+            combos = list(
+                itertools.product(*(range(ks[d]) for d in dims))
+            )
+            guarantees: list[pc.Expression | None] = []
+            for combo in combos:
+                g: pc.Expression | None = None
+                complete = True
+                for d, b in zip(dims, combo):
+                    gd = bucket_guarantee(d, buckets[d][b])
+                    if gd is None:
+                        if usable[d]:
+                            complete = False  # NaN span: never provable
+                        continue
+                    g = gd if g is None else g & gd
+                guarantees.append(g if (g is not None and complete) else None)
+            decidable = [
+                i for i, g in enumerate(guarantees) if g is not None
+            ]
+            satisfiable = set(decidable)
+            unstrict = set(decidable)
+            if decidable:
                 shadow = pads.FileSystemDataset(
-                    fragments, self._schema, fmt, fs
+                    [
+                        fmt.make_fragment(
+                            str(i), fs, partition_expression=guarantees[i]
+                        )
+                        for i in decidable
+                    ],
+                    self._schema,
+                    fmt,
+                    fs,
                 )
-                survivors = {
-                    int(frag.path)
-                    for frag in shadow.get_fragments(filter=inverted)
+                satisfiable = {
+                    int(f.path) for f in shadow.get_fragments(filter=filter)
                 }
-                strict_pos = {p for p in decidable if p not in survivors}
+                unstrict = {
+                    int(f.path)
+                    for f in shadow.get_fragments(filter=~filter)
+                }
+            for i, combo in enumerate(combos):
+                subcell = {
+                    d: list(buckets[d][b]) for d, b in zip(dims, combo)
+                }
+                if guarantees[i] is not None:
+                    if i not in satisfiable:
+                        continue  # provably empty: cross-dim refinement
+                    if i not in unstrict:
+                        proven += rows_of(subcell)
+                        continue
+                if all(len(v) == 1 for v in subcell.values()):
+                    boundary.append(
+                        self._block_for_combo(
+                            tuple(v[0] for v in subcell.values())
+                        )
+                    )
+                elif depth < _STRICT_MAX_DEPTH:
+                    classify(subcell, depth + 1)
+                else:
+                    # Depth backstop; unreachable for realistic grids.
+                    for c in itertools.product(*subcell.values()):
+                        boundary.append(self._block_for_combo(c))
+
+        try:
+            classify(lists, 0)
         except (pa.ArrowInvalid, pa.ArrowNotImplementedError, TypeError):
-            return [], [self._block_for_combo(c) for c in combos]
-        strict = [
-            self._block_for_combo(c)
-            for pos, c in enumerate(combos)
-            if pos in strict_pos
-        ]
-        boundary = [
-            self._block_for_combo(c)
-            for pos, c in enumerate(combos)
-            if pos not in strict_pos
-        ]
-        return strict, boundary
+            return 0, self._blocks(kept)  # scan every survivor, exactly
+        return proven, boundary
 
     def _block_rows(self, block: Block) -> int:
         rows = 1

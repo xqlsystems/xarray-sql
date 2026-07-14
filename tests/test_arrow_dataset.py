@@ -298,3 +298,40 @@ def test_coalesce_only_affects_scanner_not_fragments():
     # Fragment consumers (DataFusion, dask) keep one fragment per source
     # chunk for their own parallelism.
     assert len(dataset.get_fragments()) == 10
+
+
+def test_count_rows_broad_filter_stays_arithmetic():
+    from xarray_sql.backends.pyarrow import XarrayPushdownDataset
+
+    # 100k single-element chunks with a filter keeping nearly all of
+    # them: the hierarchical strictness analysis must prove whole
+    # buckets at once instead of scanning every survivor.
+    reads: list = []
+    dataset = XarrayPushdownDataset(
+        xr.Dataset(
+            {"v": (["step"], np.arange(100_000.0))},
+            coords={"step": np.arange(100_000.0)},
+        ),
+        {"step": 1},
+        _iteration_callback=lambda b, n: reads.append(b),
+    )
+    assert dataset.count_rows(filter=pc.field("step") >= 100.0) == 99_900
+    assert len(reads) <= 2  # at most the bucket-edge chunk
+
+
+def test_count_rows_cross_dimension_refinement(counted):
+    dataset, counter = counted
+    # Paired ranges across dims: per-dim pruning keeps the union (the
+    # cross combos too); the strictness pass must prune the crosses and
+    # count exactly.
+    lo = pa.scalar(pd.Timestamp("2020-01-01 00:00"), type=pa.timestamp("ns"))
+    a = (pc.field("time") < pa.scalar(pd.Timestamp("2020-01-01 05:00"), type=pa.timestamp("ns"))) & (
+        pc.field("lat") < -25.0
+    )
+    b = (pc.field("time") >= pa.scalar(pd.Timestamp("2020-01-04 22:00"), type=pa.timestamp("ns"))) & (
+        pc.field("lat") > 25.0
+    )
+    n = dataset.count_rows(filter=a | b)
+    assert n == 5 * 1 + 2 * 1  # 5 early hours x 1 lat + 2 late hours x 1 lat
+    # only the genuinely mixed chunks were touched, not the crosses
+    assert len(counter.blocks) <= 2
