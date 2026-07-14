@@ -19,7 +19,7 @@ gridded data, every query here round-trips its answer straight back to an
 `xarray.Dataset` — SQL in, an array out, ready to plot or save.
 
 This page makes the argument case by case. Every claim below is backed by a
-runnable script in [`benchmarks/geospatial/`](../benchmarks/geospatial/) that
+runnable script in [`benchmarks/geospatial/`](https://github.com/xqlsystems/xarray-sql/tree/main/benchmarks/geospatial/) that
 poses the operation in SQL and **asserts the answer matches an xarray/array
 reference** to floating-point tolerance. The point is not that "SQL is faster";
 the point is that the SQL reads like the *definition* of the operation and
@@ -54,15 +54,15 @@ through SQL one by one, turns out to be — almost entirely — queries.
 
 | Operation | The "array" framing | The relational reality | Script |
 |-----------|---------------------|------------------------|--------|
-| Spectral index (NDVI) | `apply_ufunc` over a raster | column arithmetic | [`01_ndvi.py`](../benchmarks/geospatial/01_ndvi.py) |
-| Climatology | rechunk → grouped reduction | `GROUP BY lat, lon, hour-of-day` | [`02_climatology.py`](../benchmarks/geospatial/02_climatology.py) |
-| Zonal mean | reduce over lon/time axes | `GROUP BY lat` | [`03_zonal_mean.py`](../benchmarks/geospatial/03_zonal_mean.py) |
-| Anomaly | grouped broadcast-subtract | climatology CTE self-`JOIN` | [`04_anomaly.py`](../benchmarks/geospatial/04_anomaly.py) |
-| Forecast skill (RMSE) | align valid/init/lead, reduce | forecast↔truth `JOIN` on `valid_time` | [`05_forecast_skill.py`](../benchmarks/geospatial/05_forecast_skill.py) |
-| Zonal stats over regions | rasterize polygons + mask | raster × vector range `JOIN` | [`06_zonal_vector.py`](../benchmarks/geospatial/06_zonal_vector.py) |
-| Reprojection | per-pixel CRS transform | scalar **UDF** (`ST_Transform`-style) | [`07_reproject_udf.py`](../benchmarks/geospatial/07_reproject_udf.py) |
-| Regridding | interpolation to a new grid | sparse-weight table `JOIN` | [`08_regrid_weights.py`](../benchmarks/geospatial/08_regrid_weights.py) |
-| Warp (reproject + resample) | CRS transform *and* interpolation | reproject **UDF** → weight-table `JOIN` | [`09_warp.py`](../benchmarks/geospatial/09_warp.py) |
+| Spectral index (NDVI) | `apply_ufunc` over a raster | column arithmetic | [`01_ndvi.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/01_ndvi.py) |
+| Climatology | rechunk → grouped reduction | `GROUP BY lat, lon, hour-of-day` | [`02_climatology.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/02_climatology.py) |
+| Zonal mean | reduce over lon/time axes | `GROUP BY lat` | [`03_zonal_mean.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/03_zonal_mean.py) |
+| Anomaly | grouped broadcast-subtract | climatology CTE self-`JOIN` | [`04_anomaly.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/04_anomaly.py) |
+| Forecast skill (RMSE) | align valid/init/lead, reduce | forecast↔truth `JOIN` on `valid_time` | [`05_forecast_skill.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/05_forecast_skill.py) |
+| Zonal stats over regions | rasterize polygons + mask | raster × vector range `JOIN` | [`06_zonal_vector.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/06_zonal_vector.py) |
+| Reprojection | per-pixel CRS transform | scalar **UDF** (`ST_Transform`-style) | [`07_reproject_udf.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/07_reproject_udf.py) |
+| Regridding | interpolation to a new grid | sparse-weight table `JOIN` | [`08_regrid_weights.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/08_regrid_weights.py) |
+| Warp (reproject + resample) | CRS transform *and* interpolation | reproject **UDF** → weight-table `JOIN` | [`09_warp.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/09_warp.py) |
 
 ## 1. A pixel-wise formula is a column expression
 
@@ -80,7 +80,7 @@ Invalid pixels need no special handling: xarray decodes the band's `_FillValue`
 to `NaN` on open, and `NaN` propagates through the arithmetic on both sides, so
 the masking is free.
 
-[`01_ndvi.py`](../benchmarks/geospatial/01_ndvi.py) runs this against a **real
+[`01_ndvi.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/01_ndvi.py) runs this against a **real
 Sentinel-2 L2A scene in Zarr** — discovered with `pystac-client` and opened the
 canonical way with `xr.open_datatree` (ESA's EOPF sample service) — and matches
 xarray's `apply_ufunc`-style result over a million pixels.
@@ -99,12 +99,12 @@ FROM era5 GROUP BY latitude, longitude, date_part('hour', time)
 ```
 
 The grouping keys are the dimensions you keep; everything else is reduced. No
-layout to reason about. [`02_climatology.py`](../benchmarks/geospatial/02_climatology.py)
+layout to reason about. [`02_climatology.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/02_climatology.py)
 computes the **diurnal cycle** of ERA5 2m-temperature over a region — averaging
 each cell by hour of day — and matches `da.groupby("time.hour").mean()` across
 ~500k cells.
 
-A **zonal mean** ([`03_zonal_mean.py`](../benchmarks/geospatial/03_zonal_mean.py))
+A **zonal mean** ([`03_zonal_mean.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/03_zonal_mean.py))
 is the same idea with fewer keys: the axes you "reduce over" are simply the
 columns you don't `GROUP BY`.
 
@@ -129,7 +129,7 @@ FROM era5 a JOIN clim c
  AND date_part('hour', a.time) = c.hour
 ```
 
-[`04_anomaly.py`](../benchmarks/geospatial/04_anomaly.py) computes the
+[`04_anomaly.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/04_anomaly.py) computes the
 climatology once (the CTE) and joins it back to every observation.
 
 ## 4. Forecast evaluation is a `JOIN` on valid time + aggregate
@@ -159,10 +159,10 @@ Both models are stacked along a `model` dimension into one forecast table, so a
 single query scores them together, grouped by the `model` column. The entire
 evaluation — temporal alignment across three time axes, spatial matching, and the
 score — is one JOIN and one aggregate.
-[`05_forecast_skill.py`](../benchmarks/geospatial/05_forecast_skill.py) runs it
+[`05_forecast_skill.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/05_forecast_skill.py) runs it
 for both models, matches an xarray reference, and reproduces the published result
 that GraphCast edges out Pangu at every lead — the classic "error grows with
-horizon" curve (≈0.3 K at 6 h rising to ≈2.5 K at 9 days):
+horizon" curve (≈0.3 K at 6 h rising to ≈2.5 K at 9 days).
 
 The result round-trips to a `pandas` table directly (`got.to_pandas()`), RMSE in
 kelvin by lead time:
@@ -201,7 +201,7 @@ GROUP BY r.region
 This is the README's promise — *joining tabular data with raster data* — made
 literal: the raster is the full ERA5 archive (the `WHERE` prunes it to a day),
 the regions are a second SQL table, and the spatial relationship is an ordinary
-`BETWEEN`. See [`06_zonal_vector.py`](../benchmarks/geospatial/06_zonal_vector.py)
+`BETWEEN`. See [`06_zonal_vector.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/06_zonal_vector.py)
 — it reports e.g. Sahara 33 °C vs Greenland −8 °C for a June day. (Rectangular
 regions keep this simple; arbitrary polygons would follow the same shape, with a
 point-in-polygon test in the join.)
@@ -222,7 +222,7 @@ SELECT x, y, reproject(x, y)['lon'] AS lon, reproject(x, y)['lat'] AS lat
 FROM grid
 ```
 
-[`07_reproject_udf.py`](../benchmarks/geospatial/07_reproject_udf.py) validates
+[`07_reproject_udf.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/07_reproject_udf.py) validates
 this against **Earth Engine itself**: it opens a UTM grid through
 [Xee](https://github.com/google/Xee) carrying `ee.Image.pixelLonLat()`, so EE's
 own geodesy engine reports the true lon/lat of every pixel — an *independent*
@@ -243,7 +243,7 @@ FROM weights w JOIN src s ON s.cell_id = w.src_id
 GROUP BY w.dst_id
 ```
 
-[`08_regrid_weights.py`](../benchmarks/geospatial/08_regrid_weights.py) regrids
+[`08_regrid_weights.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/08_regrid_weights.py) regrids
 real **SRTM elevation** (Sierra Nevada terrain, opened from the Earth Engine
 catalog through [Xee](https://github.com/google/Xee)) coarse → fine and matches
 xarray's bilinear `.interp()` exactly. So regridding does not weaken the thesis —
@@ -251,7 +251,7 @@ it is the most relational operation of all.
 
 **A warp is just the two composed.** The full operation a GIS calls *warp* (GDAL
 and rasterio's `reproject`) does both at once: change the CRS *and* resample onto
-the new grid. [`09_warp.py`](../benchmarks/geospatial/09_warp.py) writes it as the
+the new grid. [`09_warp.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/09_warp.py) writes it as the
 two cases above run back to back — the 07 reproject UDF carries the target
 lon/lat grid back into the source UTM space, arrays turn those reprojected points
 into bilinear weights, and the 08 `JOIN` applies them:
@@ -305,6 +305,7 @@ for GeoPandas 1.x (`GeoDataFrame.from_arrow`), lonboard, geoarrow-rs
 and SedonaDB. DuckDB does not consume this encoding — pick per
 destination. The CRS tag defaults to `OGC:CRS84`; pass
 `geometry_crs=...` for anything else.
+
 ## Where the array paradigm still earns its keep
 
 The boundary is **weight generation**. Applying a regridding is a join;
@@ -335,13 +336,13 @@ uv run benchmarks/geospatial/02_climatology.py   # standalone (PEP 723 deps)
 ```
 
 Each script prints its SQL, runs the array reference, and asserts the two agree.
-See [`benchmarks/geospatial/README.md`](https://github.com/alxmrs/xarray-sql/tree/main/benchmarks/geospatial) for
+See [`benchmarks/geospatial/README.md`](https://github.com/xqlsystems/xarray-sql/tree/main/benchmarks/geospatial) for
 the full list and dataset notes.
 
 ## Results
 
 Correctness is the headline, but every case is also profiled. The numbers below
-come from [`run_perf.sh`](../benchmarks/geospatial/run_perf.sh) on a single Google
+come from [`run_perf.sh`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/run_perf.sh) on a single Google
 Compute Engine `e2-standard-8` (8 vCPU, 32 GB) in `us-central1` — in-region with the
 ARCO-ERA5 and WeatherBench 2 buckets, so the cloud read is fast — with Earth Engine
 reached from the same VM, so all nine cases share one machine and one release build.
@@ -408,13 +409,13 @@ machine — across three `e2-standard-8` runs it has measured ≈10.7 s, ≈12 s
 
 The table above measures the DataFusion-native path. The same cases also run
 under DuckDB and Polars through the suite's engine layer
-([`_engines.py`](../benchmarks/geospatial/_engines.py), selected per process
+([`_engines.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/_engines.py), selected per process
 with `GEOBENCH_ENGINE`), so we ran the portable cases across all three engines
 on an `e2-standard-8` in `us-central1`, in-region with the data, under the
 same protocol: **fresh process per repetition, no warmup, five cold reps**,
 and every engine's answer asserted against the xarray reference before its
 timing counts
-([`engine_suite.py`](../benchmarks/geospatial/engine_suite.py) drives it).
+([`engine_suite.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/engine_suite.py) drives it).
 
 Scope, stated plainly. These runs exercise the **pyarrow-dataset backend** for
 every engine — including DataFusion, which here reads through

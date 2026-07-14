@@ -142,7 +142,7 @@ ctx.sql('SELECT * FROM goes.scalar').to_pandas().shape            # -> (1, 89)
 Override the default name like any other group with `table_names={(): 'metadata'}`.
 
 A runnable version of the ERA5 example lives at
-[`perf_tests/era5_temp_profile.py`](../perf_tests/era5_temp_profile.py).
+[`perf_tests/era5_temp_profile.py`](https://github.com/xqlsystems/xarray-sql/blob/main/perf_tests/era5_temp_profile.py).
 
 [arco-era5]: https://github.com/google-research/arco-era5
 

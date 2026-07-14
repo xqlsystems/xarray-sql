@@ -2,9 +2,9 @@
 site_name = "xarray-sql"
 site_description = "Query Xarray with SQL"
 site_author = "Alexander Merose"
-site_url = "https://alxmrs.github.io/xarray-sql"
-repo_url = "https://github.com/alxmrs/xarray-sql"
-repo_name = "alxmrs/xarray-sql"
+site_url = "https://xqlsystems.github.io/xarray-sql"
+repo_url = "https://github.com/xqlsystems/xarray-sql"
+repo_name = "xqlsystems/xarray-sql"
 edit_uri = "edit/main/docs/"
 nav = [
   {"Home" = "index.md"},
@@ -131,7 +131,7 @@ filters = ["!^_"]
 
 [[project.extra.social]]
 icon = "fontawesome/brands/github"
-link = "https://github.com/alxmrs/xarray-sql"
+link = "https://github.com/xqlsystems/xarray-sql"
 
 [[project.extra.social]]
 icon = "fontawesome/brands/python"
