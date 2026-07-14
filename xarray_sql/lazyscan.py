@@ -116,6 +116,13 @@ class DataFusionHandle:
         out = out.select(*(col(f'"{n}"') for n in columns))
         return [b.to_pyarrow() for b in out.execute_stream()]
 
+    def spill_parquet(self, path: str) -> None:
+        import pyarrow.parquet as pq
+
+        with pq.ParquetWriter(path, self.schema()) as writer:
+            for batch in self._df.execute_stream():
+                writer.write_batch(batch.to_pyarrow())
+
 
 class DuckDBHandle:
     """Handle over a ``duckdb.DuckDBPyRelation``.
@@ -212,6 +219,21 @@ class DuckDBHandle:
 
         return self._run(materialize)
 
+    def spill_parquet(self, path: str) -> None:
+        import pyarrow.parquet as pq
+
+        def run() -> None:
+            reader = (
+                self._rel.to_arrow_reader()
+                if hasattr(self._rel, "to_arrow_reader")
+                else self._rel.fetch_record_batch()
+            )
+            with pq.ParquetWriter(path, reader.schema) as writer:
+                for batch in reader:
+                    writer.write_batch(batch)
+
+        self._run(run)
+
 
 class PolarsHandle:
     """Handle over a ``polars.LazyFrame``.
@@ -264,6 +286,9 @@ class PolarsHandle:
             engine="streaming"
         )
         return out.to_arrow().to_batches()
+
+    def spill_parquet(self, path: str) -> None:
+        self._lf.sink_parquet(path)
 
 
 def resolve_lazy_handle(result: Any) -> LazyResultHandle | None:

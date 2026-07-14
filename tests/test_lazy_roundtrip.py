@@ -204,3 +204,75 @@ def test_max_result_bytes_guards_dense_blowup(registered):
         xql.to_dataset(
             diag, dims=["a", "b"], max_result_bytes=10_000_000
         )
+
+
+def test_duckdb_spill_chunked_round_trip(source, registered, tmp_path):
+    con, reads = registered
+    rel = con.sql("SELECT * FROM t")
+    reads.clear()
+    out = xql.to_dataset(
+        rel, template=source, chunks={"time": 10}, spill=tmp_path
+    )
+    spilled = list(tmp_path.glob("*.parquet"))
+    assert len(spilled) == 1
+    # The source was streamed exactly once (10 chunks), during the spill.
+    assert len(reads) == 10
+    assert out.chunks
+    reads.clear()
+    xr.testing.assert_allclose(out.compute(), source)
+    # Windows re-execute against the Parquet file, not the source.
+    assert reads == []
+
+
+def test_duckdb_spill_filtered_aggregation(source, registered, tmp_path):
+    con, _ = registered
+    rel = con.sql(
+        "SELECT time, avg(t2m) AS t2m FROM t "
+        "WHERE lat > 0 GROUP BY time ORDER BY time"
+    )
+    out = xql.to_dataset(
+        rel, template=source, chunks={"time": 25}, spill=tmp_path
+    )
+    expected = source.t2m.sel(lat=source.lat[source.lat > 0]).mean("lat")
+    np.testing.assert_allclose(out.t2m.compute().values, expected.values)
+
+
+def test_one_shot_table_spill_chunked(source, registered, tmp_path):
+    con, _ = registered
+    table = con.sql("SELECT * FROM t").to_arrow_table()
+    out = xql.to_dataset(
+        table, template=source, chunks={"time": 10}, spill=tmp_path
+    )
+    assert out.chunks
+    xr.testing.assert_allclose(out.compute(), source)
+
+
+def test_spill_file_removed_when_dataset_dies(source, registered, tmp_path):
+    import gc
+
+    con, _ = registered
+    rel = con.sql("SELECT * FROM t")
+    out = xql.to_dataset(
+        rel, template=source, chunks={"time": 10}, spill=tmp_path
+    )
+    assert list(tmp_path.glob("*.parquet"))
+    del out
+    gc.collect()
+    assert list(tmp_path.glob("*.parquet")) == []
+
+
+def test_spill_requires_chunks(source, registered):
+    con, _ = registered
+    rel = con.sql("SELECT * FROM t")
+    with pytest.raises(ValueError, match="spill= only applies"):
+        xql.to_dataset(rel, template=source, spill=True)
+
+
+def test_polars_spill_uses_streaming_sink(source, tmp_path):
+    pl = pytest.importorskip("polars")
+
+    lf = pl.scan_pyarrow_dataset(xql.arrow_dataset(source, {"time": 10}))
+    out = xql.to_dataset(
+        lf, template=source, chunks={"time": 20}, spill=tmp_path
+    )
+    xr.testing.assert_allclose(out.compute(), source)

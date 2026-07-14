@@ -19,6 +19,9 @@ see :mod:`xarray_sql.lazyscan`.
 
 from __future__ import annotations
 
+import os
+import tempfile
+import weakref
 from collections.abc import Mapping
 from typing import Any, Literal
 
@@ -35,7 +38,7 @@ from .ds import (
     _ds_var_dims,
     _finish_dataset,
 )
-from .lazyscan import resolve_lazy_handle
+from .lazyscan import LazyResultHandle, PolarsHandle, resolve_lazy_handle
 
 
 def _guarded(
@@ -119,6 +122,7 @@ def to_dataset(
     chunks: Mapping[str, int] | str | None = None,
     coords: Literal["discover", "template"] = "discover",
     max_result_bytes: int | None = None,
+    spill: bool | str | os.PathLike = False,
 ) -> xr.Dataset:
     """Convert an engine's Arrow result into a labeled ``xr.Dataset``.
 
@@ -176,6 +180,16 @@ def to_dataset(
             Arrow stream and before allocating the dense arrays —
             instead of exhausting memory. ``None`` (default) means
             unlimited.
+        spill: Chunked reconstruction from a one-pass on-disk spill
+            instead of per-window re-execution: the result is streamed
+            *once* (bounded memory) into a temporary Parquet file, and
+            windows re-execute against that file. This serves the two
+            results the re-execution path cannot — DuckDB relations and
+            one-shot Arrow streams — and trades per-window narrowness
+            for a single full pass plus temporary disk. ``True`` spills
+            to the system temp dir; a path spills into that directory.
+            The file is removed when the returned Dataset is garbage
+            collected. Requires Polars; only valid with ``chunks=``.
 
     Returns:
         An ``xr.Dataset`` with ``dims`` as dimensions and the remaining
@@ -202,8 +216,17 @@ def to_dataset(
         )
     if coords == "template" and template is None:
         raise ValueError("coords='template' requires template= to be given")
+    if spill and chunks is None:
+        raise ValueError(
+            "spill= only applies to chunked reconstruction; pass chunks=."
+        )
 
     if chunks is not None:
+        if spill:
+            return _to_dataset_spilled(
+                result, dims, template, sparsity, fill_value, chunks,
+                coords, spill,
+            )
         return _to_dataset_lazy(
             result, dims, template, sparsity, fill_value, chunks, coords
         )
@@ -293,16 +316,18 @@ def _to_dataset_lazy(
     fill_value: Any,
     chunks: Mapping[str, int] | str,
     coords: Literal["discover", "template"],
+    _handle: LazyResultHandle | None = None,
 ) -> xr.Dataset:
     """The chunked reconstruction behind ``to_dataset(chunks=...)``."""
-    handle = resolve_lazy_handle(result)
+    handle = _handle if _handle is not None else resolve_lazy_handle(result)
     if handle is None:
         raise TypeError(
             "chunks= requires a re-executable engine result (a Polars "
             "LazyFrame/DataFrame or a DataFusion DataFrame); got "
             f"{type(result).__qualname__}, which is a one-shot stream. "
             "Pass the engine's lazy handle instead of a materialized "
-            "result, or use chunks=None."
+            "result, add spill=True to reconstruct from a one-pass "
+            "on-disk spill, or use chunks=None."
         )
     schema = handle.schema()
     field_names = [f.name for f in schema]
@@ -338,9 +363,10 @@ def _to_dataset_lazy(
             "relation from worker threads intermittently deadlocks in "
             "duckdb-python when the query scans a Python-backed table "
             "(see xarray_sql.lazyscan.DuckDBHandle.supports_chunked). "
-            "Use chunks=None (eager), or run the query through Polars "
-            "(pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))) or a "
-            "DataFusion context, which support chunked round-trips."
+            "Add spill=True to reconstruct from a one-pass on-disk "
+            "spill, use chunks=None (eager), or run the query through "
+            "Polars (pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))) "
+            "or a DataFusion context."
         )
     ds = _build_lazy_scan(
         handle, dims, field_names, field_types, coord_arrays=coord_arrays
@@ -348,3 +374,78 @@ def _to_dataset_lazy(
     return _finish_dataset(
         ds, dims, template, sparsity, fill_value, resolved, field_types
     )
+
+
+def _to_dataset_spilled(
+    result: Any,
+    dims: list[str] | None,
+    template: xr.Dataset | None,
+    sparsity: Sparsity,
+    fill_value: Any,
+    chunks: Mapping[str, int] | str,
+    coords: Literal["discover", "template"],
+    spill: bool | str | os.PathLike,
+) -> xr.Dataset:
+    """Chunked reconstruction from a one-pass temporary Parquet spill.
+
+    The result is streamed exactly once with bounded memory — through
+    the engine handle where one exists (DuckDB spills on its dedicated
+    engine thread; Polars uses its streaming sink), or straight from
+    the Arrow stream for one-shot results — and the ordinary lazy
+    reconstruction then runs against a Polars scan of the file, whose
+    per-window predicates enjoy Parquet row-group pruning. The file is
+    removed when the reconstruction handle is garbage collected.
+    """
+    import polars as pl
+
+    directory = None if spill is True else os.fspath(spill)
+    fd, path = tempfile.mkstemp(suffix=".parquet", dir=directory)
+    os.close(fd)
+    try:
+        handle = resolve_lazy_handle(result)
+        if handle is not None:
+            handle.spill_parquet(path)
+        else:
+            _stream_to_parquet(result, path)
+    except BaseException:
+        os.unlink(path)
+        raise
+    spilled = PolarsHandle(pl.scan_parquet(path))
+    weakref.finalize(spilled, _unlink_quietly, path)
+    return _to_dataset_lazy(
+        result, dims, template, sparsity, fill_value, chunks, coords,
+        _handle=spilled,
+    )
+
+
+def _unlink_quietly(path: str) -> None:
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
+def _stream_to_parquet(result: Any, path: str) -> None:
+    """Write a one-shot Arrow result to Parquet, batch by batch."""
+    import pyarrow.parquet as pq
+
+    if isinstance(result, pa.RecordBatch):
+        schema, batches = result.schema, iter([result])
+    elif isinstance(result, pa.Table):
+        schema, batches = result.schema, iter(result.to_batches())
+    elif isinstance(result, pa.RecordBatchReader):
+        schema, batches = result.schema, result
+    elif hasattr(result, "__arrow_c_stream__"):
+        reader = pa.RecordBatchReader.from_stream(result)
+        schema, batches = reader.schema, reader
+    elif hasattr(result, "fetch_record_batch"):
+        reader = result.fetch_record_batch()
+        schema, batches = reader.schema, reader
+    else:
+        raise TypeError(
+            f"cannot spill {type(result).__qualname__}: no readable "
+            "Arrow stream."
+        )
+    with pq.ParquetWriter(path, schema) as writer:
+        for batch in batches:
+            writer.write_batch(batch)
