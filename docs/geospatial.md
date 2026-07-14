@@ -410,11 +410,10 @@ The table above measures the DataFusion-native path. The same cases also run
 under DuckDB and Polars through the suite's engine layer
 ([`_engines.py`](../benchmarks/geospatial/_engines.py), selected per process
 with `GEOBENCH_ENGINE`), so we ran the portable cases across all three engines
-on three machine sizes — `e2-standard-8`, `e2-standard-16`, and
-`e2-standard-32`, all in `us-central1` and in-region with the data, one VM per
-size — under the same protocol: **fresh process per repetition, no warmup,
-five cold reps**, and every engine's answer asserted against the xarray
-reference before its timing counts
+on an `e2-standard-8` in `us-central1`, in-region with the data, under the
+same protocol: **fresh process per repetition, no warmup, five cold reps**,
+and every engine's answer asserted against the xarray reference before its
+timing counts
 ([`engine_suite.py`](../benchmarks/geospatial/engine_suite.py) drives it).
 
 Scope, stated plainly. These runs exercise the **pyarrow-dataset backend** for
@@ -434,55 +433,38 @@ and 09 build DataFusion scalar UDFs (n/a on the other engines), case 08 is
 Earth-Engine-gated, and 07–09 skip on these VMs (no Earth Engine auth) — the
 skip reasons ride along in the results.
 
-One more machine-shaped caveat: the sizes do **not** form a scaling ladder.
-Every case here is dominated by a single-stream cold cloud read plus a
-mostly single-threaded row pipeline, so 16 and 32 vCPUs buy nothing, and the
-run-to-run spread across sizes (the 8-vCPU VM posting the *fastest* numbers,
-xarray reference included) is shared-core `e2` and network variance, not
-engine behavior. Read each tab as "the engines against each other on fixed
-hardware", not across tabs.
+The same grid was also measured on `e2-standard-16` and `e2-standard-32`,
+with no practical difference: every case is dominated by a single-stream cold
+cloud read plus a mostly single-threaded row pipeline, so extra vCPUs buy
+nothing, and the spread across sizes is shared-core `e2` and network
+variance, not engine behavior. The full per-size tables live in the
+`xarray-sql-notes` repository (`engine-matrix-results.md`).
 
 Software: CPython 3.12.8, duckdb 1.5.4, polars 1.42.1, datafusion 54.0.0,
 pyarrow 25.0.0, xarray 2026.7.0, Linux (glibc 2.41). Medians of 5 cold reps;
 peak is the Python-allocator peak per process.
 
-=== "e2-standard-8 (8 vCPU, 31 GB)"
+| Case | DataFusion (pyarrow path) | DuckDB | Polars | xarray reference |
+|---|--:|--:|--:|--:|
+| 01 · NDVI | 3.840 s (109 MB) | 4.248 s (106 MB) | 4.672 s (100 MB) | 0.263 s (42 MB) |
+| 02 · Climatology | 7.505 s (1135 MB) | 4.043 s (627 MB) | 4.360 s (637 MB) | 2.448 s (44 MB) |
+| 03 · Zonal mean | 3.229 s (403 MB) | 2.758 s (403 MB) | 3.351 s (413 MB) | 0.890 s (250 MB) |
+| 04 · Anomaly | 12.857 s (3003 MB) | 6.094 s (627 MB) | 11.472 s (862 MB) | 5.103 s (80 MB) |
+| 05 · Forecast skill | 1.854 s (172 MB) | 1.722 s (170 MB) | 2.295 s (182 MB) | 0.213 s (2 MB) |
+| 06 · Zonal stats | 5.311 s (513 MB) | 4.706 s (503 MB) | unsupported (range `JOIN`) | 1.624 s (1262 MB) |
 
-    | Case | DataFusion (pyarrow path) | DuckDB | Polars | xarray reference |
-    |---|--:|--:|--:|--:|
-    | 01 · NDVI | 3.840 s (109 MB) | 4.248 s (106 MB) | 4.672 s (100 MB) | 0.263 s (42 MB) |
-    | 02 · Climatology | 7.505 s (1135 MB) | 4.043 s (627 MB) | 4.360 s (637 MB) | 2.448 s (44 MB) |
-    | 03 · Zonal mean | 3.229 s (403 MB) | 2.758 s (403 MB) | 3.351 s (413 MB) | 0.890 s (250 MB) |
-    | 04 · Anomaly | 12.857 s (3003 MB) | 6.094 s (627 MB) | 11.472 s (862 MB) | 5.103 s (80 MB) |
-    | 05 · Forecast skill | 1.854 s (172 MB) | 1.722 s (170 MB) | 2.295 s (182 MB) | 0.213 s (2 MB) |
-    | 06 · Zonal stats | 5.311 s (513 MB) | 4.706 s (503 MB) | unsupported (range `JOIN`) | 1.624 s (1262 MB) |
-    | 07–09 | skipped (no Earth Engine on VM) | n/a (07/09: DataFusion UDF; 08: EE-gated) | n/a | — |
+Cases 07–09 could not run on these VMs (no Earth Engine auth), so their rows
+come from the headline run instead: the original `e2-standard-8` GCE VM with
+Earth Engine access, DataFusion **native** path (07 and 09 are DataFusion
+scalar UDFs, n/a on the other engines):
 
-=== "e2-standard-16 (16 vCPU, 63 GB)"
+| Case | DataFusion (native path) | xarray reference |
+|---|--:|--:|
+| 07 · Reprojection (PROJ scalar UDF) | 0.029 s (0.3 MB) | — |
+| 08 · Regridding (weight-table `JOIN`) | 0.875 s (11.9 MB) | 0.850 s (13.3 MB) |
+| 09 · Warp (reproject UDF → regrid `JOIN`) | 0.281 s (0.8 MB) | 0.817 s (11.2 MB) |
 
-    | Case | DataFusion (pyarrow path) | DuckDB | Polars | xarray reference |
-    |---|--:|--:|--:|--:|
-    | 01 · NDVI | 4.430 s (96 MB) | 4.888 s (106 MB) | 5.373 s (95 MB) | 0.300 s (42 MB) |
-    | 02 · Climatology | 11.243 s (1076 MB) | 7.048 s (627 MB) | 7.520 s (637 MB) | 2.971 s (44 MB) |
-    | 03 · Zonal mean | 5.125 s (403 MB) | 4.150 s (403 MB) | 5.490 s (413 MB) | 1.293 s (250 MB) |
-    | 04 · Anomaly | 19.910 s (1325 MB) | 12.267 s (627 MB) | 15.302 s (812 MB) | 6.668 s (80 MB) |
-    | 05 · Forecast skill | 3.020 s (176 MB) | 2.922 s (170 MB) | 3.583 s (184 MB) | 0.326 s (2 MB) |
-    | 06 · Zonal stats | 8.858 s (513 MB) | 6.955 s (503 MB) | unsupported (range `JOIN`) | 2.554 s (1262 MB) |
-    | 07–09 | skipped (no Earth Engine on VM) | n/a (07/09: DataFusion UDF; 08: EE-gated) | n/a | — |
-
-=== "e2-standard-32 (32 vCPU, 126 GB)"
-
-    | Case | DataFusion (pyarrow path) | DuckDB | Polars | xarray reference |
-    |---|--:|--:|--:|--:|
-    | 01 · NDVI | 4.302 s (120 MB) | 5.039 s (106 MB) | 5.413 s (99 MB) | 0.296 s (42 MB) |
-    | 02 · Climatology | 10.407 s (1081 MB) | 6.634 s (627 MB) | 6.849 s (637 MB) | 2.984 s (44 MB) |
-    | 03 · Zonal mean | 4.746 s (403 MB) | 4.006 s (403 MB) | 5.307 s (413 MB) | 1.222 s (250 MB) |
-    | 04 · Anomaly | 18.663 s (1376 MB) | 10.998 s (652 MB) | 13.618 s (812 MB) | 6.038 s (80 MB) |
-    | 05 · Forecast skill | 2.875 s (175 MB) | 2.838 s (170 MB) | 3.426 s (184 MB) | 0.300 s (2 MB) |
-    | 06 · Zonal stats | 8.709 s (513 MB) | 6.388 s (503 MB) | unsupported (range `JOIN`) | 2.440 s (1262 MB) |
-    | 07–09 | skipped (no Earth Engine on VM) | n/a (07/09: DataFusion UDF; 08: EE-gated) | n/a | — |
-
-Within any one machine the engine story is consistent. **DuckDB is the
+The engine story is consistent. **DuckDB is the
 fastest SQL consumer of the shared pushdown scan on every ARCO-ERA5 case** —
 on the group-by and join cases (02, 04, 06) it runs ~1.5–2× ahead of the
 DataFusion pyarrow path, and it is the only engine that keeps the anomaly
