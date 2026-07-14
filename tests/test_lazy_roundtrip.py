@@ -157,6 +157,26 @@ def test_descending_coordinate_windows():
     np.testing.assert_allclose(window.values, desc.v.isel(lat=slice(2, 6)))
 
 
+def test_unsorted_template_coords_window_exactly():
+    pl = pytest.importorskip("polars")
+
+    # Template coords are used verbatim, so the backend can see a
+    # non-monotonic coordinate array. A contiguous positional window
+    # like 1:3 then has monotonic values [7, 55], but the value range
+    # [7, 55] also admits 23 at position 3 — the scatter would write
+    # that unrequested row over a requested cell. Windows over a
+    # non-monotonic coordinate must use explicit value lists.
+    src = xr.Dataset(
+        {"v": (["x"], np.arange(4.0))},
+        coords={"x": np.array([102.0, 7.0, 55.0, 23.0])},
+    )
+    lf = pl.scan_pyarrow_dataset(xql.arrow_dataset(src, {"x": 4}))
+    out = xql.to_dataset(lf, template=src, chunks={"x": 4}, coords="template")
+    window = out.v.isel(x=slice(1, 3)).compute()
+    np.testing.assert_array_equal(window.values, [1.0, 2.0])
+    xr.testing.assert_allclose(out.compute(), src)
+
+
 def test_polars_float_value_windows_are_exact():
     pl = pytest.importorskip("polars")
 

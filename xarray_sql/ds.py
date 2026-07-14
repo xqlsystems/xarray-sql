@@ -315,6 +315,12 @@ class SQLBackendArray(xr.backends.BackendArray):
         self._var_name = var_name
         self._dimension_columns = list(dimension_columns)
         self._coord_arrays = coord_arrays
+        # Computed once per dim: whether the whole coordinate array is
+        # strictly monotonic, the precondition for translating contiguous
+        # positional windows into value ranges (see _dim_spec).
+        self._monotonic = {
+            d: _strictly_monotonic(coord_arrays[d]) for d in dimension_columns
+        }
         self.shape = tuple(shape)
         self.dtype = np.dtype(dtype)
 
@@ -377,7 +383,9 @@ class SQLBackendArray(xr.backends.BackendArray):
                 ):
                     continue
                 contiguous = len(arr) > 1 and bool((np.diff(arr) == 1).all())
-            specs[dim] = _dim_spec(requested[dim], contiguous)
+            specs[dim] = _dim_spec(
+                requested[dim], contiguous, self._monotonic[dim]
+            )
 
         out_shape = tuple(len(requested[d]) for d in self._dimension_columns)
         if any(n == 0 for n in out_shape):
@@ -401,21 +409,43 @@ class SQLBackendArray(xr.backends.BackendArray):
         )
 
 
-def _dim_spec(vals: np.ndarray, contiguous: bool) -> DimSpec:
+def _strictly_monotonic(coord: np.ndarray) -> bool:
+    """Whether ``coord`` is strictly increasing or strictly decreasing.
+
+    Strict monotonicity of the whole coordinate array is the
+    precondition for translating a contiguous positional window into a
+    value range: with duplicated or unsorted values, ``[min, max]`` of a
+    window admits coordinate values at positions outside the window.
+    NaN/NaT (whose comparisons are all false) and non-comparable object
+    arrays report ``False``, which safely falls back to value lists.
+    """
+    if len(coord) < 2:
+        return True
+    head, tail = coord[:-1], coord[1:]
+    try:
+        return bool((tail > head).all() or (tail < head).all())
+    except TypeError:
+        return False
+
+
+def _dim_spec(
+    vals: np.ndarray, contiguous: bool, coord_monotonic: bool
+) -> DimSpec:
     """The engine window for one dim's requested coordinate values.
 
     A contiguous run of positions over a strictly monotonic coordinate
-    is exactly the value range ``[min, max]`` — a two-literal predicate
-    engines can push into range pruning. Anything else (stepped slices,
-    fancy indexers, non-monotonic or duplicated coords) must be an
-    explicit value list: a range would admit rows the scatter did not
-    request.
+    array is exactly the value range ``[min, max]`` — a two-literal
+    predicate engines can push into range pruning. Monotonicity must
+    hold for the *entire* coordinate array (``coord_monotonic``), not
+    just the requested window: template coords are used verbatim, and
+    over a non-monotonic array a window's ``[min, max]`` admits values
+    at positions outside the window, which the scatter would then write
+    to wrong cells. Anything else (stepped slices, fancy indexers,
+    non-monotonic or duplicated coords) must be an explicit value list:
+    a range would admit rows the scatter did not request.
     """
-    if contiguous and len(vals) > 1:
-        diffs = np.diff(vals)
-        zero = diffs.dtype.type(0)
-        if (diffs > zero).all() or (diffs < zero).all():
-            return ("range", vals.min(), vals.max())
+    if contiguous and coord_monotonic and len(vals) > 1:
+        return ("range", vals.min(), vals.max())
     return ("values", vals, None)
 
 
