@@ -219,3 +219,82 @@ def test_abandoned_scanner_does_not_wedge_later_scans(counted):
     assert dataset.count_rows() == 400
     table = dataset.to_table(columns=["t2m"])
     assert table.num_rows == 400
+
+
+@pytest.mark.parametrize("coalesce_rows", [None, 10 * 4, 30 * 4, 10_000])
+def test_coalesce_results_identical(coalesce_rows):
+    from xarray_sql.backends.pyarrow import XarrayPushdownDataset
+
+    source = xr.Dataset(
+        {"t2m": (["time", "lat"], np.arange(100.0 * 4).reshape(100, 4))},
+        coords={
+            "time": pd.date_range("2020-01-01", periods=100, freq="h"),
+            "lat": np.linspace(-30.0, 30.0, 4),
+        },
+    )
+    dataset = XarrayPushdownDataset(
+        source, {"time": 10}, coalesce_rows=coalesce_rows
+    )
+    lo = pa.scalar(pd.Timestamp("2020-01-01 03:00"), type=pa.timestamp("ns"))
+    hi = pa.scalar(pd.Timestamp("2020-01-03 07:00"), type=pa.timestamp("ns"))
+    predicate = (pc.field("time") >= lo) & (pc.field("time") < hi)
+    table = dataset.to_table(filter=predicate)
+    assert table.num_rows == 52 * 4
+    expected = source.t2m.isel(time=slice(3, 55)).values.ravel()
+    np.testing.assert_array_equal(
+        np.sort(table["t2m"].to_numpy()), np.sort(expected)
+    )
+
+
+def test_coalesce_merges_consecutive_chunk_runs():
+    from xarray_sql.backends.pyarrow import XarrayPushdownDataset
+
+    source = xr.Dataset(
+        {"t2m": (["time", "lat"], np.arange(100.0 * 4).reshape(100, 4))},
+        coords={
+            "time": pd.date_range("2020-01-01", periods=100, freq="h"),
+            "lat": np.linspace(-30.0, 30.0, 4),
+        },
+    )
+    reads: list[dict] = []
+    dataset = XarrayPushdownDataset(
+        source,
+        {"time": 10},
+        coalesce_rows=30 * 4,  # up to 3 source chunks per read
+        _iteration_callback=lambda b, n: reads.append(b),
+    )
+    # An unfiltered scan of 10 chunks arrives as ceil(10/3) = 4 reads.
+    assert dataset.to_table().num_rows == 400
+    assert len(reads) == 4
+    spans = sorted((b["time"].start, b["time"].stop) for b in reads)
+    assert spans == [(0, 30), (30, 60), (60, 90), (90, 100)]
+
+    # Pruning still applies before merging: a filter keeping chunks
+    # 0-2 and 7-9 yields one merged read per consecutive run.
+    reads.clear()
+    keep = (
+        (pc.field("time") < pa.scalar(pd.Timestamp("2020-01-02 06:00"), type=pa.timestamp("ns")))
+        | (pc.field("time") >= pa.scalar(pd.Timestamp("2020-01-03 22:00"), type=pa.timestamp("ns")))
+    )
+    table = dataset.to_table(filter=keep)
+    assert table.num_rows == (30 + 30) * 4
+    spans = sorted((b["time"].start, b["time"].stop) for b in reads)
+    assert spans == [(0, 30), (70, 100)]
+
+
+def test_coalesce_only_affects_scanner_not_fragments():
+    from xarray_sql.backends.pyarrow import XarrayPushdownDataset
+
+    source = xr.Dataset(
+        {"t2m": (["time", "lat"], np.arange(100.0 * 4).reshape(100, 4))},
+        coords={
+            "time": pd.date_range("2020-01-01", periods=100, freq="h"),
+            "lat": np.linspace(-30.0, 30.0, 4),
+        },
+    )
+    dataset = XarrayPushdownDataset(
+        source, {"time": 10}, coalesce_rows=10_000
+    )
+    # Fragment consumers (DataFusion, dask) keep one fragment per source
+    # chunk for their own parallelism.
+    assert len(dataset.get_fragments()) == 10

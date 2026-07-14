@@ -270,6 +270,7 @@ class XarrayPushdownDataset(pads.Dataset):
         *,
         batch_size: int = DEFAULT_BATCH_SIZE,
         prefetch: int = DEFAULT_PREFETCH,
+        coalesce_rows: int | None = None,
         coord_arrays: dict[str, np.ndarray] | None = None,
         _iteration_callback: (
             Callable[[Block, list[str] | None], None] | None
@@ -303,6 +304,7 @@ class XarrayPushdownDataset(pads.Dataset):
                 self._coord_arrays[str(d)] = ds.coords[d].values
         self._batch_size = batch_size
         self._prefetch = prefetch
+        self._coalesce_rows = coalesce_rows
         self._iteration_callback = _iteration_callback
         self._shadows: dict[str, _DimShadow] | None = None
 
@@ -332,9 +334,12 @@ class XarrayPushdownDataset(pads.Dataset):
         accepted and ignored.
         """
         kept = None if filter is None else self._prune(filter)
-        return self._scanner_for_blocks(
-            self._blocks(kept), columns, filter, batch_size
+        blocks = (
+            self._coalesced_blocks(kept)
+            if self._coalesce_rows
+            else self._blocks(kept)
         )
+        return self._scanner_for_blocks(blocks, columns, filter, batch_size)
 
     def _scanner_for_blocks(
         self,
@@ -644,6 +649,67 @@ class XarrayPushdownDataset(pads.Dataset):
         for combo in self._combos(kept):
             yield self._block_for_combo(combo)
 
+    def _coalesced_blocks(
+        self, kept: dict[str, list[int]] | None
+    ) -> Iterator[Block]:
+        """Blocks with runs of consecutive chunks merged along one dim.
+
+        Runs are merged along the most finely chunked dimension while
+        the merged block stays under ``coalesce_rows`` rows. One merged
+        block is one ``isel`` — on Zarr sources its member chunks are
+        fetched by the store's own concurrent batch read instead of one
+        request per chunk through the prefetch pool.
+        """
+        if not self._resolved:
+            yield {}
+            return
+        dims = list(self._resolved.keys())
+        merge_dim = max(dims, key=lambda d: len(self._resolved[d]))
+        others = [d for d in dims if d != merge_dim]
+        ranges = {
+            d: list(
+                (kept or {}).get(str(d), range(len(self._resolved[d])))
+            )
+            for d in dims
+        }
+        merge_bounds = self._chunk_bounds[merge_dim]
+        # Rows contributed per merge-dim row by dims outside the merge
+        # axis (unresolved dims span their full extent in every block).
+        outer_rows = 1
+        for d in self._ds.dims:
+            if d not in self._resolved:
+                outer_rows *= self._ds.sizes[d]
+
+        def flush(prefix: tuple[int, ...], run: list[int]) -> Block:
+            block: Block = {d: slice(None) for d in self._ds.dims}
+            for d, i in zip(others, prefix):
+                bounds = self._chunk_bounds[d]
+                block[d] = slice(int(bounds[i]), int(bounds[i + 1]))
+            block[merge_dim] = slice(
+                int(merge_bounds[run[0]]), int(merge_bounds[run[-1] + 1])
+            )
+            return block
+
+        for prefix in itertools.product(*(ranges[d] for d in others)):
+            per_row = outer_rows
+            for d, i in zip(others, prefix):
+                bounds = self._chunk_bounds[d]
+                per_row *= int(bounds[i + 1] - bounds[i])
+            run: list[int] = []
+            run_rows = 0
+            for i in ranges[merge_dim]:
+                rows = int(merge_bounds[i + 1] - merge_bounds[i]) * per_row
+                if run and (
+                    i != run[-1] + 1
+                    or run_rows + rows > self._coalesce_rows
+                ):
+                    yield flush(prefix, run)
+                    run, run_rows = [], 0
+                run.append(i)
+                run_rows += rows
+            if run:
+                yield flush(prefix, run)
+
     def _batch_generator(
         self,
         scan_schema: pa.Schema,
@@ -760,6 +826,7 @@ def arrow_dataset(
     *,
     batch_size: int = DEFAULT_BATCH_SIZE,
     prefetch: int = DEFAULT_PREFETCH,
+    coalesce_rows: int | None = None,
 ) -> XarrayPushdownDataset:
     """A pushdown-capable ``pyarrow.dataset.Dataset`` view of ``ds``.
 
@@ -782,10 +849,21 @@ def arrow_dataset(
         batch_size: Maximum rows per emitted Arrow RecordBatch.
         prefetch: Chunk loads kept in flight ahead of the consumer
             (memory scales with ``prefetch`` x pivoted chunk size).
+        coalesce_rows: When set, merge runs of consecutive surviving
+            chunks along the most finely chunked dimension into single
+            reads of at most this many rows. Fewer, larger source
+            requests — the win on remote stores, where each merged read
+            fetches its member chunks through the store's own concurrent
+            batching. Memory scales with ``prefetch`` x the *merged*
+            block size, so size accordingly (e.g. ``8_000_000``).
 
     Returns:
         An :class:`XarrayPushdownDataset`.
     """
     return XarrayPushdownDataset(
-        ds, chunks, batch_size=batch_size, prefetch=prefetch
+        ds,
+        chunks,
+        batch_size=batch_size,
+        prefetch=prefetch,
+        coalesce_rows=coalesce_rows,
     )
