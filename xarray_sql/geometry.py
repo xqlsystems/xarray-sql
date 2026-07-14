@@ -69,6 +69,18 @@ def build_geometry(encoding: str, x: pa.Array, y: pa.Array) -> pa.Array:
 def _wkb_points(x: np.ndarray, y: np.ndarray) -> pa.Array:
     """Vectorized 21-byte little-endian WKB point encoding."""
     n = len(x)
+    # ``pa.binary()`` carries int32 offsets, which the final offset
+    # (n * 21) overflows past ~102M points; the buffers would build
+    # silently corrupt. Unreachable through the pivot (batch_size caps
+    # rows per batch well below this), so guard rather than widen the
+    # storage to large_binary, which DuckDB's ingestion expects not to
+    # see.
+    if n * 21 > np.iinfo(np.int32).max:
+        raise ValueError(
+            f"cannot WKB-encode {n:,} points in a single batch: "
+            "pa.binary() offsets are int32 and n * 21 bytes would "
+            "overflow them. Use a smaller batch_size."
+        )
     buf = np.empty((n, 21), dtype=np.uint8)
     buf[:, 0] = 1  # little-endian byte order mark
     buf[:, 1:5] = np.array([1, 0, 0, 0], dtype=np.uint8)  # WKB type 1: Point

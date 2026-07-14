@@ -156,3 +156,15 @@ def test_bbox_conjuncts_accepts_bounds_objects():
 
     sql = xql.bbox_conjuncts(Boxy(), x="lon", y="lat", pad=0.5)
     assert sql == '"lon" BETWEEN 0.5 AND 3.5 AND "lat" BETWEEN 1.5 AND 4.5'
+
+
+def test_wkb_points_guards_int32_offset_overflow():
+    from xarray_sql.geometry import _wkb_points
+
+    # Stride-0 broadcast views: len() reports ~103M points without
+    # allocating them, and the guard must fire before any buffer is
+    # built (pa.binary() offsets are int32; n * 21 would overflow).
+    n = 103_000_000
+    x = np.broadcast_to(np.float64(0.0), (n,))
+    with pytest.raises(ValueError, match="int32"):
+        _wkb_points(x, x)
