@@ -42,8 +42,7 @@ import datetime
 
 import xarray as xr
 
-import xarray_sql as xql
-
+from _engines import EngineContext
 from _harness import (
     CaseSkipped,
     assert_grid_close,
@@ -81,7 +80,8 @@ def main() -> None:
     except Exception as exc:  # noqa: BLE001 — any failure → skip, not crash
         raise CaseSkipped(f"ARCO-ERA5 unavailable ({exc})") from exc
 
-    ctx = xql.XarrayContext()
+    ctx = EngineContext()
+    print(f"  engine: {ctx.flavor}")
     with timed("register full ERA5 (lazy)"):
         ctx.from_dataset(
             "era5",
@@ -110,8 +110,10 @@ def main() -> None:
     # A climatology is a gridded product: round-trip the result back to an
     # xarray Dataset keyed by (latitude, longitude, hour) — how it is used.
     for _ in measured("SQL diurnal climatology (lazy read)"):
-        got = ctx.sql(sql, param_values=_PARAMS).to_dataset(
-            dims=["latitude", "longitude", "hour"]
+        got = ctx.sql_to_dataset(
+            sql,
+            dims=["latitude", "longitude", "hour"],
+            param_values=_PARAMS,
         )
 
     # Array reference: the textbook groupby-over-the-cycle reduction, in °C —

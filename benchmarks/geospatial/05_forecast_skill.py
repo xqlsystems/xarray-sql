@@ -49,8 +49,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-import xarray_sql as xql
-
+from _engines import EngineContext
 from _harness import (
     CaseSkipped,
     assert_grid_close,
@@ -144,7 +143,8 @@ def main() -> None:
         f"leads × 2 models)"
     )
 
-    ctx = xql.XarrayContext()
+    ctx = EngineContext()
+    print(f"  engine: {ctx.flavor}")
     # chunks here is the Arrow batch (partition) size each table streams in, not a
     # filter — no data is dropped. Both windows are small, so one partition each is
     # fastest (fewer partitions = fewer Python→Arrow round-trips for the same
@@ -172,7 +172,7 @@ def main() -> None:
     show_sql(sql)
 
     for _ in measured("SQL RMSE by (model, lead) — lazy JOIN"):
-        got = ctx.sql(sql).to_dataset(dims=["model", "lead"]).rmse
+        got = ctx.sql_to_dataset(sql, dims=["model", "lead"]).rmse
 
     for _ in measured("xarray reference"):
         ref = _reference_rmse(forecasts, truth)
