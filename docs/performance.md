@@ -199,43 +199,63 @@ ctx.sql("CREATE OR REPLACE TABLE grid_cube AS ...").collect()
 ### `pyramid`: one cube, every zoom level
 
 Use it when the *resolution* of the question varies — dashboards,
-maps, "country then province then plot" drill-downs. `pyramid` scans
-the source once, bins `x`/`y` into square cells of `base_cell`
-coordinate units (level 0), then rolls each coarser level up from the
-one below (cells double in size per level, so rollups are exact and
-cost almost nothing beyond the single scan). Think raster overviews /
-map-tile pyramids, in SQL — this one earns a helper because the
-multi-level rollup and its exact integer cell indexing are genuinely
-fiddly to hand-write.
+maps, "country then province then plot" drill-downs. Think raster
+overviews / map-tile pyramids, in SQL.
+
+Smallest possible example — a 4x4 grid of pixels valued 1..16 on a
+2x2-degree extent, binned into 1-degree cells (`base_cell=1.0`), three
+levels:
 
 ```python
-xql.pyramid(con, "grid_pyramid", "grid",
-    aggs={"n": ("count", "*"),
-          "hits": ("sum", "CASE WHEN klass >= 4 THEN 1 ELSE 0 END")},
-    base_cell=0.05, levels=6)
-
-# Continental overview: a few thousand coarse cells, not 9B pixels.
-con.sql("""
-    SELECT x_bin, y_bin, hits / n AS rate
-    FROM grid_pyramid
-    WHERE level = 5
-""")
-
-# Zoomed-in region: same cube, finer level, range-filtered.
-con.sql("""
-    SELECT x_bin, y_bin, hits / n AS rate
-    FROM grid_pyramid
-    WHERE level = 1
-      AND x_bin BETWEEN -58.5 AND -57.0 AND y_bin BETWEEN -29.0 AND -28.0
-""")
+xql.pyramid(con, "pyr", "grid",
+    aggs={"n": ("count", "*"), "total": ("sum", "v")},
+    base_cell=1.0, levels=3)
 ```
 
-Query the level whose cell size matches what you are rendering or
-summarizing; filter `x_bin`/`y_bin` with ranges (they are float cell
-origins), or join on the exact integer `x_idx`/`y_idx` when combining
-levels or cubes. Aggregates must be decomposable (sum/count/min/max);
-express an average as a sum plus a count and divide at query time.
-`pyramid` runs identically on DuckDB and DataFusion.
+The entire resulting table:
+
+```text
+ level  x_idx  y_idx  x_bin  y_bin   n  total
+     0      0      0    0.0    0.0   4   14.0   ┐ four 1-degree cells,
+     0      1      0    1.0    0.0   4   22.0   │ 4 pixels each — the
+     0      0      1    0.0    1.0   4   46.0   │ only scan of the
+     0      1      1    1.0    1.0   4   54.0   ┘ source
+     1      0      0    0.0    0.0  16  136.0   ← the 4 cells, added up
+     2      0      0    0.0    0.0  16  136.0   ← same again (extent < cell)
+```
+
+Each level doubles the cell size and is computed by *adding up* the
+level below — never rescanning the source. That is why aggregates must
+be decomposable (`sum`/`count`/`min`/`max`): sums and counts add.
+An average is a sum plus a count, divided at query time —
+`SELECT total / n FROM pyr WHERE level = 2` gives 8.5, exactly the
+mean of pixels 1..16.
+
+The use case, on an eri-shaped grid (16.7M uint8 pixels, ~500 m cells):
+the cube builds in one scan into ~365k rows, and then
+
+```sql
+-- Country-wide overview map: share of high-risk pixels per ~1.6° cell.
+SELECT x_bin, y_bin, high / n AS share
+FROM eri_pyr WHERE level = 5;                    -- 286 rows, ~1 ms
+
+-- User zooms into one province: same cube, finer level, range filter.
+SELECT x_bin, y_bin, high / n AS share
+FROM eri_pyr
+WHERE level = 1
+  AND x_bin BETWEEN -60 AND -58 AND y_bin BETWEEN -34 AND -32;
+```
+
+The overview reads a few hundred pre-aggregated rows instead of
+grouping every pixel — ~100x faster than the raw `GROUP BY FLOOR(...)`
+even with this source in local memory, and the gap grows with the
+source: against a remote 9-billion-pixel raster the raw side is a
+minutes-long scan while the pyramid stays at milliseconds.
+
+Practical notes: query the level whose cell size matches what you are
+rendering; filter `x_bin`/`y_bin` with ranges (float cell origins), or
+join on the exact integer `x_idx`/`y_idx` when combining levels or
+cubes. `pyramid` runs identically on DuckDB and DataFusion.
 
 ## The round-trip is optimized for grids
 
