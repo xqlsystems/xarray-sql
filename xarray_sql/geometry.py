@@ -81,3 +81,40 @@ def _wkb_points(x: np.ndarray, y: np.ndarray) -> pa.Array:
     return pa.Array.from_buffers(
         pa.binary(), n, [None, offsets, pa.py_buffer(buf.tobytes())]
     )
+
+
+def bbox_conjuncts(
+    bounds: Any, x: str = "x", y: str = "y", pad: float = 0.0
+) -> str:
+    """SQL bbox conjuncts for a geometry's envelope — the pruning half.
+
+    Engines do not push ``ST_*`` functions into the scan, so a
+    geometry-only predicate reads every chunk; pairing it with range
+    conjuncts on the coordinate columns restores pruning. This helper
+    renders those conjuncts from a geometry's envelope::
+
+        poly = shapely.from_wkt("POLYGON (...)")
+        con.execute(f"""
+            SELECT avg(risk) FROM eri
+            WHERE {xql.bbox_conjuncts(poly, x="x", y="y")}
+              AND ST_Within(geometry, ST_GeomFromText('{poly.wkt}'))
+        """)
+
+    Args:
+        bounds: ``(xmin, ymin, xmax, ymax)``, or any object with a
+            ``.bounds`` attribute in that convention (shapely
+            geometries qualify).
+        x: The x/longitude column name.
+        y: The y/latitude column name.
+        pad: Optional margin added on every side (e.g. to be safe
+            around ``ST_DWithin``-style predicates).
+
+    Returns:
+        A SQL snippet ``"x" BETWEEN a AND b AND "y" BETWEEN c AND d``.
+    """
+    values = getattr(bounds, "bounds", bounds)
+    xmin, ymin, xmax, ymax = (float(v) for v in values)
+    return (
+        f'"{x}" BETWEEN {xmin - pad!r} AND {xmax + pad!r} '
+        f'AND "{y}" BETWEEN {ymin - pad!r} AND {ymax + pad!r}'
+    )

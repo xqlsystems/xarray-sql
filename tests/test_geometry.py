@@ -121,3 +121,43 @@ def test_geometry_name_collision_raises():
     )
     with pytest.raises(ValueError, match="shadow"):
         xql.arrow_dataset(clash, {"x": 3}, geometry=("x", "x"))
+
+
+def test_bbox_conjuncts_prunes_and_pairs_with_st_within(grid):
+    duckdb = pytest.importorskip("duckdb")
+
+    reads: list = []
+    dataset = XarrayPushdownDataset(
+        grid,
+        {"y": 4},
+        geometry=("x", "y"),
+        _iteration_callback=lambda b, n: reads.append(b),
+    )
+    con = duckdb.connect()
+    try:
+        con.execute("INSTALL spatial; LOAD spatial;")
+    except duckdb.Error:
+        pytest.skip("duckdb spatial extension unavailable")
+    con.register("t", dataset)
+
+    bounds = (-58.1, -28.75, -56.9, -27.9)  # xmin, ymin, xmax, ymax
+    conjuncts = xql.bbox_conjuncts(bounds, x="x", y="y")
+    assert '"x" BETWEEN' in conjuncts and '"y" BETWEEN' in conjuncts
+    reads.clear()
+    got = con.execute(
+        f"SELECT count(*) FROM t WHERE {conjuncts} "
+        "AND ST_Within(geometry, ST_GeomFromText("
+        "'POLYGON ((-58.1 -28.75, -56.9 -28.75, -56.9 -27.9, "
+        "-58.1 -27.9, -58.1 -28.75))'))"
+    ).fetchone()
+    assert len(reads) == 1  # the y-range pruned to one chunk
+    inside = (grid.y >= -28.75) & (grid.y <= -27.9)
+    assert got[0] == int(inside.sum()) * grid.sizes["x"]
+
+
+def test_bbox_conjuncts_accepts_bounds_objects():
+    class Boxy:
+        bounds = (1.0, 2.0, 3.0, 4.0)
+
+    sql = xql.bbox_conjuncts(Boxy(), x="lon", y="lat", pad=0.5)
+    assert sql == '"lon" BETWEEN 0.5 AND 3.5 AND "lat" BETWEEN 1.5 AND 4.5'

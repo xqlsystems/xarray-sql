@@ -1,5 +1,6 @@
 from . import cftime
 from .backends import arrow_dataset, register
+from .geometry import bbox_conjuncts
 from .df import from_map
 from .materialize import materialize, pyramid
 from .reader import read_xarray, read_xarray_table
@@ -12,6 +13,7 @@ __all__ = [
     "read_xarray_table",
     "read_xarray",
     "arrow_dataset",
+    "bbox_conjuncts",
     "materialize",
     "pyramid",
     "register",
