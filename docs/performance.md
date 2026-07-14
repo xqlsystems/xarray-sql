@@ -200,6 +200,14 @@ con.sql("SELECT * FROM grid_cube WHERE lat = -32")   # native speed
 The table is exactly your query's rows — no more, no less. If you need
 a different aggregation later, that is a new `materialize`.
 
+The helper is deliberately thin: on DuckDB it issues exactly the
+`CREATE OR REPLACE TABLE ... AS ... ORDER BY ...` you could write
+yourself. Its value is portability — the same call works on
+DataFusion, where raw DDL is a lazy plan that silently does nothing
+until collected (the adapter collects it) — and making the
+sort-for-compression idiom the default rather than something to
+remember.
+
 ### `pyramid`: one cube, every zoom level
 
 Use it when the *resolution* of the question varies — dashboards,
