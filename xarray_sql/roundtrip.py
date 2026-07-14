@@ -7,15 +7,20 @@ Dataset as a *template* is enough to rebuild a labeled, metadata-carrying
 Dataset. Nothing here is engine-specific: results arrive as Arrow record
 batches regardless of which engine executed the SQL.
 
-This module implements the eager path only: the result is materialized
-once into a dense in-memory Dataset. For DataFusion, the richer
-lazy/chunked reconstruction lives on
-:meth:`~xarray_sql.ds.XarrayDataFrame.to_dataset`.
+Reconstruction is eager by default (the result is materialized once
+into a dense in-memory Dataset). Passing ``chunks=`` selects the
+lazy/chunked path instead: data variables are reconstructed on access,
+window by window, by re-executing the engine's query narrowed to each
+chunk's coordinate range. That requires the result to be
+*re-executable* — a DuckDB relation, a Polars LazyFrame (or eager
+DataFrame), or a DataFusion DataFrame — not a one-shot Arrow stream;
+see :mod:`xarray_sql.lazyscan`.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, Literal
 
 import numpy as np
 import pyarrow as pa
@@ -23,10 +28,14 @@ import xarray as xr
 
 from .ds import (
     Sparsity,
+    XarrayDataFrame,
     _apply_template,
+    _build_lazy_scan,
     _dataset_from_batches,
     _ds_var_dims,
+    _finish_dataset,
 )
+from .lazyscan import resolve_lazy_handle
 
 
 def _result_to_batches(result: Any) -> tuple[pa.Schema, list[pa.RecordBatch]]:
@@ -58,6 +67,12 @@ def _result_to_batches(result: Any) -> tuple[pa.Schema, list[pa.RecordBatch]]:
     if hasattr(result, "to_arrow_table"):
         table = result.to_arrow_table()
         return table.schema, table.to_batches()
+    handle = resolve_lazy_handle(result)
+    if handle is not None:
+        # Re-executable results without a stream protocol (a Polars
+        # LazyFrame): execute once through the handle, unnarrowed.
+        schema = handle.schema()
+        return schema, handle.fetch({}, list(schema.names))
     raise TypeError(
         f"Cannot read an Arrow stream from {type(result).__qualname__}; "
         "expected a pyarrow Table/RecordBatch/RecordBatchReader, an object "
@@ -72,6 +87,8 @@ def to_dataset(
     template: xr.Dataset | None = None,
     sparsity: Sparsity = "result",
     fill_value: Any = np.nan,
+    chunks: Mapping[str, int] | str | None = None,
+    coords: Literal["discover", "template"] = "discover",
 ) -> xr.Dataset:
     """Convert an engine's Arrow result into a labeled ``xr.Dataset``.
 
@@ -108,16 +125,34 @@ def to_dataset(
             the result. ``"template"`` reindexes to the template's full
             coord ranges, filling absent cells with ``fill_value``.
         fill_value: Fill for ``sparsity="template"``. Defaults to NaN.
+        chunks: ``None`` (default) materializes eagerly. A mapping
+            (e.g. ``{"time": 100}``), ``"auto"``, or ``"inherit"``
+            selects the lazy/chunked path: data variables are
+            reconstructed window by window on access, each window
+            re-executing the engine's query narrowed to its coordinate
+            range (over a table registered through xarray-sql, that
+            filter flows back into chunk pruning at the source).
+            Requires a re-executable ``result`` — a DuckDB relation, a
+            Polars LazyFrame/DataFrame, or a DataFusion DataFrame.
+        coords: How the lazy path learns each dimension's coordinate
+            values. ``"discover"`` (default) runs one ``DISTINCT`` query
+            per dim — correct for any query. ``"template"`` trusts the
+            template's coord arrays instead, skipping discovery; only
+            valid when the result spans the template's full extent (an
+            unfiltered scan), and requires ``template=``.
 
     Returns:
-        A dense in-memory ``xr.Dataset`` with ``dims`` as dimensions and
-        the remaining result columns as data variables.
+        An ``xr.Dataset`` with ``dims`` as dimensions and the remaining
+        result columns as data variables — dense and in-memory by
+        default, lazily chunked when ``chunks`` is given.
 
     Raises:
         ValueError: When neither ``dims`` nor ``template`` resolves the
             dimension columns, a requested dim is missing from the result,
             or ``sparsity="template"`` is used without a template.
-        TypeError: When ``result`` exposes no readable Arrow stream.
+        TypeError: When ``result`` exposes no readable Arrow stream, or
+            ``chunks`` is requested for a one-shot stream that cannot be
+            re-executed.
     """
     if sparsity not in ("result", "template"):
         raise ValueError(
@@ -125,11 +160,36 @@ def to_dataset(
         )
     if sparsity == "template" and template is None:
         raise ValueError("sparsity='template' requires template= to be given")
+    if coords not in ("discover", "template"):
+        raise ValueError(
+            f"coords must be 'discover' or 'template', got {coords!r}"
+        )
+    if coords == "template" and template is None:
+        raise ValueError("coords='template' requires template= to be given")
+
+    if chunks is not None:
+        return _to_dataset_lazy(
+            result, dims, template, sparsity, fill_value, chunks, coords
+        )
 
     schema, batches = _result_to_batches(result)
     field_names = [f.name for f in schema]
     field_types = {f.name: f.type for f in schema}
 
+    dims = _resolve_dims(dims, template, field_names)
+
+    ds = _dataset_from_batches(batches, dims, field_names, field_types)
+    return _finish_dataset(
+        ds, dims, template, sparsity, fill_value, None, field_types
+    )
+
+
+def _resolve_dims(
+    dims: list[str] | None,
+    template: xr.Dataset | None,
+    field_names: list[str],
+) -> list[str]:
+    """Dimension columns, inferred from the template when not given."""
     if dims is None:
         if template is None:
             raise ValueError(
@@ -147,19 +207,69 @@ def to_dataset(
         raise ValueError(
             f"dims {missing} are not columns of the result {field_names}."
         )
+    return dims
 
-    ds = _dataset_from_batches(batches, dims, field_names, field_types)
 
-    if sparsity == "template":
+def _to_dataset_lazy(
+    result: Any,
+    dims: list[str] | None,
+    template: xr.Dataset | None,
+    sparsity: Sparsity,
+    fill_value: Any,
+    chunks: Mapping[str, int] | str,
+    coords: Literal["discover", "template"],
+) -> xr.Dataset:
+    """The chunked reconstruction behind ``to_dataset(chunks=...)``."""
+    handle = resolve_lazy_handle(result)
+    if handle is None:
+        raise TypeError(
+            "chunks= requires a re-executable engine result (a Polars "
+            "LazyFrame/DataFrame or a DataFusion DataFrame); got "
+            f"{type(result).__qualname__}, which is a one-shot stream. "
+            "Pass the engine's lazy handle instead of a materialized "
+            "result, or use chunks=None."
+        )
+    schema = handle.schema()
+    field_names = [f.name for f in schema]
+    field_types = {f.name: f.type for f in schema}
+    dims = _resolve_dims(dims, template, field_names)
+
+    coord_arrays = None
+    if coords == "template":
         assert template is not None
-        indexers = {
-            d: template.coords[d].values
-            for d in dims
-            if d in template.coords and d in template.dims
+        missing = [d for d in dims if d not in template.coords]
+        if missing:
+            raise ValueError(
+                f"coords='template' requires the template to carry coords "
+                f"for every dim; missing {missing}."
+            )
+        coord_arrays = {
+            d: np.asarray(template.coords[d].values) for d in dims
         }
-        if indexers:
-            ds = ds.reindex(indexers, fill_value=fill_value)
 
-    if template is not None:
-        ds = _apply_template(ds, template)
-    return ds
+    resolved = XarrayDataFrame._resolve_chunks(chunks, template, dims)
+    if resolved is None:
+        # "inherit" with no chunked source dimension to inherit from:
+        # eager is the right execution, exactly as on the wrapper path.
+        batches = handle.fetch({}, field_names)
+        ds = _dataset_from_batches(batches, dims, field_names, field_types)
+        return _finish_dataset(
+            ds, dims, template, sparsity, fill_value, None, field_types
+        )
+    if not getattr(handle, "supports_chunked", True):
+        raise NotImplementedError(
+            "Chunked reconstruction is not supported for "
+            f"{type(result).__qualname__}: re-executing a DuckDB "
+            "relation from worker threads intermittently deadlocks in "
+            "duckdb-python when the query scans a Python-backed table "
+            "(see xarray_sql.lazyscan.DuckDBHandle.supports_chunked). "
+            "Use chunks=None (eager), or run the query through Polars "
+            "(pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))) or a "
+            "DataFusion context, which support chunked round-trips."
+        )
+    ds = _build_lazy_scan(
+        handle, dims, field_names, field_types, coord_arrays=coord_arrays
+    )
+    return _finish_dataset(
+        ds, dims, template, sparsity, fill_value, resolved, field_types
+    )

@@ -1,0 +1,159 @@
+"""Lazy chunked round-trip through engines beyond DataFusion.
+
+``xql.to_dataset(result, chunks=...)`` re-executes the engine's query
+per accessed window. These tests verify the reconstruction is correct
+on Polars frames (DuckDB chunked reconstruction fails fast — see
+DuckDBHandle.supports_chunked — while its eager path works), that
+laziness is real, and that one-shot
+streams are rejected with a clear error.
+"""
+
+import numpy as np
+import pandas as pd
+import pyarrow as pa
+import pytest
+import xarray as xr
+
+import xarray_sql as xql
+from xarray_sql.backends.pyarrow import XarrayPushdownDataset
+
+
+@pytest.fixture
+def source() -> xr.Dataset:
+    np.random.seed(7)
+    return xr.Dataset(
+        {
+            "t2m": (
+                ["time", "lat"],
+                np.random.rand(100, 6).astype(np.float64),
+            ),
+        },
+        coords={
+            "time": pd.date_range("2020-01-01", periods=100, freq="h"),
+            "lat": np.linspace(-25.0, 25.0, 6),
+        },
+        attrs={"title": "synthetic"},
+    )
+
+
+@pytest.fixture
+def registered(source):
+    """A DuckDB connection with the source registered + a read counter."""
+    duckdb = pytest.importorskip("duckdb")
+
+    reads: list[dict] = []
+    dataset = XarrayPushdownDataset(
+        source, {"time": 10}, _iteration_callback=lambda b, n: reads.append(b)
+    )
+    con = duckdb.connect()
+    con.register("t", dataset)
+    return con, reads
+
+
+def test_duckdb_chunked_fails_fast_with_guidance(source, registered):
+    con, _ = registered
+    rel = con.sql("SELECT * FROM t")
+    # Re-executing a DuckDB relation from dask worker threads
+    # intermittently deadlocks inside duckdb-python when the query
+    # scans a Python-backed table; the library refuses instead of
+    # hanging (see DuckDBHandle.supports_chunked).
+    with pytest.raises(NotImplementedError, match="Polars"):
+        xql.to_dataset(rel, template=source, chunks={"time": 10})
+
+
+def test_duckdb_eager_round_trip_through_handle(source, registered):
+    con, _ = registered
+    rel = con.sql("SELECT * FROM t")
+    out = xql.to_dataset(rel, template=source)
+    assert not out.chunks
+    assert out.attrs == source.attrs
+    xr.testing.assert_allclose(out, source)
+
+
+def test_duckdb_eager_filtered_and_aggregated(source, registered):
+    con, _ = registered
+    rel = con.sql(
+        "SELECT time, avg(t2m) AS t2m FROM t "
+        "WHERE lat > 0 GROUP BY time ORDER BY time"
+    )
+    out = xql.to_dataset(rel, template=source)
+    expected = source.t2m.sel(lat=source.lat[source.lat > 0]).mean("lat")
+    np.testing.assert_allclose(out.t2m.values, expected.values)
+
+
+def test_polars_lazyframe_chunked_round_trip(source):
+    pl = pytest.importorskip("polars")
+
+    lf = pl.scan_pyarrow_dataset(xql.arrow_dataset(source, {"time": 10}))
+    out = xql.to_dataset(lf, template=source, chunks={"time": 20})
+    assert out.chunks
+    xr.testing.assert_allclose(out.compute(), source)
+
+    # Eager path through the same handle (LazyFrame has no stream
+    # protocol; the handle executes it once).
+    eager = xql.to_dataset(lf, template=source)
+    xr.testing.assert_allclose(eager, source)
+
+
+def test_polars_eager_frame_is_reexecutable(source):
+    pl = pytest.importorskip("polars")
+
+    frame = pl.DataFrame(
+        {
+            "time": np.repeat(source.time.values, 6),
+            "lat": np.tile(source.lat.values, 100),
+            "t2m": source.t2m.values.ravel(),
+        }
+    )
+    out = xql.to_dataset(frame, template=source, chunks={"time": 50})
+    xr.testing.assert_allclose(out.compute(), source)
+
+
+def test_one_shot_stream_with_chunks_raises(source, registered):
+    con, _ = registered
+    table = con.sql("SELECT * FROM t").to_arrow_table()
+    with pytest.raises(TypeError, match="re-executable"):
+        xql.to_dataset(table, template=source, chunks={"time": 10})
+
+
+def test_inherit_without_chunked_source_falls_back_to_eager(
+    source, registered
+):
+    con, _ = registered
+    rel = con.sql("SELECT * FROM t")
+    out = xql.to_dataset(rel, template=source, chunks="inherit")
+    # The in-memory template has no multi-chunk dim: eager, dense.
+    assert not out.chunks
+    xr.testing.assert_allclose(out, source)
+
+
+def test_stepped_indexer_uses_value_lists(source):
+    pl = pytest.importorskip("polars")
+
+    lf = pl.scan_pyarrow_dataset(xql.arrow_dataset(source, {"time": 10}))
+    out = xql.to_dataset(lf, template=source, chunks={"time": 10})
+    # A step-2 selection is not a contiguous coordinate range; the
+    # values path must return exactly the requested rows.
+    stepped = out.t2m.isel(time=slice(10, 30, 2)).compute()
+    np.testing.assert_allclose(
+        stepped.values, source.t2m.isel(time=slice(10, 30, 2)).values
+    )
+
+
+def test_descending_coordinate_windows():
+    pl = pytest.importorskip("polars")
+
+    desc = xr.Dataset(
+        {"v": (["lat"], np.arange(8.0))},
+        coords={"lat": np.linspace(70.0, 0.0, 8)},  # descending, like ERA5
+    )
+    lf = pl.scan_pyarrow_dataset(xql.arrow_dataset(desc, {"lat": 4}))
+    out = xql.to_dataset(
+        lf,
+        template=desc,
+        chunks={"lat": 4},
+        coords="template",
+    )
+    xr.testing.assert_allclose(out.compute(), desc)
+    window = out.v.isel(lat=slice(2, 6)).compute()
+    np.testing.assert_allclose(window.values, desc.v.isel(lat=slice(2, 6)))

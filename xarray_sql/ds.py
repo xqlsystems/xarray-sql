@@ -38,7 +38,8 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import xarray as xr
-from datafusion import col, literal
+
+from .lazyscan import DataFusionHandle, DimSpec, LazyResultHandle
 
 Sparsity = Literal["result", "template"]
 """Output coordinate extent for a filtered round-trip.
@@ -254,28 +255,31 @@ def _scatter_batches_to_ndarray(
 
 
 class SQLBackendArray(xr.backends.BackendArray):
-    """Read-only lazy N-D array view over a DataFusion DataFrame.
+    """Read-only lazy N-D array view over a re-executable SQL result.
 
     Bridges xarray's lazy-indexing interface
-    (:class:`xarray.backends.BackendArray`) to a DataFusion query result,
+    (:class:`xarray.backends.BackendArray`) to an engine query result,
     so an xarray ``Dataset`` can present a SQL query as if it were a
     materialized N-D array without actually loading any data until the
     caller asks for it. This is the workhorse that lets
-    :meth:`XarrayDataFrame.to_dataset` return a Dataset cheaply.
+    :meth:`XarrayDataFrame.to_dataset` (and the engine-agnostic
+    ``xql.to_dataset(chunks=...)``) return a Dataset cheaply.
 
     On each ``__getitem__`` call, the requested xarray indexer is
-    translated into a DataFusion filter expression (``df.filter(expr)``)
-    and a column projection (``df.select(*cols)``). The filtered
-    DataFrame is consumed via ``execute_stream`` as a sequence of Arrow
-    ``RecordBatch`` es and scattered into a preallocated numpy buffer,
-    so only the requested data is materialized.
+    translated into per-dimension coordinate windows and a column
+    projection, executed through a
+    :class:`~xarray_sql.lazyscan.LazyResultHandle` (DataFusion, DuckDB,
+    or Polars — each renders the windows with its own typed expression
+    API). The resulting Arrow ``RecordBatch`` es are scattered into a
+    preallocated numpy buffer, so only the requested data is
+    materialized.
 
     Constraints and caveats:
 
     - Read-only: there is no write path; the backend exists to surface
       query results, not to round-trip writes into a SQL store.
-    - The underlying DataFusion ``DataFrame`` holds a reference to its
-      originating ``SessionContext``, which is not picklable. The class
+    - The underlying engine object may hold non-picklable references
+      (DataFusion's ``SessionContext``, a DuckDB connection). The class
       therefore overrides ``__copy__`` and ``__deepcopy__`` to return
       ``self`` -- this is safe because the backend is read-only.
     - ``IndexingSupport.OUTER``: ``BasicIndexer`` and ``OuterIndexer``
@@ -284,10 +288,10 @@ class SQLBackendArray(xr.backends.BackendArray):
       works, just less efficiently.
 
     Raises:
-        ValueError, datafusion exceptions: propagated from the
-            underlying ``df.filter().select().execute_stream()`` chain
-            if a predicate refers to a missing column, the dtype of a
-            literal is incompatible, or the execution itself fails.
+        ValueError, engine exceptions: propagated from the underlying
+            filter/project/execute chain if a predicate refers to a
+            missing column, the dtype of a literal is incompatible, or
+            the execution itself fails.
         AssertionError: from ``np.searchsorted`` mis-alignment, which
             indicates the result contains coordinate values not present
             in the wrapper's pre-computed coord arrays -- usually a
@@ -300,14 +304,14 @@ class SQLBackendArray(xr.backends.BackendArray):
 
     def __init__(
         self,
-        inner_df: Any,
+        handle: LazyResultHandle,
         var_name: str,
         dimension_columns: list[str],
         coord_arrays: dict[str, np.ndarray],
         shape: tuple[int, ...],
         dtype: np.dtype,
     ) -> None:
-        self._inner_df = inner_df
+        self._handle = handle
         self._var_name = var_name
         self._dimension_columns = list(dimension_columns)
         self._coord_arrays = coord_arrays
@@ -337,28 +341,30 @@ class SQLBackendArray(xr.backends.BackendArray):
     # ------------------------------------------------------------------
 
     def _raw_getitem(self, key: tuple) -> np.ndarray:
-        """Materialize the indexed region described by *key* via DataFusion + Arrow.
+        """Materialize the indexed region described by *key* via the engine.
 
         ``key`` is a tuple of ``int``/``slice``/1-D integer-array, one per
         dim, in :attr:`_dimension_columns` order.
         """
         requested: dict[str, np.ndarray] = {}
-        # Dims whose indexer covers the full extent (slice(None) or
-        # equivalent). For these we omit the filter predicate entirely
-        # so DataFusion doesn't have to evaluate a tautology.
-        full_dims: set[str] = set()
+        # Per-dim windows for the engine. Dims whose indexer covers the
+        # full extent are omitted entirely so the engine doesn't have to
+        # evaluate a tautology.
+        specs: dict[str, DimSpec] = {}
         drop_axes: list[int] = []
         for axis, (dim, k) in enumerate(
             zip(self._dimension_columns, key, strict=True)
         ):
             coord = self._coord_arrays[dim]
+            contiguous = False
             if isinstance(k, slice):
                 start = 0 if k.start is None else k.start
                 stop = len(coord) if k.stop is None else k.stop
                 step = 1 if k.step is None else k.step
                 requested[dim] = np.asarray(coord[start:stop:step])
+                contiguous = step == 1
                 if start == 0 and stop >= len(coord) and step == 1:
-                    full_dims.add(dim)
+                    continue
             elif isinstance(k, (int, np.integer)):
                 requested[dim] = np.asarray([coord[int(k)]])
                 drop_axes.append(axis)
@@ -369,7 +375,11 @@ class SQLBackendArray(xr.backends.BackendArray):
                     len(arr) == len(coord)
                     and (arr == np.arange(len(coord))).all()
                 ):
-                    full_dims.add(dim)
+                    continue
+                contiguous = len(arr) > 1 and bool(
+                    (np.diff(arr) == 1).all()
+                )
+            specs[dim] = _dim_spec(requested[dim], contiguous)
 
         out_shape = tuple(len(requested[d]) for d in self._dimension_columns)
         if any(n == 0 for n in out_shape):
@@ -379,38 +389,9 @@ class SQLBackendArray(xr.backends.BackendArray):
             )
             return cast(np.ndarray, squeezed)
 
-        # Build a single DataFusion filter expression as the AND of per-dim
-        # predicates. For a single requested value: equality. For multiple:
-        # OR-chain of equalities (DataFusion 52.0.0 does not expose a clean
-        # ``Expr.in_list`` from Python; OR-chained equalities constant-fold
-        # equivalently and stay typed).
-        predicates = []
-        for dim in self._dimension_columns:
-            if dim in full_dims:
-                continue
-            vals = requested[dim]
-            if len(vals) == 1:
-                predicates.append(col(f'"{dim}"') == literal(vals[0]))
-            else:
-                eq = col(f'"{dim}"') == literal(vals[0])
-                for v in vals[1:]:
-                    eq = eq | (col(f'"{dim}"') == literal(v))
-                predicates.append(eq)
-
-        filtered = self._inner_df
-        if predicates:
-            combined = predicates[0]
-            for p in predicates[1:]:
-                combined = combined & p
-            filtered = filtered.filter(combined)
-        projected = filtered.select(
-            *(col(f'"{c}"') for c in self._dimension_columns + [self._var_name])
+        batches = self._handle.fetch(
+            specs, self._dimension_columns + [self._var_name]
         )
-
-        # Consume the projected DataFrame as Arrow RecordBatches. The
-        # DataFusion wrapper exposes ``.to_pyarrow()`` to convert each
-        # batch into a true ``pyarrow.RecordBatch``.
-        batches = [b.to_pyarrow() for b in projected.execute_stream()]
         return _scatter_batches_to_ndarray(
             batches=batches,
             dimension_columns=self._dimension_columns,
@@ -420,6 +401,24 @@ class SQLBackendArray(xr.backends.BackendArray):
             dtype=self.dtype,
             drop_axes=drop_axes,
         )
+
+
+def _dim_spec(vals: np.ndarray, contiguous: bool) -> DimSpec:
+    """The engine window for one dim's requested coordinate values.
+
+    A contiguous run of positions over a strictly monotonic coordinate
+    is exactly the value range ``[min, max]`` — a two-literal predicate
+    engines can push into range pruning. Anything else (stepped slices,
+    fancy indexers, non-monotonic or duplicated coords) must be an
+    explicit value list: a range would admit rows the scatter did not
+    request.
+    """
+    if contiguous and len(vals) > 1:
+        diffs = np.diff(vals)
+        zero = diffs.dtype.type(0)
+        if (diffs > zero).all() or (diffs < zero).all():
+            return ("range", vals.min(), vals.max())
+    return ("values", vals, None)
 
 
 def _c_order_grid(
@@ -621,41 +620,29 @@ def _maybe_template_coords(
 
 
 def _build_lazy_scan(
-    inner_df: Any,
+    handle: LazyResultHandle,
     dimension_columns: list[str],
     field_names: list[str],
     field_types: dict[str, Any],
-    templates: dict[str, xr.Dataset] | None = None,
+    coord_arrays: dict[str, np.ndarray] | None = None,
 ) -> xr.Dataset:
     """Build a lazy Dataset whose data vars are :class:`SQLBackendArray`.
 
     Used when output chunking is requested: each data variable stays lazy and,
-    once wrapped by ``Dataset.chunk``, every chunk reads its coordinate range via
-    a pushdown filter on first access. Coordinates come either from the
-    scanned table's registered Dataset (fast path, for unfiltered scans -- see
-    :func:`_maybe_template_coords`) or from per-dim
-    ``inner_df.select(col(d)).distinct().sort(...).execute_stream()``; the table
-    provider projects to that single coordinate column and skips data variables,
-    so discovery reads coordinate values only (no data-variable I/O).
+    once wrapped by ``Dataset.chunk``, every chunk reads its coordinate range
+    via a pushdown filter on first access. Coordinates come either from the
+    caller (the scanned table's registered Dataset for unfiltered DataFusion
+    scans -- see :func:`_maybe_template_coords` -- or an explicitly trusted
+    template) or from per-dim distinct queries through the handle; over a
+    registered pushdown table the engine projects to that single coordinate
+    column, so discovery reads coordinate values only (no data-variable I/O).
     """
-    coord_arrays = _maybe_template_coords(
-        templates, dimension_columns, inner_df
-    )
     if coord_arrays is None:
         coord_arrays = {}
         for d in dimension_columns:
-            dim_only = (
-                inner_df.select(col(f'"{d}"'))
-                .distinct()
-                .sort(col(f'"{d}"').sort())
-            )
-            chunks = [b.to_pyarrow() for b in dim_only.execute_stream()]
-            if not chunks:
-                coord_arrays[d] = np.asarray([])
-                continue
-            coord_arrays[d] = np.concatenate(
-                [c.column(0).to_numpy(zero_copy_only=False) for c in chunks]
-            )
+            # ``distinct`` returns engine order; sort ascending so
+            # positional slices map onto contiguous value ranges.
+            coord_arrays[d] = np.sort(handle.distinct(d))
     shape = tuple(len(coord_arrays[d]) for d in dimension_columns)
 
     data_vars: dict[str, xr.Variable] = {}
@@ -664,7 +651,7 @@ def _build_lazy_scan(
             continue
         np_dtype = field_types[name].to_pandas_dtype()
         backend = SQLBackendArray(
-            inner_df=inner_df,
+            handle=handle,
             var_name=name,
             dimension_columns=dimension_columns,
             coord_arrays=coord_arrays,
@@ -781,13 +768,35 @@ def _result_to_xarray(
         ds = _materialize(inner_df, dimension_columns, field_names, field_types)
     else:
         ds = _build_lazy_scan(
-            inner_df,
+            DataFusionHandle(inner_df),
             dimension_columns,
             field_names,
             field_types,
-            templates=templates,
+            coord_arrays=_maybe_template_coords(
+                templates, dimension_columns, inner_df
+            ),
         )
+    return _finish_dataset(
+        ds,
+        dimension_columns,
+        template,
+        sparsity,
+        fill_value,
+        chunks,
+        field_types,
+    )
 
+
+def _finish_dataset(
+    ds: xr.Dataset,
+    dimension_columns: list[str],
+    template: xr.Dataset | None,
+    sparsity: Sparsity,
+    fill_value: Any,
+    chunks: Mapping[str, int] | str | None,
+    field_types: dict[str, Any],
+) -> xr.Dataset:
+    """Shared reconstruction tail: sparsity, template metadata, chunking."""
     if sparsity == "template":
         assert template is not None
         indexers = {
