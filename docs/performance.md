@@ -167,46 +167,34 @@ zero reads), and the strictness pass applies cross-dimension
 information, so paired-range predicates count without reading the
 cross combinations.
 
-## Stop re-scanning: materialize and pyramid
+## Stop re-scanning: cache or pyramid
 
-Both helpers trade **one scan of the source** for cheap re-querying,
-but they build different things for different question shapes:
+Registered tables are virtual — every query re-streams the source.
+Statistics you ask repeatedly should pay the scan once. Two patterns,
+for two question shapes:
 
-| | `materialize` | `pyramid` |
-|---|---|---|
-| What it builds | any query's result, as a native engine table | a multi-resolution grid of pre-aggregated cells |
-| Shape | whatever your `SELECT` returns | fixed: `(level, x_idx, y_idx, x_bin, y_bin, <aggs>)` |
-| Answers | the *same* derived table, repeatedly | the *same statistics* at *different resolutions* |
-| Think of it as | `CREATE TABLE AS SELECT`, sorted for the engine | raster overviews / map-tile pyramids, in SQL |
+### Cache one derived table (plain SQL)
 
-### `materialize`: cache one derived table
+There is no helper for this because none is needed: create a native
+table from your query, sorted by the coordinate columns so the engine's
+storage compresses the repetitive coordinates (DuckDB picks ALP/RLE on
+sorted runs) and zone maps prune range predicates.
 
-Use it when you keep querying the same derived shape — a class
-histogram per degree cell, a daily series — and each run re-scans the
-source. `materialize` runs the query once into a native table; pass
-`order_by` with the coordinate columns so the engine's storage
-compresses the repetitive coordinates and prunes range predicates with
-zone maps:
+```sql
+CREATE OR REPLACE TABLE grid_cube AS
+SELECT FLOOR(y) AS lat, FLOOR(x) AS lon, klass, COUNT(*) AS n
+FROM grid GROUP BY 1, 2, 3
+ORDER BY lat, lon;
 
-```python
-xql.materialize(con, "grid_cube",
-    "SELECT FLOOR(y) AS lat, FLOOR(x) AS lon, klass, COUNT(*) AS n "
-    "FROM grid GROUP BY 1, 2, 3",
-    order_by=["lat", "lon"])
-
-con.sql("SELECT * FROM grid_cube WHERE lat = -32")   # native speed
+SELECT * FROM grid_cube WHERE lat = -32;  -- native speed
 ```
 
-The table is exactly your query's rows — no more, no less. If you need
-a different aggregation later, that is a new `materialize`.
+One engine quirk to know: on DataFusion, DDL is a lazy plan — collect
+it or nothing happens:
 
-The helper is deliberately thin: on DuckDB it issues exactly the
-`CREATE OR REPLACE TABLE ... AS ... ORDER BY ...` you could write
-yourself. Its value is portability — the same call works on
-DataFusion, where raw DDL is a lazy plan that silently does nothing
-until collected (the adapter collects it) — and making the
-sort-for-compression idiom the default rather than something to
-remember.
+```python
+ctx.sql("CREATE OR REPLACE TABLE grid_cube AS ...").collect()
+```
 
 ### `pyramid`: one cube, every zoom level
 
@@ -215,7 +203,10 @@ maps, "country then province then plot" drill-downs. `pyramid` scans
 the source once, bins `x`/`y` into square cells of `base_cell`
 coordinate units (level 0), then rolls each coarser level up from the
 one below (cells double in size per level, so rollups are exact and
-cost almost nothing beyond the single scan):
+cost almost nothing beyond the single scan). Think raster overviews /
+map-tile pyramids, in SQL — this one earns a helper because the
+multi-level rollup and its exact integer cell indexing are genuinely
+fiddly to hand-write.
 
 ```python
 xql.pyramid(con, "grid_pyramid", "grid",
@@ -242,10 +233,9 @@ con.sql("""
 Query the level whose cell size matches what you are rendering or
 summarizing; filter `x_bin`/`y_bin` with ranges (they are float cell
 origins), or join on the exact integer `x_idx`/`y_idx` when combining
-levels or cubes.
-
-Both helpers run the same way on DuckDB and DataFusion (they go through
-the adapter's `run_sql` seam).
+levels or cubes. Aggregates must be decomposable (sum/count/min/max);
+express an average as a sum plus a count and divide at query time.
+`pyramid` runs identically on DuckDB and DataFusion.
 
 ## The round-trip is optimized for grids
 

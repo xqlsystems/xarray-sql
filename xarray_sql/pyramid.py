@@ -1,26 +1,20 @@
-"""One-time scans into native engine tables: caches and pyramids.
-
-Both helpers dispatch through the engine adapter layer and work on
-any connection :func:`xarray_sql.register` accepts — DuckDB and
-DataFusion today. The SQL they issue (``CREATE OR REPLACE TABLE ...
-AS``, ``INSERT INTO``, ``FLOOR``) is deliberately restricted to what
-both dialects share; ``query``/``aggs`` expressions you supply must be
-valid in the connected engine's own dialect.
+"""Multi-resolution pre-aggregated cubes from grid tables.
 
 Registered xarray tables are *virtual*: every query re-streams the
-source. That is the right default for exploration, but statistics that
-get asked repeatedly should pay the scan once. Two helpers formalize
-the pattern:
+source. Statistics that get asked repeatedly at varying resolutions
+should pay the scan once — :func:`pyramid` builds a cube in the spirit
+of CARTO's spatial-index tilesets: level 0 bins the source once (the
+only expensive pass), coarser levels roll up from the level below, so
+any zoom/extent query is a cheap range scan over a small table.
 
-* :func:`materialize` — run a query once into a native engine table,
-  ordered so the repetitive coordinate columns compress (DuckDB picks
-  ALP/RLE automatically on sorted data) and zone maps prune range
-  predicates.
-* :func:`pyramid` — a multi-resolution pre-aggregated cube in the
-  spirit of CARTO's spatial-index tilesets: level 0 bins the source
-  once (the only expensive pass), coarser levels roll up from the level
-  below, so any zoom/extent query is a cheap range scan over a small
-  table.
+The helper dispatches through the engine adapter layer and works on
+any connection :func:`xarray_sql.register` accepts — DuckDB and
+DataFusion today. The SQL it issues (``CREATE OR REPLACE TABLE ... AS``,
+``INSERT INTO``, ``FLOOR``) is deliberately restricted to what both
+dialects share; ``aggs`` expressions you supply must be valid in the
+connected engine's own dialect. (For a plain one-off cache of a query,
+just write ``CREATE OR REPLACE TABLE ... AS ... ORDER BY ...`` in the
+engine's SQL — see the performance guide.)
 """
 
 from __future__ import annotations
@@ -44,50 +38,6 @@ _BASE = {"sum": "SUM", "count": "COUNT", "min": "MIN", "max": "MAX"}
 def _ident(name: str) -> str:
     """Quote a SQL identifier."""
     return '"' + name.replace('"', '""') + '"'
-
-
-def materialize(
-    con: Any,
-    name: str,
-    query: str,
-    *,
-    order_by: list[str] | None = None,
-) -> Any:
-    """Run *query* once into a native engine table named *name*.
-
-    The one-time scan cost buys native-speed re-querying: e.g. DuckDB
-    storage compresses the repetitive coordinate columns (ALP/RLE) and
-    prunes range predicates with zone maps — both work best when the
-    table is written in coordinate order, so pass ``order_by`` with the
-    dimension columns whenever the query preserves them.
-
-    Example::
-
-        xql.register(con, "klass", ds)
-        xql.materialize(
-            con, "grid_cube",
-            "SELECT FLOOR(y) AS lat, FLOOR(x) AS lon, klass, COUNT(*) AS n "
-            "FROM grid GROUP BY 1, 2, 3",
-            order_by=["lat", "lon"],
-        )
-        con.sql("SELECT * FROM grid_cube WHERE lat = -32")  # instant
-
-    Args:
-        con: An engine connection supported by
-            :func:`xarray_sql.register` (DuckDB, DataFusion).
-        name: Name of the table to create (replaced if it exists).
-        query: Any SELECT statement in the engine's dialect, typically
-            over a registered xarray table.
-        order_by: Columns to sort the stored table by.
-
-    Returns:
-        The connection, to allow chaining.
-    """
-    sql = f"CREATE OR REPLACE TABLE {_ident(name)} AS SELECT * FROM ({query})"
-    if order_by:
-        sql += " ORDER BY " + ", ".join(_ident(c) for c in order_by)
-    get_adapter(con).run_sql(con, sql)
-    return con
 
 
 def pyramid(

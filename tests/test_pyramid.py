@@ -1,6 +1,6 @@
-"""Tests for one-time materialization and pyramid cubes.
+"""Tests for pyramid cubes and the documented caching recipe.
 
-Parametrized over both supported engines: the helpers dispatch through
+Parametrized over both supported engines: the helper dispatches through
 the adapter layer, so DuckDB connections and DataFusion contexts must
 behave identically.
 """
@@ -46,17 +46,19 @@ def _rows(con, sql) -> list[tuple]:
     return [tuple(r) for r in frame.itertuples(index=False)]
 
 
-def test_materialize_caches_query(con):
-    xql.materialize(
-        con,
-        "cube",
-        "SELECT FLOOR(y) AS lat, klass, COUNT(*) AS n FROM grid GROUP BY 1, 2",
-        order_by=["lat", "klass"],
+def test_documented_caching_recipe(con):
+    # The performance guide documents caching as plain engine SQL; this
+    # pins the recipe on both engines — including that DataFusion DDL
+    # is a lazy plan that must be collected to execute.
+    ctas = (
+        "CREATE OR REPLACE TABLE cube AS "
+        "SELECT FLOOR(y) AS lat, klass, COUNT(*) AS n FROM grid "
+        "GROUP BY 1, 2 ORDER BY lat, klass"
     )
+    result = con.sql(ctas)
+    if hasattr(result, "collect"):
+        result.collect()
     assert _rows(con, "SELECT SUM(n) FROM cube")[0][0] == 64 * 64
-    # Re-created on repeat (CREATE OR REPLACE), not duplicated.
-    xql.materialize(con, "cube", "SELECT 1 AS one")
-    assert _rows(con, "SELECT * FROM cube") == [(1,)]
 
 
 def test_pyramid_levels_roll_up_exactly(con):
