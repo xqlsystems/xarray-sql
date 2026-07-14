@@ -40,7 +40,7 @@ works on any `datafusion.SessionContext`.
 ## DuckDB (adapter)
 
 ```sh
-pip install xarray-sql[duckdb]
+pip install 'xarray-sql[duckdb]'
 ```
 
 ```python
@@ -110,6 +110,10 @@ in-memory arrays), and the round-trip from a DuckDB result back to a
 labeled Dataset, which no engine extension provides.
 
 ## Polars (via the pyarrow dataset protocol)
+
+```sh
+pip install 'xarray-sql[polars]'
+```
 
 `xql.arrow_dataset(ds)` returns a real `pyarrow.dataset.Dataset`, so
 any engine that consumes that protocol gets the same lazy scan with
