@@ -26,6 +26,9 @@ exact expression is always applied — engines delete pushed conjuncts
 from their own plans), and only what reaches `scanner()` can prune
 (engines push plain comparisons, never function calls).
 
+Everything on this page up to [Per-engine notes](#per-engine-notes)
+applies whichever engine you query with.
+
 ## Make the source read in parallel
 
 The single biggest lever is usually the reader, not the engine.
@@ -130,24 +133,6 @@ only the variables a query references are read. Corollaries:
 - A query with no `WHERE` on dimension columns is a full scan on any
   engine; that's physics, not a missing optimization.
 
-## Threads and DuckDB connections
-
-Registered Python objects are connection-local in DuckDB: `con.cursor()`
-does not inherit them, and one connection's result slot is not
-thread-safe. For multithreaded querying, give each thread its own
-cursor and register the *same* dataset object on it:
-
-```python
-dataset = xql.arrow_dataset(ds)
-def worker():
-    cur = con.cursor()
-    cur.register("t", dataset)   # cheap; shares the pruning index
-    ...
-```
-
-The dataset object itself is safe to share across threads (verified
-under concurrent query load).
-
 ## What counting costs
 
 `count(*)` never pays scan memory, and usually no I/O either:
@@ -203,3 +188,57 @@ windows. When you will round-trip a large result, add
 And if what you want is a raw sub-array of a registered Dataset rather
 than a relational answer, plain `ds.sel(...)` is the direct path — SQL
 adds value when the question is relational.
+
+## Per-engine notes
+
+=== "DuckDB"
+
+    **Connections and threads.** Registered Python objects are
+    connection-local: `con.cursor()` does not inherit them, and one
+    connection's result slot is not thread-safe. For multithreaded
+    querying, give each thread its own cursor and register the *same*
+    dataset object on it:
+
+    ```python
+    dataset = xql.arrow_dataset(ds)
+    def worker():
+        cur = con.cursor()
+        cur.register("t", dataset)   # cheap; shares the pruning index
+        ...
+    ```
+
+    The dataset object itself is safe to share across threads
+    (verified under concurrent query load).
+
+    **Row order.** DuckDB's parallel scans return results in chunk
+    order, not grid order — add `ORDER BY <dims>` before round-tripping
+    large results (see [above](#round-trip-faster-with-order-by)).
+
+    **Geometry.** Register with the default `"wkb"` encoding; pair
+    `ST_*` predicates with bbox conjuncts so pruning still applies.
+
+=== "Polars"
+
+    **Parallelism.** Polars pulls the scan single-threaded; source-side
+    parallelism comes entirely from the adapter's `prefetch` /
+    `prefetch_bytes`, so tune those rather than Polars settings.
+
+    **Batch sizing.** `scan_pyarrow_dataset` passes its `batch_size`
+    through to the scanner (honored), so Polars morsel sizing works as
+    documented on their side.
+
+    **Large results.** Collect with `engine="streaming"` to keep
+    memory bounded; the lazy round-trip's windows already do this.
+
+=== "DataFusion"
+
+    **Two registration paths.** `XarrayContext.from_dataset` uses the
+    native Rust table provider — partition-parallel, with `chunks=`
+    controlling partition granularity; the `prefetch`/`coalesce_rows`
+    scanner knobs on this page apply to the *pyarrow-dataset* path
+    (`ctx.register_dataset(xql.arrow_dataset(ds))`), not to the native
+    provider.
+
+    **DDL/DML is lazy.** `CREATE TABLE`/`INSERT` statements are plans —
+    `.collect()` them or nothing executes (the caching recipe above
+    shows this).
