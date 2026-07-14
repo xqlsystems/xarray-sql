@@ -94,11 +94,11 @@ def bbox_conjuncts(
     renders those conjuncts from a geometry's envelope::
 
         poly = shapely.from_wkt("POLYGON (...)")
-        con.execute(f"""
-            SELECT avg(risk) FROM eri
-            WHERE {xql.bbox_conjuncts(poly, x="x", y="y")}
-              AND ST_Within(geometry, ST_GeomFromText('{poly.wkt}'))
-        """)
+        sql = (
+            f"SELECT avg(risk) FROM eri "
+            f"WHERE {xql.bbox_conjuncts(poly, x='x', y='y')} "
+            f"AND ST_Within(geometry, ST_GeomFromText('{poly.wkt}'))"
+        )
 
     Args:
         bounds: ``(xmin, ymin, xmax, ymax)``, or any object with a
