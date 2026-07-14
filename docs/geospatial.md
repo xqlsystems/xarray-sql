@@ -524,36 +524,39 @@ sel = da.sel(time=slice("2020-01-01 00:00", "2020-01-31 23:00"))
 int(sel.size)
 ```
 
-#### n2-standard-8
+#### Results by machine
 
-Measured on a GCE `n2-standard-8` (8 vCPU, 31.3 GB) in `us-central1` via
-Coiled Functions, one VM shared across all cells. CPython 3.12.8; duckdb
-1.5.4, polars 1.42.1, pyarrow 25.0.0, datafusion 54.0.0, xarray 2026.7.0,
-zarr 3.2.1, gcsfs 2026.7.0, dask 2026.7.0; `xarray_sql` from source, no
-compiled module. Protocol: one invocation per (workload, engine) cell;
-1 warm-up + 3 timed reps (median) when the first rep is under 15 s, otherwise
-a single timed rep; peak RSS sampled every 50 ms.
+=== "n2-standard-8"
 
-| workload | rows | duckdb | polars | datafusion | xarray |
-|---|--:|---|---|---|---|
-| day_bbox | 31,680 | 0.72s (n=3, ΔRSS 522 MB) | 0.72s (n=3, ΔRSS 495 MB) | 1.66s (n=3, ΔRSS 332 MB) | 0.53s (n=3, ΔRSS 113 MB) |
-| week_globe | 174,424,320 | 5.82s (n=3, ΔRSS 1432 MB) | 6.13s (n=3, ΔRSS 2904 MB) | 6.18s (n=3, ΔRSS ~0 MB) | 4.61s (n=3, ΔRSS 212 MB) |
-| month_globe | 772,450,560 | 24.85s (n=1, ΔRSS 1570 MB) | 25.60s (n=1, ΔRSS 10927 MB) | 24.89s (n=1, ΔRSS 13 MB) | 11.41s (n=3, ΔRSS 208 MB) |
-| clim_region | 1,932,480 | 54.16s (n=1, ΔRSS 2326 MB) | 54.52s (n=1, ΔRSS 2080 MB) | **error (OOM)** | 31.82s (n=1, ΔRSS 119 MB) |
-| count_jan | 772,450,560 | 2.70s (n=3, ΔRSS 1112 MB) | 4.29s (n=3, ΔRSS 11497 MB) | 16.63s (n=1, ΔRSS 102 MB) | 0.00s† (n=3) |
 
-† metadata arithmetic — the count of a coordinate selection needs no data
-read.
+    Measured on a GCE `n2-standard-8` (8 vCPU, 31.3 GB) in `us-central1` via
+    Coiled Functions, one VM shared across all cells. CPython 3.12.8; duckdb
+    1.5.4, polars 1.42.1, pyarrow 25.0.0, datafusion 54.0.0, xarray 2026.7.0,
+    zarr 3.2.1, gcsfs 2026.7.0, dask 2026.7.0; `xarray_sql` from source, no
+    compiled module. Protocol: one invocation per (workload, engine) cell;
+    1 warm-up + 3 timed reps (median) when the first rep is under 15 s, otherwise
+    a single timed rep; peak RSS sampled every 50 ms.
 
-Median seconds; ΔRSS is peak process RSS above the cell's own pre-cell
-baseline. The DataFusion `clim_region` cell ran out of memory on the 32 GB
-host (its hash aggregate buffered the pushdown scan's batches for the whole
-two-month window) and is recorded as an error. Every completed cell agrees
-across engines: means match to ~1e-4 °C, counts exactly.
+    | workload | rows | duckdb | polars | datafusion | xarray |
+    |---|--:|---|---|---|---|
+    | day_bbox | 31,680 | 0.72s (n=3, ΔRSS 522 MB) | 0.72s (n=3, ΔRSS 495 MB) | 1.66s (n=3, ΔRSS 332 MB) | 0.53s (n=3, ΔRSS 113 MB) |
+    | week_globe | 174,424,320 | 5.82s (n=3, ΔRSS 1432 MB) | 6.13s (n=3, ΔRSS 2904 MB) | 6.18s (n=3, ΔRSS ~0 MB) | 4.61s (n=3, ΔRSS 212 MB) |
+    | month_globe | 772,450,560 | 24.85s (n=1, ΔRSS 1570 MB) | 25.60s (n=1, ΔRSS 10927 MB) | 24.89s (n=1, ΔRSS 13 MB) | 11.41s (n=3, ΔRSS 208 MB) |
+    | clim_region | 1,932,480 | 54.16s (n=1, ΔRSS 2326 MB) | 54.52s (n=1, ΔRSS 2080 MB) | **error (OOM)** | 31.82s (n=1, ΔRSS 119 MB) |
+    | count_jan | 772,450,560 | 2.70s (n=3, ΔRSS 1112 MB) | 4.29s (n=3, ΔRSS 11497 MB) | 16.63s (n=1, ΔRSS 102 MB) | 0.00s† (n=3) |
 
-#### n2-standard-16
+    † metadata arithmetic — the count of a coordinate selection needs no data
+    read.
 
-*Results pending; measured with the same protocol.*
+    Median seconds; ΔRSS is peak process RSS above the cell's own pre-cell
+    baseline. The DataFusion `clim_region` cell ran out of memory on the 32 GB
+    host (its hash aggregate buffered the pushdown scan's batches for the whole
+    two-month window) and is recorded as an error. Every completed cell agrees
+    across engines: means match to ~1e-4 °C, counts exactly.
+
+=== "n2-standard-16"
+
+    *Results pending; measured with the same protocol.*
 
 ## Analysis: how a relational operation spends its time
 
