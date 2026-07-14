@@ -491,6 +491,11 @@ columns.** Engines do not push functions like `ST_Within` into the
 scan, so a geometry-only predicate scans (and encodes) every chunk —
 measured ~29x slower than the paired form on a 10M-row grid, where the
 bbox prunes first and the exact polygon test is nearly free.
+`xql.bbox_conjuncts(geom, x=..., y=...)` renders the conjuncts from any
+geometry's envelope (shapely objects or plain
+`(xmin, ymin, xmax, ymax)` tuples), with `pad=` for
+`ST_DWithin`-style margins — so the idiom is one f-string. The full
+reasoning lives in [Behaviors & limitations](limitations.md).
 
 `geometry_encoding="point"` emits GeoArrow-native separated coordinates
 instead (the struct children *are* the coordinate arrays): zero-parse

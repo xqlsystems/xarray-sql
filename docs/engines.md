@@ -159,6 +159,9 @@ can hand back Arrow.
 
 ## The lazy round-trip across engines
 
+(The decision tree, and every edge of it, is diagrammed in
+[Behaviors & limitations](limitations.md#round-trip-behaviors).)
+
 `xql.to_dataset(result, chunks=...)` reconstructs a query result as a
 *chunked, lazy* `xr.Dataset`: each output chunk re-executes the engine's
 query narrowed to that chunk's coordinate window on first access. Over a

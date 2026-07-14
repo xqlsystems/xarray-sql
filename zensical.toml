@@ -12,6 +12,7 @@ nav = [
   {"Geospatial in SQL" = "geospatial.md"},
   {"Engines" = "engines.md"},
   {"Performance" = "performance.md"},
+  {"Behaviors & limitations" = "limitations.md"},
   {"Contributing" = "contributing.md"},
   {"Reference" = "reference/xarray_sql.md"}
 ]
@@ -73,6 +74,10 @@ line_spans = "__span"
 pygments_lang_class = true
 
 [project.markdown_extensions.pymdownx.superfences]
+[[project.markdown_extensions.pymdownx.superfences.custom_fences]]
+name = "mermaid"
+class = "mermaid"
+format = "pymdownx.superfences.fence_code_format"
 
 [project.markdown_extensions.pymdownx.tasklist]
 custom_checkbox = true

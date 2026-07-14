@@ -157,4 +157,6 @@ same scan while cutting wall time ~1.5-2x). Size the two together.
 
 `count(*)`-shaped queries never pay scan memory at all: unfiltered
 counts are pure chunk arithmetic, and filtered counts scan only the
-boundary chunks the filter cannot prove (see `count_rows`).
+boundary chunks the filter cannot prove — at any filter breadth; see
+the classification diagram in
+[Behaviors & limitations](limitations.md#count-cost-depends-on-what-the-filter-references).
