@@ -101,8 +101,6 @@ def _to_ns(pdf: pd.DataFrame, dims: list[str]) -> pd.DataFrame:
 def _pandas_to_dataset(pdf: pd.DataFrame, dims: list[str]) -> xr.Dataset:
     """Round-trip a SQL result table to a gridded ``xr.Dataset`` by ``dims``."""
     pdf = _to_ns(pdf.copy(), dims)
-    if len(dims) == 1:
-        return xr.Dataset.from_dataframe(pdf.set_index(dims[0]).sort_index())
     return xr.Dataset.from_dataframe(pdf.set_index(dims).sort_index())
 
 

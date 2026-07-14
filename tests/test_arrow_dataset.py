@@ -13,6 +13,7 @@ import pytest
 import xarray as xr
 
 import xarray_sql as xql
+from xarray_sql.backends.pyarrow import XarrayPushdownDataset
 
 
 @pytest.fixture
@@ -148,23 +149,21 @@ class _ChunkCounter:
         self.blocks.append(block)
 
 
-@pytest.fixture
-def counted():
-    """A pushdown dataset over hourly data with a chunk-read counter."""
-    from xarray_sql.backends.pyarrow import XarrayPushdownDataset
-
-    source = xr.Dataset(
-        {
-            "t2m": (
-                ["time", "lat"],
-                np.arange(100.0 * 4).reshape(100, 4),
-            )
-        },
+def _hourly_grid() -> xr.Dataset:
+    """100 hourly steps x 4 latitudes with sequential values."""
+    return xr.Dataset(
+        {"t2m": (["time", "lat"], np.arange(100.0 * 4).reshape(100, 4))},
         coords={
             "time": pd.date_range("2020-01-01", periods=100, freq="h"),
             "lat": np.linspace(-30.0, 30.0, 4),
         },
     )
+
+
+@pytest.fixture
+def counted():
+    """A pushdown dataset over hourly data with a chunk-read counter."""
+    source = _hourly_grid()
     counter = _ChunkCounter()
     dataset = XarrayPushdownDataset(
         source, {"time": 10}, _iteration_callback=counter
@@ -223,15 +222,7 @@ def test_abandoned_scanner_does_not_wedge_later_scans(counted):
 
 @pytest.mark.parametrize("coalesce_rows", [None, 10 * 4, 30 * 4, 10_000])
 def test_coalesce_results_identical(coalesce_rows):
-    from xarray_sql.backends.pyarrow import XarrayPushdownDataset
-
-    source = xr.Dataset(
-        {"t2m": (["time", "lat"], np.arange(100.0 * 4).reshape(100, 4))},
-        coords={
-            "time": pd.date_range("2020-01-01", periods=100, freq="h"),
-            "lat": np.linspace(-30.0, 30.0, 4),
-        },
-    )
+    source = _hourly_grid()
     dataset = XarrayPushdownDataset(
         source, {"time": 10}, coalesce_rows=coalesce_rows
     )
@@ -247,15 +238,7 @@ def test_coalesce_results_identical(coalesce_rows):
 
 
 def test_coalesce_merges_consecutive_chunk_runs():
-    from xarray_sql.backends.pyarrow import XarrayPushdownDataset
-
-    source = xr.Dataset(
-        {"t2m": (["time", "lat"], np.arange(100.0 * 4).reshape(100, 4))},
-        coords={
-            "time": pd.date_range("2020-01-01", periods=100, freq="h"),
-            "lat": np.linspace(-30.0, 30.0, 4),
-        },
-    )
+    source = _hourly_grid()
     reads: list[dict] = []
     dataset = XarrayPushdownDataset(
         source,
@@ -286,24 +269,15 @@ def test_coalesce_merges_consecutive_chunk_runs():
 
 
 def test_coalesce_only_affects_scanner_not_fragments():
-    from xarray_sql.backends.pyarrow import XarrayPushdownDataset
-
-    source = xr.Dataset(
-        {"t2m": (["time", "lat"], np.arange(100.0 * 4).reshape(100, 4))},
-        coords={
-            "time": pd.date_range("2020-01-01", periods=100, freq="h"),
-            "lat": np.linspace(-30.0, 30.0, 4),
-        },
+    dataset = XarrayPushdownDataset(
+        _hourly_grid(), {"time": 10}, coalesce_rows=10_000
     )
-    dataset = XarrayPushdownDataset(source, {"time": 10}, coalesce_rows=10_000)
     # Fragment consumers (DataFusion, dask) keep one fragment per source
     # chunk for their own parallelism.
     assert len(dataset.get_fragments()) == 10
 
 
 def test_count_rows_broad_filter_stays_arithmetic():
-    from xarray_sql.backends.pyarrow import XarrayPushdownDataset
-
     # 100k single-element chunks with a filter keeping nearly all of
     # them: the hierarchical strictness analysis must prove whole
     # buckets at once instead of scanning every survivor.
@@ -321,8 +295,6 @@ def test_count_rows_broad_filter_stays_arithmetic():
 
 
 def test_count_rows_cross_dimension_refinement():
-    from xarray_sql.backends.pyarrow import XarrayPushdownDataset
-
     # Paired ranges across two chunked dims: per-dim pruning keeps the
     # union of each dim's survivors (so the cross combinations too);
     # the strictness pass must prune the crosses and count exactly.
@@ -353,32 +325,23 @@ def test_count_rows_cross_dimension_refinement():
     assert len(reads) <= 2
 
 
-def test_prefetch_bytes_bounds_inflight_blocks():
-    from xarray_sql.backends.pyarrow import XarrayPushdownDataset
-
+def test_prefetch_bytes_scan_reads_every_block_once():
     source = xr.Dataset(
         {"v": (["step"], np.arange(10_000.0))},
         coords={"step": np.arange(10_000.0)},
     )
-    inflight_peaks: list[int] = []
-    outstanding = [0]
-
-    def track(block, names):
-        outstanding[0] += 1
-        inflight_peaks.append(outstanding[0])
-
-    # 100 chunks of 100 rows x 16 bytes/row = 1600 bytes per block;
-    # a 4000-byte budget admits at most ~3 blocks in flight even though
-    # prefetch (thread count) allows 8.
+    reads: list = []
+    # 100 chunks of 100 rows x 16 bytes/row = 1600 bytes per block; a
+    # 4000-byte budget throttles admission well below the 8 threads
+    # prefetch allows. The scan must still visit every block exactly
+    # once and return the full table.
     dataset = XarrayPushdownDataset(
         source,
         {"step": 100},
         prefetch=8,
         prefetch_bytes=4_000,
-        _iteration_callback=track,
+        _iteration_callback=lambda b, n: reads.append(b),
     )
     table = dataset.to_table()
     assert table.num_rows == 10_000
-    # Loads begin strictly rate-limited: far fewer submissions raced
-    # ahead than the thread count would allow.
-    assert max(inflight_peaks) <= 100  # sanity: all blocks seen
+    assert len(reads) == 100

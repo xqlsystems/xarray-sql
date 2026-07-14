@@ -170,6 +170,12 @@ class DuckDBHandle:
             return rel.to_arrow_table()
         return rel.fetch_arrow_table()  # duckdb < 1.5
 
+    @staticmethod
+    def _to_arrow_reader(rel: Any) -> pa.RecordBatchReader:
+        if hasattr(rel, "to_arrow_reader"):
+            return rel.to_arrow_reader()
+        return rel.fetch_record_batch()  # duckdb < 1.5
+
     def schema(self) -> pa.Schema:
         return self._run(
             lambda: self._to_arrow_table(self._rel.limit(0)).schema
@@ -203,23 +209,14 @@ class DuckDBHandle:
         rel = self._rel if predicate is None else self._rel.filter(predicate)
         rel = rel.project(*(duckdb.ColumnExpression(n) for n in columns))
 
-        def materialize() -> list[pa.RecordBatch]:
-            reader = (
-                rel.to_arrow_reader()
-                if hasattr(rel, "to_arrow_reader")
-                else rel.fetch_record_batch()
-            )
-            return list(reader)
-
-        return cast(list[pa.RecordBatch], self._run(materialize))
+        return cast(
+            list[pa.RecordBatch],
+            self._run(lambda: list(self._to_arrow_reader(rel))),
+        )
 
     def spill_parquet(self, path: str) -> None:
         def run() -> None:
-            reader = (
-                self._rel.to_arrow_reader()
-                if hasattr(self._rel, "to_arrow_reader")
-                else self._rel.fetch_record_batch()
-            )
+            reader = self._to_arrow_reader(self._rel)
             with pq.ParquetWriter(path, reader.schema) as writer:
                 for batch in reader:
                     writer.write_batch(batch)

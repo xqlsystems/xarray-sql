@@ -46,10 +46,6 @@ class DuckDBAdapter:
         return root in ("duckdb", "_duckdb")
 
     @staticmethod
-    def run_sql(con: Any, sql: str) -> None:
-        con.execute(sql)
-
-    @staticmethod
     def register(
         con: Any,
         name: str,

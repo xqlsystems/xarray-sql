@@ -12,9 +12,12 @@ into a dense in-memory Dataset). Passing ``chunks=`` selects the
 lazy/chunked path instead: data variables are reconstructed on access,
 window by window, by re-executing the engine's query narrowed to each
 chunk's coordinate range. That requires the result to be
-*re-executable* — a DuckDB relation, a Polars LazyFrame (or eager
-DataFrame), or a DataFusion DataFrame — not a one-shot Arrow stream;
-see :mod:`xarray_sql.lazyscan`.
+*re-executable* — a Polars LazyFrame (or eager DataFrame) or a
+DataFusion DataFrame — not a one-shot Arrow stream; see
+:mod:`xarray_sql.lazyscan`. DuckDB relations are re-executable but
+refuse the chunked path (a thread-safety limitation noted on
+:class:`~xarray_sql.lazyscan.DuckDBHandle`); pair them with
+``spill=True`` instead.
 """
 
 from __future__ import annotations
@@ -33,7 +36,6 @@ import xarray as xr
 from .ds import (
     Sparsity,
     XarrayDataFrame,
-    _apply_template,
     _build_lazy_scan,
     _dataset_from_batches,
     _ds_var_dims,
@@ -42,9 +44,7 @@ from .ds import (
 from .lazyscan import LazyResultHandle, PolarsHandle, resolve_lazy_handle
 
 
-def _guarded(
-    batches: Any, schema: pa.Schema, max_bytes: int | None
-) -> list[pa.RecordBatch]:
+def _guarded(batches: Any, max_bytes: int | None) -> list[pa.RecordBatch]:
     """Collect a batch iterable, erroring cleanly past ``max_bytes``.
 
     A result that would blow past the budget raises with the running
@@ -68,44 +68,57 @@ def _guarded(
     return out
 
 
-def _result_to_batches(
-    result: Any, max_bytes: int | None = None
-) -> tuple[pa.Schema, list[pa.RecordBatch]]:
-    """Normalize an engine result into ``(schema, record batches)``.
+def _open_stream(result: Any) -> tuple[pa.Schema, Any] | None:
+    """The result's Arrow batches as ``(schema, iterable)``, or ``None``.
 
-    Accepts, in probe order:
-
-    1. ``pyarrow.Table`` / ``pyarrow.RecordBatch``
-    2. ``pyarrow.RecordBatchReader``
-    3. Any object implementing ``__arrow_c_stream__`` (the Arrow
-       PyCapsule protocol) — DuckDB relations qualify on duckdb >= 1.1.
-    4. Objects with a ``fetch_record_batch()`` method (DuckDB relations
-       on older versions).
-    5. Objects with a ``to_arrow_table()`` method (DataFusion DataFrames
-       and the :class:`~xarray_sql.ds.XarrayDataFrame` wrapper).
+    Probes, in order: ``pyarrow.Table`` / ``pyarrow.RecordBatch``,
+    ``pyarrow.RecordBatchReader``, ``__arrow_c_stream__`` (the Arrow
+    PyCapsule protocol — DuckDB relations qualify on duckdb >= 1.1), and
+    a ``fetch_record_batch()`` method (DuckDB relations on older
+    versions).
     """
     if isinstance(result, pa.RecordBatch):
         return result.schema, [result]
     if isinstance(result, pa.Table):
         return result.schema, result.to_batches()
     if isinstance(result, pa.RecordBatchReader):
-        return result.schema, _guarded(result, result.schema, max_bytes)
+        return result.schema, result
     if hasattr(result, "__arrow_c_stream__"):
         reader = pa.RecordBatchReader.from_stream(result)
-        return reader.schema, _guarded(reader, reader.schema, max_bytes)
+        return reader.schema, reader
     if hasattr(result, "fetch_record_batch"):
         reader = result.fetch_record_batch()
-        return reader.schema, _guarded(reader, reader.schema, max_bytes)
+        return reader.schema, reader
+    return None
+
+
+def _result_to_batches(
+    result: Any, max_bytes: int | None = None
+) -> tuple[pa.Schema, list[pa.RecordBatch]]:
+    """Normalize an engine result into ``(schema, record batches)``.
+
+    Accepts everything :func:`_open_stream` recognizes, then objects
+    with a ``to_arrow_table()`` method (DataFusion DataFrames and the
+    :class:`~xarray_sql.ds.XarrayDataFrame` wrapper), then re-executable
+    results without a stream protocol (a Polars LazyFrame), executed
+    once through their lazy handle.
+    """
+    opened = _open_stream(result)
+    if opened is not None:
+        schema, batches = opened
+        if isinstance(result, (pa.RecordBatch, pa.Table)):
+            # Already in memory: nothing left for the budget to bound
+            # (the dense-size check still applies downstream).
+            return schema, list(batches)
+        return schema, _guarded(batches, max_bytes)
     if hasattr(result, "to_arrow_table"):
         table = result.to_arrow_table()
         return table.schema, table.to_batches()
     handle = resolve_lazy_handle(result)
     if handle is not None:
-        # Re-executable results without a stream protocol (a Polars
-        # LazyFrame): execute once through the handle, unnarrowed.
         schema = handle.schema()
         batches = handle.fetch({}, list(schema.names))
-        return schema, _guarded(batches, schema, max_bytes)
+        return schema, _guarded(batches, max_bytes)
     raise TypeError(
         f"Cannot read an Arrow stream from {type(result).__qualname__}; "
         "expected a pyarrow Table/RecordBatch/RecordBatchReader, an object "
@@ -167,8 +180,9 @@ def to_dataset(
             re-executing the engine's query narrowed to its coordinate
             range (over a table registered through xarray-sql, that
             filter flows back into chunk pruning at the source).
-            Requires a re-executable ``result`` — a DuckDB relation, a
-            Polars LazyFrame/DataFrame, or a DataFusion DataFrame.
+            Requires a re-executable ``result`` — a Polars
+            LazyFrame/DataFrame or a DataFusion DataFrame; DuckDB
+            relations refuse the chunked path (add ``spill=True``).
         coords: How the lazy path learns each dimension's coordinate
             values. ``"discover"`` (default) runs one ``DISTINCT`` query
             per dim — correct for any query. ``"template"`` trusts the
@@ -438,23 +452,13 @@ def _unlink_quietly(path: str) -> None:
 
 def _stream_to_parquet(result: Any, path: str) -> None:
     """Write a one-shot Arrow result to Parquet, batch by batch."""
-    if isinstance(result, pa.RecordBatch):
-        schema, batches = result.schema, iter([result])
-    elif isinstance(result, pa.Table):
-        schema, batches = result.schema, iter(result.to_batches())
-    elif isinstance(result, pa.RecordBatchReader):
-        schema, batches = result.schema, result
-    elif hasattr(result, "__arrow_c_stream__"):
-        reader = pa.RecordBatchReader.from_stream(result)
-        schema, batches = reader.schema, reader
-    elif hasattr(result, "fetch_record_batch"):
-        reader = result.fetch_record_batch()
-        schema, batches = reader.schema, reader
-    else:
+    opened = _open_stream(result)
+    if opened is None:
         raise TypeError(
             f"cannot spill {type(result).__qualname__}: no readable "
             "Arrow stream."
         )
+    schema, batches = opened
     with pq.ParquetWriter(path, schema) as writer:
         for batch in batches:
             writer.write_batch(batch)

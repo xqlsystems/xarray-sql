@@ -85,9 +85,7 @@ def main() -> None:
         expect_rows=168 * GRID,
     )
     # count(*) over a chunk-aligned window: every surviving chunk is
-    # provably inside the range, so the count is pure arithmetic. (Very
-    # broad ranges exceed the strictness cap and fall back to scanning:
-    # keep count filters narrow or unfiltered.)
+    # provably inside the range, so the count is pure arithmetic.
     jan = (
         pc.field("time")
         >= pa.scalar(pd.Timestamp("2020-01-01"), type=pa.timestamp("ns"))

@@ -86,6 +86,25 @@ _STRICT_MAX_DEPTH = 6
 grids terminate in 2-3 levels)."""
 
 
+def _guarantee_shadow(
+    guarantees: list[tuple[str, pc.Expression]], schema: pa.Schema
+) -> pads.FileSystemDataset:
+    """A path-only dataset whose fragments carry the given guarantees.
+
+    Each ``(path, guarantee)`` pair becomes one fragment: the path is a
+    label (never opened) and the guarantee is its
+    ``partition_expression``, so ``get_fragments(filter=...)`` delegates
+    satisfiability to Arrow's guarantee simplification.
+    """
+    fmt = pads.IpcFileFormat()
+    fs = pafs.LocalFileSystem()
+    fragments = [
+        fmt.make_fragment(path, fs, partition_expression=guarantee)
+        for path, guarantee in guarantees
+    ]
+    return pads.FileSystemDataset(fragments, schema, fmt, fs)
+
+
 class _DimShadow:
     """Chunk-pruning index for one dimension of the source grid.
 
@@ -131,9 +150,7 @@ class _DimShadow:
 
     def _build(self, spans: list[tuple[int, int]]) -> pads.FileSystemDataset:
         """A shadow whose fragment ``i`` guarantees chunk-span ``spans[i]``."""
-        fmt = pads.IpcFileFormat()
-        fs = pafs.LocalFileSystem()
-        fragments = []
+        guarantees: list[tuple[str, pc.Expression]] = []
         for i, (lo_chunk, hi_chunk) in enumerate(spans):
             vals = self._coord[self._bounds[lo_chunk] : self._bounds[hi_chunk]]
             if (vals.dtype.kind == "f" and np.isnan(vals).any()) or (
@@ -152,10 +169,8 @@ class _DimShadow:
                 guarantee = (pc.field(self._name) >= lo) & (
                     pc.field(self._name) <= hi
                 )
-            fragments.append(
-                fmt.make_fragment(str(i), fs, partition_expression=guarantee)
-            )
-        return pads.FileSystemDataset(fragments, self._schema, fmt, fs)
+            guarantees.append((str(i), guarantee))
+        return _guarantee_shadow(guarantees, self._schema)
 
     @staticmethod
     def _kept_indices(
@@ -645,24 +660,16 @@ class XarrayPushdownDataset(pads.Dataset):
         boundary set, which the caller scans exactly.
         """
         dims = list(self._resolved.keys())
-        lists = {
-            d: list((kept or {}).get(str(d), range(len(self._resolved[d]))))
-            for d in dims
-        }
+        lists = {d: list(self._surviving(kept, d)) for d in dims}
         if not dims or any(not v for v in lists.values()):
             return 0, []
         lens = {d: np.diff(self._chunk_bounds[d]) for d in dims}
-        outer = 1
-        for d in self._ds.dims:
-            if d not in self._resolved:
-                outer *= self._ds.sizes[d]
+        outer = self._outer_rows()
         usable = {
             d: str(d) in self._schema.names
             and self._coord_arrays[str(d)].dtype.kind in ("i", "u", "f", "M")
             for d in dims
         }
-        fmt = pads.IpcFileFormat()
-        fs = pafs.LocalFileSystem()
         proven = 0
         boundary: list[Block] = []
 
@@ -713,16 +720,8 @@ class XarrayPushdownDataset(pads.Dataset):
             satisfiable = set(decidable)
             unstrict = set(decidable)
             if decidable:
-                shadow = pads.FileSystemDataset(
-                    [
-                        fmt.make_fragment(
-                            str(i), fs, partition_expression=guarantees[i]
-                        )
-                        for i in decidable
-                    ],
-                    self._schema,
-                    fmt,
-                    fs,
+                shadow = _guarantee_shadow(
+                    [(str(i), guarantees[i]) for i in decidable], self._schema
                 )
                 satisfiable = {
                     int(f.path) for f in shadow.get_fragments(filter=filter)
@@ -769,6 +768,24 @@ class XarrayPushdownDataset(pads.Dataset):
     # Scan: load surviving chunks, prefetching ahead of the consumer
     # ------------------------------------------------------------------
 
+    def _surviving(
+        self, kept: dict[str, list[int]] | None, dim: Any
+    ) -> list[int] | range:
+        """One dim's surviving chunk indices; every chunk when unpruned."""
+        return (kept or {}).get(str(dim), range(len(self._resolved[dim])))
+
+    def _outer_rows(self) -> int:
+        """Rows contributed per grid cell by dims outside the chunk grid.
+
+        Unresolved dims span their full extent in every block, so they
+        multiply every block's row count uniformly.
+        """
+        rows = 1
+        for d in self._ds.dims:
+            if d not in self._resolved:
+                rows *= self._ds.sizes[d]
+        return rows
+
     def _combos(
         self, kept: dict[str, list[int]] | None
     ) -> Iterator[tuple[int, ...]]:
@@ -776,11 +793,7 @@ class XarrayPushdownDataset(pads.Dataset):
         dims = list(self._resolved.keys())
         if not dims:
             return
-        index_ranges = [
-            (kept or {}).get(str(d), range(len(self._resolved[d])))
-            for d in dims
-        ]
-        yield from itertools.product(*index_ranges)
+        yield from itertools.product(*(self._surviving(kept, d) for d in dims))
 
     def _block_for_combo(self, combo: tuple[int, ...]) -> Block:
         block: Block = {d: slice(None) for d in self._ds.dims}
@@ -814,17 +827,9 @@ class XarrayPushdownDataset(pads.Dataset):
         dims = list(self._resolved.keys())
         merge_dim = max(dims, key=lambda d: len(self._resolved[d]))
         others = [d for d in dims if d != merge_dim]
-        ranges = {
-            d: list((kept or {}).get(str(d), range(len(self._resolved[d]))))
-            for d in dims
-        }
+        ranges = {d: list(self._surviving(kept, d)) for d in dims}
         merge_bounds = self._chunk_bounds[merge_dim]
-        # Rows contributed per merge-dim row by dims outside the merge
-        # axis (unresolved dims span their full extent in every block).
-        outer_rows = 1
-        for d in self._ds.dims:
-            if d not in self._resolved:
-                outer_rows *= self._ds.sizes[d]
+        outer_rows = self._outer_rows()
 
         def flush(prefix: tuple[int, ...], run: list[int]) -> Block:
             block: Block = {d: slice(None) for d in self._ds.dims}

@@ -3,7 +3,6 @@
 import json
 
 import numpy as np
-import pandas as pd
 import pyarrow as pa
 import pytest
 import xarray as xr
@@ -65,7 +64,12 @@ def test_geometry_without_projecting_coords(grid):
     assert table.num_rows == 48
 
 
-def test_duckdb_st_within_on_geometry_column(grid):
+@pytest.fixture
+def spatial_con(grid):
+    """A spatial-loaded DuckDB connection with ``grid`` registered as ``t``.
+
+    Returns ``(con, reads)`` where ``reads`` records each chunk read.
+    """
     duckdb = pytest.importorskip("duckdb")
 
     reads: list = []
@@ -81,6 +85,11 @@ def test_duckdb_st_within_on_geometry_column(grid):
     except duckdb.Error:
         pytest.skip("duckdb spatial extension unavailable")
     con.register("t", dataset)
+    return con, reads
+
+
+def test_duckdb_st_within_on_geometry_column(grid, spatial_con):
+    con, reads = spatial_con
 
     described = dict(
         (row[0], row[1]) for row in con.execute("DESCRIBE t").fetchall()
@@ -123,22 +132,8 @@ def test_geometry_name_collision_raises():
         xql.arrow_dataset(clash, {"x": 3}, geometry=("x", "x"))
 
 
-def test_bbox_conjuncts_prunes_and_pairs_with_st_within(grid):
-    duckdb = pytest.importorskip("duckdb")
-
-    reads: list = []
-    dataset = XarrayPushdownDataset(
-        grid,
-        {"y": 4},
-        geometry=("x", "y"),
-        _iteration_callback=lambda b, n: reads.append(b),
-    )
-    con = duckdb.connect()
-    try:
-        con.execute("INSTALL spatial; LOAD spatial;")
-    except duckdb.Error:
-        pytest.skip("duckdb spatial extension unavailable")
-    con.register("t", dataset)
+def test_bbox_conjuncts_prunes_and_pairs_with_st_within(grid, spatial_con):
+    con, reads = spatial_con
 
     bounds = (-58.1, -28.75, -56.9, -27.9)  # xmin, ymin, xmax, ymax
     conjuncts = xql.bbox_conjuncts(bounds, x="x", y="y")
