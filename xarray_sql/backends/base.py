@@ -47,7 +47,7 @@ class EngineAdapter(Protocol):
         """Execute a SQL statement on *con* for its side effects.
 
         Used by cross-engine helpers (:func:`xarray_sql.materialize`,
-        the documented caching and pyramid recipes) that issue DDL/DML in the engine's
+        the documented caching recipe) that issue DDL/DML in the engine's
         own dialect.
         """
         ...

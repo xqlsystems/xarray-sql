@@ -167,15 +167,10 @@ zero reads), and the strictness pass applies cross-dimension
 information, so paired-range predicates count without reading the
 cross combinations.
 
-## Stop re-scanning: cache or pyramid
+## Stop re-scanning: cache derived tables
 
 Registered tables are virtual — every query re-streams the source.
-Statistics you ask repeatedly should pay the scan once. Two patterns,
-for two question shapes:
-
-### Cache one derived table (plain SQL)
-
-There is no helper for this because none is needed: create a native
+Statistics you ask repeatedly should pay the scan once: create a native
 table from your query, sorted by the coordinate columns so the engine's
 storage compresses the repetitive coordinates (DuckDB picks ALP/RLE on
 sorted runs) and zone maps prune range predicates.
@@ -196,103 +191,15 @@ it or nothing happens:
 ctx.sql("CREATE OR REPLACE TABLE grid_cube AS ...").collect()
 ```
 
-### Pyramids: one cube, every zoom level (plain SQL)
+## Round-trip faster with ORDER BY
 
-When the *resolution* of the question varies — dashboards, maps,
-"country then province then plot" drill-downs — build a
-multi-resolution cube: bin the grid into cells once, then roll coarser
-levels up from finer ones without ever rescanning the source. Think
-raster overviews / map-tile pyramids, in SQL. Like caching, this is
-plain engine SQL — two statements and a loop:
+Results that arrive **grid-ordered** — sorted by the dimension columns,
+outermost first — reconstruct with a single reshape; unordered results
+(DuckDB's parallel scans return chunk order, not grid order) pay a
+per-row positional scatter instead, measured ~2x slower on large
+windows. When you will round-trip a large result, add
+`ORDER BY <dims>` to the query.
 
-```python
-BASE = 0.05  # level-0 cell size, in coordinate units
-
-# Level 0: the ONLY scan of the source, binned to integer cell indices.
-con.sql(f"""
-    CREATE OR REPLACE TABLE grid_pyramid AS
-    SELECT 0 AS level, x_idx, y_idx,
-           x_idx * {BASE} AS x_bin, y_idx * {BASE} AS y_bin,
-           count(*) AS n,
-           sum(CASE WHEN klass >= 4 THEN 1 ELSE 0 END) AS hits
-    FROM (
-        SELECT CAST(FLOOR(x / {BASE}) AS BIGINT) AS x_idx,
-               CAST(FLOOR(y / {BASE}) AS BIGINT) AS y_idx, *
-        FROM grid
-    )
-    GROUP BY x_idx, y_idx
-""")
-
-# Each coarser level halves the indices and adds up the level below.
-for level in range(1, 6):
-    cell = BASE * 2**level
-    con.sql(f"""
-        INSERT INTO grid_pyramid
-        SELECT {level} AS level,
-               CAST(FLOOR(x_idx / 2.0) AS BIGINT) AS x_idx,
-               CAST(FLOOR(y_idx / 2.0) AS BIGINT) AS y_idx,
-               CAST(FLOOR(x_idx / 2.0) AS BIGINT) * {cell} AS x_bin,
-               CAST(FLOOR(y_idx / 2.0) AS BIGINT) * {cell} AS y_bin,
-               sum(n) AS n, sum(hits) AS hits
-        FROM grid_pyramid
-        WHERE level = {level - 1}
-        GROUP BY CAST(FLOOR(x_idx / 2.0) AS BIGINT),
-                 CAST(FLOOR(y_idx / 2.0) AS BIGINT)
-    """)
-```
-
-(On DataFusion, `.collect()` each statement — DDL/DML plans are lazy.)
-
-Smallest possible example of what this builds — a 4x4 grid of pixels
-valued 1..16 on a 2x2-degree extent, `BASE = 1.0`, three levels; the
-entire resulting table:
-
-```text
- level  x_idx  y_idx  x_bin  y_bin   n  total
-     0      0      0    0.0    0.0   4   14.0   ┐ four 1-degree cells,
-     0      1      0    1.0    0.0   4   22.0   │ 4 pixels each — the
-     0      0      1    0.0    1.0   4   46.0   │ only scan of the
-     0      1      1    1.0    1.0   4   54.0   ┘ source
-     1      0      0    0.0    0.0  16  136.0   ← the 4 cells, added up
-     2      0      0    0.0    0.0  16  136.0   ← same again (extent < cell)
-```
-
-Because each level is *added up* from the one below, only decomposable
-statistics roll up losslessly — sums, counts (rolled up with `sum`),
-minima, maxima. An average is a sum plus a count divided at query time:
-`SELECT total / n FROM pyr WHERE level = 2` gives 8.5, exactly the mean
-of pixels 1..16.
-
-Querying picks the level whose cell size matches what you render:
-
-```sql
--- Country-wide overview: a few hundred pre-aggregated rows, ~1 ms —
--- vs grouping every pixel of the source (minutes on a remote raster).
-SELECT x_bin, y_bin, hits / n AS share
-FROM grid_pyramid WHERE level = 5;
-
--- Zoomed into one province: same cube, finer level, range filter.
-SELECT x_bin, y_bin, hits / n AS share
-FROM grid_pyramid
-WHERE level = 1
-  AND x_bin BETWEEN -58.5 AND -57.0 AND y_bin BETWEEN -29.0 AND -28.0;
-```
-
-Two details the recipe encodes on purpose: cells are tracked as
-**integer indices** and only labeled with float origins
-(`x_bin = x_idx * cell`), because rebinning float origins level over
-level occasionally lands boundary points in a different parent cell;
-and filter `x_bin`/`y_bin` with **ranges**, not equality (they are
-floats). Both statements stay within the SQL DuckDB and DataFusion
-share; the recipe is pinned by tests on both engines.
-
-## The round-trip is optimized for grids
-
-`xql.to_dataset` locates rows by arithmetic when an axis is uniformly
-spaced (any regular raster or time step, ascending or descending) and
-reshapes without any scatter when the result arrives grid-ordered.
-Sparse or irregular results fall back to a positional scatter
-automatically. If you want the raw sub-array of a registered Dataset
-rather than a relational answer, plain `ds.sel(...)` is the direct
-path — SQL adds value when the question is relational.
-
+And if what you want is a raw sub-array of a registered Dataset rather
+than a relational answer, plain `ds.sel(...)` is the direct path — SQL
+adds value when the question is relational.
