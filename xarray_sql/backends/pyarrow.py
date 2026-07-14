@@ -27,6 +27,7 @@ from __future__ import annotations
 import itertools
 import math
 import re
+import threading
 from collections import deque
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -363,9 +364,17 @@ class XarrayPushdownDataset(pads.Dataset):
         self._pool: ThreadPoolExecutor | None = None
         if self._prefetch > 1:
             self._pool = ThreadPoolExecutor(max_workers=self._prefetch)
+            # Each pre-spawn task parks on the barrier, so no thread can
+            # take a second task and the executor is forced to start all
+            # ``prefetch`` OS threads before __init__ returns (submitting
+            # plain no-ops lets one idle thread absorb several of them,
+            # leaving the rest to spawn later inside an engine's scan
+            # callback — the deadlock this pre-spawn exists to prevent).
+            barrier = threading.Barrier(self._prefetch + 1)
             spawn = [
-                self._pool.submit(lambda: None) for _ in range(self._prefetch)
+                self._pool.submit(barrier.wait) for _ in range(self._prefetch)
             ]
+            barrier.wait()
             for f in spawn:
                 f.result()
 

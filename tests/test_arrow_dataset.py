@@ -345,3 +345,12 @@ def test_prefetch_bytes_scan_reads_every_block_once():
     table = dataset.to_table()
     assert table.num_rows == 10_000
     assert len(reads) == 100
+
+
+def test_prefetch_pool_threads_all_started_at_construction(ds):
+    dataset = XarrayPushdownDataset(ds, {"time": 5}, prefetch=6)
+    # Every pool thread must exist before the first scan: a thread
+    # spawned later, from inside an engine's scan callback, is exactly
+    # the deadlock the pre-spawn exists to prevent. Thread accounting
+    # is only visible on the executor's private state.
+    assert len(dataset._pool._threads) == 6
