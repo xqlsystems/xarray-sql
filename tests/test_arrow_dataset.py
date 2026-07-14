@@ -354,3 +354,16 @@ def test_prefetch_pool_threads_all_started_at_construction(ds):
     # the deadlock the pre-spawn exists to prevent. Thread accounting
     # is only visible on the executor's private state.
     assert len(dataset._pool._threads) == 6
+
+
+def test_prefetch_pool_shut_down_when_dataset_dies(ds):
+    import gc
+
+    dataset = XarrayPushdownDataset(ds, {"time": 5}, prefetch=4)
+    pool = dataset._pool
+    del dataset
+    gc.collect()
+    # A shut-down executor refuses new work — the observable contract
+    # that its threads have been told to exit.
+    with pytest.raises(RuntimeError):
+        pool.submit(lambda: None)

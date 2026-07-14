@@ -28,6 +28,7 @@ import itertools
 import math
 import re
 import threading
+import weakref
 from collections import deque
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -377,6 +378,14 @@ class XarrayPushdownDataset(pads.Dataset):
             barrier.wait()
             for f in spawn:
                 f.result()
+            # Stop the pool's threads when the dataset dies; live scans
+            # keep the dataset alive through their generator closures,
+            # so nothing in flight is cut short. The callback is bound
+            # to the executor, not the dataset, so the finalizer holds
+            # no reference cycle back to self.
+            weakref.finalize(
+                self, self._pool.shutdown, wait=False, cancel_futures=True
+            )
 
     # ------------------------------------------------------------------
     # The consumer-facing surface
