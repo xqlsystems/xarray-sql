@@ -117,3 +117,24 @@ def test_polars_result_round_trips_to_xarray(ds):
     out = xql.to_dataset(frame, template=ds)
     assert list(out.dims) == ["time"]
     assert out.sizes["time"] == 20
+
+
+def test_scanner_honors_batch_size(ds):
+    dataset = xql.arrow_dataset(ds)
+    batches = list(dataset.scanner(batch_size=7).to_batches())
+    assert sum(b.num_rows for b in batches) == 20 * 6
+    assert max(b.num_rows for b in batches) <= 7
+
+    # The kwarg travels through the inherited to_batches path, which is
+    # how Polars sizes its morsels.
+    sizes = [b.num_rows for b in dataset.to_batches(batch_size=11)]
+    assert sum(sizes) == 20 * 6
+    assert max(sizes) <= 11
+
+
+def test_schema_never_uses_view_types(ds):
+    # A single view-typed column disables DuckDB's filter pushdown for
+    # the whole table (duckdb-python#227); pin the schema to offset
+    # layouts so a pyarrow upgrade cannot regress this silently.
+    for field in xql.arrow_dataset(ds).schema:
+        assert field.type not in (pa.string_view(), pa.binary_view())

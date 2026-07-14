@@ -309,6 +309,7 @@ class XarrayPushdownDataset(pads.Dataset):
         self,
         columns: list[str] | None = None,
         filter: pc.Expression | None = None,
+        batch_size: int | None = None,
         **kwargs: Any,
     ) -> pads.Scanner:
         """Build a scanner for the requested columns and predicate.
@@ -316,23 +317,30 @@ class XarrayPushdownDataset(pads.Dataset):
         ``filter`` is applied exactly by the returned scanner (DuckDB
         deletes the conjuncts it pushes down and trusts the source to
         enforce them); chunk pruning and column selection only reduce
-        how much data is read to get there. Extra keyword arguments from
-        other pyarrow-dataset consumers are accepted and ignored.
+        how much data is read to get there. ``batch_size`` caps rows per
+        emitted batch (Polars passes it through ``to_batches``). Extra
+        keyword arguments from other pyarrow-dataset consumers are
+        accepted and ignored.
         """
         kept = None if filter is None else self._prune(filter)
-        return self._scanner_for_blocks(self._blocks(kept), columns, filter)
+        return self._scanner_for_blocks(
+            self._blocks(kept), columns, filter, batch_size
+        )
 
     def _scanner_for_blocks(
         self,
         blocks: Iterator[Block] | list[Block],
         columns: list[str] | None,
         filter: pc.Expression | None,
+        batch_size: int | None = None,
     ) -> pads.Scanner:
         """A scanner over the given blocks; shared by dataset and fragments."""
         proj = list(columns) if columns else list(self._schema.names)
         scan_names = self._scan_columns(proj, filter)
         scan_schema = pa.schema([self._schema.field(n) for n in scan_names])
-        batches = self._batch_generator(scan_schema, blocks)
+        batches = self._batch_generator(
+            scan_schema, blocks, batch_size or self._batch_size
+        )
         return pads.Scanner.from_batches(
             batches, schema=scan_schema, columns=proj, filter=filter
         )
@@ -493,6 +501,7 @@ class XarrayPushdownDataset(pads.Dataset):
         self,
         scan_schema: pa.Schema,
         blocks: Iterator[Block] | list[Block],
+        batch_size: int,
     ) -> Iterator[pa.RecordBatch]:
         names = list(scan_schema.names)
         data_vars = [n for n in names if n in self._ds.data_vars]
@@ -508,9 +517,7 @@ class XarrayPushdownDataset(pads.Dataset):
             if self._iteration_callback is not None:
                 self._iteration_callback(block, names)
             return list(
-                iter_record_batches(
-                    base.isel(block), scan_schema, self._batch_size
-                )
+                iter_record_batches(base.isel(block), scan_schema, batch_size)
             )
 
         def generate() -> Iterator[pa.RecordBatch]:
@@ -557,9 +564,12 @@ class _XarrayFragment:
         schema: pa.Schema | None = None,
         columns: list[str] | None = None,
         filter: pc.Expression | None = None,
+        batch_size: int | None = None,
         **kwargs: Any,
     ) -> pads.Scanner:
-        return self._dataset._scanner_for_blocks([self._block], columns, filter)
+        return self._dataset._scanner_for_blocks(
+            [self._block], columns, filter, batch_size
+        )
 
     def to_batches(self, **kwargs: Any) -> Iterator[pa.RecordBatch]:
         return self.scanner(**kwargs).to_batches()
