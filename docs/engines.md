@@ -170,8 +170,8 @@ only the source chunks it maps onto.
 |---|---|---|
 | DataFusion `DataFrame` | yes | yes |
 | Polars `LazyFrame` / `DataFrame` | yes | yes (windows run on the streaming engine) |
-| DuckDB relation | yes | no — fails fast (see below) |
-| `pyarrow` tables/readers, C-stream objects | yes | no (one-shot: nothing to re-execute) |
+| DuckDB relation | yes | via `spill=True` (one-pass on-disk spill) |
+| `pyarrow` tables/readers, C-stream objects | yes | via `spill=True` |
 
 Two knobs matter at scale:
 
@@ -186,12 +186,14 @@ Two knobs matter at scale:
   push and the source can prune on; stepped or fancy selections fall
   back to explicit value lists (exact, just less prunable).
 
-Chunked reconstruction of **DuckDB relations** is deliberately not
-supported: re-executing a relation that scans a Python-backed table
-while other threads start or stop deadlocks intermittently inside
+Chunked reconstruction of **DuckDB relations** never re-executes the
+relation from worker threads: doing so deadlocks intermittently inside
 duckdb-python (reproduced on duckdb 1.4–1.5 / CPython 3.12; unaffected
-by `SET threads=1` or connection-level serialization). The library
-raises immediately with guidance instead of hanging. For chunked
-round-trips of large results, run the query through Polars
-(`pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))`) or a DataFusion
-context; DuckDB's eager round-trip is unaffected.
+by `SET threads=1` or connection-level serialization). Without
+`spill=`, the library raises immediately with guidance instead of
+hanging. With `spill=True`, the result is streamed **once** (bounded
+memory, on the handle's dedicated engine thread) into a temporary
+Parquet file and windows re-execute against that file — the right
+shape when most of the result will be touched, and the only chunked
+option for one-shot Arrow streams. Polars/DataFusion re-execution
+remains the default for window-at-a-time access over huge results.
