@@ -30,6 +30,7 @@ from typing import Any, Literal
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import xarray as xr
 
@@ -314,11 +315,10 @@ def _check_dense_size(
     """
     sizes = []
     for d in dims:
-        values = set()
-        for batch in batches:
-            column = batch.column(batch.schema.names.index(d))
-            values.update(column.to_pylist())
-        sizes.append(len(values))
+        # Vectorized distinct count: a per-row Python set (to_pylist)
+        # costs orders of magnitude more on wide results.
+        arrays = [b.column(b.schema.names.index(d)) for b in batches]
+        sizes.append(len(pc.unique(pa.chunked_array(arrays))) if arrays else 0)
     cells = int(np.prod(sizes)) if sizes else 0
     total = sum(
         cells * np.dtype(field_types[n].to_pandas_dtype()).itemsize
