@@ -71,6 +71,15 @@ matches most of the axis that cost cannot pay for itself, so the scan
 falls back to the (sound) coarse answer.
 """
 
+_STRICT_MAX_BLOCKS = 4096
+"""Cap on surviving chunks for the strictness (provably-true) analysis.
+
+Deciding strictness builds one guarantee fragment per surviving chunk;
+above this many survivors the analysis costs more than it saves, so
+every survivor is treated as a boundary chunk (sound, just no fast
+path).
+"""
+
 
 class _DimShadow:
     """Chunk-pruning index for one dimension of the source grid.
@@ -335,7 +344,10 @@ class XarrayPushdownDataset(pads.Dataset):
         batch_size: int | None = None,
     ) -> pads.Scanner:
         """A scanner over the given blocks; shared by dataset and fragments."""
-        proj = list(columns) if columns else list(self._schema.names)
+        # ``None`` means every column (the pyarrow convention); an
+        # explicitly empty list is a real projection ("no payload"), not
+        # a request for the full schema.
+        proj = list(self._schema.names) if columns is None else list(columns)
         scan_names = self._scan_columns(proj, filter)
         scan_schema = pa.schema([self._schema.field(n) for n in scan_names])
         batches = self._batch_generator(
@@ -359,9 +371,34 @@ class XarrayPushdownDataset(pads.Dataset):
         kept = None if filter is None else self._prune(filter)
         return [_XarrayFragment(self, block) for block in self._blocks(kept)]
 
-    # Inherited convenience methods (to_table, head, count_rows,
-    # to_batches, take) route through scanner() and keep working; the
-    # members below would touch the uninitialized native dataset.
+    def count_rows(
+        self, filter: pc.Expression | None = None, **kwargs: Any
+    ) -> int:
+        """Count rows, reading as little data as possible.
+
+        Without a filter the count is pure chunk arithmetic — no I/O at
+        all. With a filter, chunks are split three ways: pruned chunks
+        contribute nothing, chunks whose coordinate ranges *prove* the
+        filter true contribute their exact size arithmetically, and only
+        the undecided boundary chunks are scanned (reading just the
+        columns the filter references).
+        """
+        if not self._ds.sizes:
+            return self.scanner(columns=[], filter=filter).count_rows()
+        if filter is None:
+            return int(np.prod([self._ds.sizes[d] for d in self._ds.dims]))
+        kept = self._prune(filter)
+        strict, boundary = self._split_strict_blocks(kept, filter)
+        count = sum(self._block_rows(b) for b in strict)
+        if boundary:
+            count += self._scanner_for_blocks(
+                boundary, [], filter
+            ).count_rows()
+        return count
+
+    # Inherited convenience methods (to_table, head, to_batches, take)
+    # route through scanner() and keep working; the members below would
+    # touch the uninitialized native dataset.
 
     @property
     def partition_expression(self) -> pc.Expression:
@@ -477,25 +514,135 @@ class XarrayPushdownDataset(pads.Dataset):
         return kept
 
     # ------------------------------------------------------------------
+    # Strictness: which surviving chunks satisfy the filter entirely
+    # ------------------------------------------------------------------
+
+    def _chunk_guarantee(self, name: str, i: int) -> pc.Expression | None:
+        """``name ∈ [min, max]`` for chunk ``i``, or ``None`` for no info.
+
+        Mirrors :class:`_DimShadow`'s bounds logic, including the NaN/NaT
+        poisoning guard (a NaN span carries no usable guarantee).
+        """
+        if name not in self._schema.names:
+            return None
+        coord = self._coord_arrays[name]
+        if coord.dtype.kind not in ("i", "u", "f", "M"):
+            return None
+        bounds = self._chunk_bounds[name]
+        vals = coord[bounds[i] : bounds[i + 1]]
+        if (vals.dtype.kind == "f" and np.isnan(vals).any()) or (
+            vals.dtype.kind == "M" and np.isnat(vals).any()
+        ):
+            return None
+        field_type = self._schema.field(name).type
+        lo = pa.scalar(vals.min(), type=field_type)
+        hi = pa.scalar(vals.max(), type=field_type)
+        return (pc.field(name) >= lo) & (pc.field(name) <= hi)
+
+    def _split_strict_blocks(
+        self,
+        kept: dict[str, list[int]] | None,
+        filter: pc.Expression,
+    ) -> tuple[list[Block], list[Block]]:
+        """Split surviving blocks into (provably-true, boundary).
+
+        A chunk with conjunctive guarantee ``G`` satisfies ``filter``
+        everywhere iff ``G ∧ ¬filter`` is unsatisfiable; Arrow's
+        guarantee simplification decides that when the strict blocks'
+        shadow is pruned with the *inverted* filter. Everything
+        undecidable — NaN spans, non-prunable dims, oversized grids,
+        expression shapes the simplifier rejects — lands conservatively
+        in the boundary set, which the caller scans exactly.
+        """
+        combos = list(self._combos(kept))
+        if not combos or len(combos) > _STRICT_MAX_BLOCKS:
+            return [], [self._block_for_combo(c) for c in combos]
+        dims = list(self._resolved.keys())
+        try:
+            inverted = ~filter
+            fmt = pads.IpcFileFormat()
+            fs = pafs.LocalFileSystem()
+            fragments = []
+            decidable: list[int] = []
+            for pos, combo in enumerate(combos):
+                guarantee: pc.Expression | None = None
+                for d, i in zip(dims, combo):
+                    g = self._chunk_guarantee(str(d), i)
+                    if g is None:
+                        guarantee = None
+                        break
+                    guarantee = g if guarantee is None else guarantee & g
+                if guarantee is None:
+                    continue  # no usable guarantee: stays boundary
+                decidable.append(pos)
+                fragments.append(
+                    fmt.make_fragment(
+                        str(pos), fs, partition_expression=guarantee
+                    )
+                )
+            strict_pos: set[int] = set()
+            if fragments:
+                shadow = pads.FileSystemDataset(
+                    fragments, self._schema, fmt, fs
+                )
+                survivors = {
+                    int(frag.path)
+                    for frag in shadow.get_fragments(filter=inverted)
+                }
+                strict_pos = {p for p in decidable if p not in survivors}
+        except (pa.ArrowInvalid, pa.ArrowNotImplementedError, TypeError):
+            return [], [self._block_for_combo(c) for c in combos]
+        strict = [
+            self._block_for_combo(c)
+            for pos, c in enumerate(combos)
+            if pos in strict_pos
+        ]
+        boundary = [
+            self._block_for_combo(c)
+            for pos, c in enumerate(combos)
+            if pos not in strict_pos
+        ]
+        return strict, boundary
+
+    def _block_rows(self, block: Block) -> int:
+        rows = 1
+        for d, sl in block.items():
+            size = self._ds.sizes[d]
+            start, stop, _ = sl.indices(size)
+            rows *= stop - start
+        return rows
+
+    # ------------------------------------------------------------------
     # Scan: load surviving chunks, prefetching ahead of the consumer
     # ------------------------------------------------------------------
 
-    def _blocks(self, kept: dict[str, list[int]] | None) -> Iterator[Block]:
-        """Yield isel-able block slices for the surviving chunk grid."""
+    def _combos(
+        self, kept: dict[str, list[int]] | None
+    ) -> Iterator[tuple[int, ...]]:
+        """Surviving chunk-index combinations, in grid order."""
         dims = list(self._resolved.keys())
         if not dims:
-            yield {}
             return
         index_ranges = [
             (kept or {}).get(str(d), range(len(self._resolved[d])))
             for d in dims
         ]
-        for combo in itertools.product(*index_ranges):
-            block: Block = {d: slice(None) for d in self._ds.dims}
-            for d, i in zip(dims, combo):
-                bounds = self._chunk_bounds[d]
-                block[d] = slice(int(bounds[i]), int(bounds[i + 1]))
-            yield block
+        yield from itertools.product(*index_ranges)
+
+    def _block_for_combo(self, combo: tuple[int, ...]) -> Block:
+        block: Block = {d: slice(None) for d in self._ds.dims}
+        for d, i in zip(self._resolved.keys(), combo):
+            bounds = self._chunk_bounds[d]
+            block[d] = slice(int(bounds[i]), int(bounds[i + 1]))
+        return block
+
+    def _blocks(self, kept: dict[str, list[int]] | None) -> Iterator[Block]:
+        """Yield isel-able block slices for the surviving chunk grid."""
+        if not self._resolved:
+            yield {}
+            return
+        for combo in self._combos(kept):
+            yield self._block_for_combo(combo)
 
     def _batch_generator(
         self,
@@ -516,6 +663,20 @@ class XarrayPushdownDataset(pads.Dataset):
         def load(block: Block) -> list[pa.RecordBatch]:
             if self._iteration_callback is not None:
                 self._iteration_callback(block, names)
+            if not names:
+                # Zero-column projection: row counts are chunk
+                # arithmetic; no coordinate or variable data is read.
+                out = []
+                rows = self._block_rows(block)
+                while rows > 0:
+                    n = min(rows, batch_size)
+                    out.append(
+                        pa.table({"_": np.empty(n, np.int8)})
+                        .select([])
+                        .to_batches()[0]
+                    )
+                    rows -= n
+                return out
             return list(
                 iter_record_batches(base.isel(block), scan_schema, batch_size)
             )

@@ -138,3 +138,84 @@ def test_schema_never_uses_view_types(ds):
     # layouts so a pyarrow upgrade cannot regress this silently.
     for field in xql.arrow_dataset(ds).schema:
         assert field.type not in (pa.string_view(), pa.binary_view())
+
+
+class _ChunkCounter:
+    def __init__(self):
+        self.blocks = []
+
+    def __call__(self, block, names):
+        self.blocks.append(block)
+
+
+@pytest.fixture
+def counted():
+    """A pushdown dataset over hourly data with a chunk-read counter."""
+    from xarray_sql.backends.pyarrow import XarrayPushdownDataset
+
+    source = xr.Dataset(
+        {
+            "t2m": (
+                ["time", "lat"],
+                np.arange(100.0 * 4).reshape(100, 4),
+            )
+        },
+        coords={
+            "time": pd.date_range("2020-01-01", periods=100, freq="h"),
+            "lat": np.linspace(-30.0, 30.0, 4),
+        },
+    )
+    counter = _ChunkCounter()
+    dataset = XarrayPushdownDataset(
+        source, {"time": 10}, _iteration_callback=counter
+    )
+    return dataset, counter
+
+
+def test_count_rows_unfiltered_is_pure_arithmetic(counted):
+    dataset, counter = counted
+    assert dataset.count_rows() == 100 * 4
+    assert counter.blocks == []  # no chunk was read
+
+
+def test_count_rows_strict_chunks_counted_without_reading(counted):
+    dataset, counter = counted
+    # [03:00, 27:00): chunks 0 and 2 are boundary, chunk 1 is provably
+    # inside the range and must be counted arithmetically.
+    lo = pa.scalar(pd.Timestamp("2020-01-01 03:00"), type=pa.timestamp("ns"))
+    hi = pa.scalar(pd.Timestamp("2020-01-02 03:00"), type=pa.timestamp("ns"))
+    predicate = (pc.field("time") >= lo) & (pc.field("time") < hi)
+    assert dataset.count_rows(filter=predicate) == 24 * 4
+    assert len(counter.blocks) == 2  # only the two boundary chunks
+
+
+def test_count_rows_data_variable_filter_is_exact(counted):
+    dataset, counter = counted
+    # A filter on a data variable carries no coordinate guarantee: every
+    # chunk is a boundary chunk, and the count must still be row-exact.
+    assert dataset.count_rows(filter=pc.field("t2m") >= 200.0) == 200
+    assert len(counter.blocks) == 10
+
+
+def test_count_rows_unsatisfiable_filter(counted):
+    dataset, counter = counted
+    assert dataset.count_rows(filter=pc.field("lat") > 100.0) == 0
+    assert counter.blocks == []
+
+
+def test_empty_projection_is_a_real_projection(counted):
+    dataset, _ = counted
+    table = dataset.scanner(columns=[]).to_table()
+    assert table.num_columns == 0
+    assert table.num_rows == 100 * 4
+
+
+def test_abandoned_scanner_does_not_wedge_later_scans(counted):
+    dataset, counter = counted
+    batches = dataset.scanner().to_batches()
+    next(batches)
+    del batches  # LIMIT-style early stop: consumer walks away mid-scan
+    counter.blocks.clear()
+    assert dataset.count_rows() == 400
+    table = dataset.to_table(columns=["t2m"])
+    assert table.num_rows == 400
