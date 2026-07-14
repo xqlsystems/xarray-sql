@@ -36,6 +36,7 @@ lazy chunked round-trip (`to_dataset(chunks=...)`).
 The generic entry point dispatches here too: `xql.register(ctx, "era5", ds)`
 works on any `datafusion.SessionContext`.
 
+
 ## DuckDB (adapter)
 
 ```sh
@@ -79,20 +80,17 @@ without pushdown, remains available as a fallback.
 
 Details that matter in production:
 
-- **Mixed-dimension datasets** split into one table per dimension
-  group, named `<name>_<dim1>_<dim2>_...` (DuckDB registration has no
-  schema namespace); dimension coordinates are read once and shared
-  across the sub-tables.
 - **Finely partitioned axes** (e.g. hourly-chunked reanalysis time with
   hundreds of thousands of chunks) prune through a two-level shadow:
   a coarse pass over at most 1024 buckets, refined per surviving
   bucket — so pruning cost is bounded regardless of chunk count, and
   refinement is skipped when a predicate matches most of the axis.
 - **Tuning** via `xql.register(con, name, ds, batch_size=...,
-  prefetch=...)`: `prefetch` bounds how many chunk loads run ahead of
-  the consumer (memory ≈ `prefetch` × pivoted chunk size), `batch_size`
-  caps rows per Arrow batch.
-- Requires `duckdb >= 1.4` (tested on 1.5) and `pyarrow.dataset`.
+  prefetch=..., prefetch_bytes=..., coalesce_rows=...)`: `prefetch`
+  bounds concurrent chunk loads, `prefetch_bytes` caps estimated bytes
+  in flight, `coalesce_rows` merges runs of consecutive surviving
+  chunks into single reads, `batch_size` caps rows per Arrow batch.
+  See the [performance guide](performance.md#the-memory-contract).
 - **Source parallelism matters as much as the adapter's**: rioxarray
   serializes GDAL tile reads behind a lock by default, which caps any
   scan at single-stream speed regardless of `prefetch`. Open rasters
@@ -100,11 +98,16 @@ Details that matter in production:
   full scans of a 9-billion-pixel cloud GeoTIFF, making remote reads
   as fast as a local copy.
 
-`xql.to_dataset` is engine-agnostic: it accepts DuckDB relations,
-`pyarrow.Table`/`RecordBatchReader`, or any object implementing the
-Arrow PyCapsule stream protocol, and is eager (the result is
-materialized once, the right shape for aggregations and filtered
-selections).
+
+### Relation to duckdb-zarr
+
+[duckdb-zarr](https://github.com/xqlsystems/duckdb-zarr) reads Zarr
+stores natively inside DuckDB, with projection pushdown — for
+plain-Zarr sources it is the engine-native path and will beat this
+adapter. The adapter's role is complementary: anything xarray can open
+(NetCDF, GRIB, Earth Engine via Xee, CF-decoded/virtual datasets,
+in-memory arrays), and the round-trip from a DuckDB result back to a
+labeled Dataset, which no engine extension provides.
 
 ## Polars (via the pyarrow dataset protocol)
 
@@ -129,33 +132,50 @@ xql.to_dataset(out, template=ds)   # polars frames speak Arrow PyCapsule
 
 Polars pushes its predicate and column selection into the dataset scan
 (verified: a filtered group-by read 1 of 20 chunks and 3 of 5 columns),
-and its results round-trip through `xql.to_dataset` unchanged.
+and its results round-trip through `xql.to_dataset` unchanged. The
+chunked round-trip is fully supported: windows re-execute on Polars'
+streaming engine.
 
-One upstream caveat: Polars' translation of `is_in` **float** literals
-into pyarrow expressions loses precision and can drop matching rows
-(reproducible without xarray-sql). Prefer range predicates
-(`is_between`) for float coordinates; integer and timestamp value sets
-are unaffected.
 
-### Relation to duckdb-zarr
+## Behaviors and limitations by engine
 
-[duckdb-zarr](https://github.com/xqlsystems/duckdb-zarr) reads Zarr
-stores natively inside DuckDB, with projection pushdown — for
-plain-Zarr sources it is the engine-native path and will beat this
-adapter. The adapter's role is complementary: anything xarray can open
-(NetCDF, GRIB, Earth Engine via Xee, CF-decoded/virtual datasets,
-in-memory arrays), and the round-trip from a DuckDB result back to a
-labeled Dataset, which no engine extension provides.
+| | DataFusion | DuckDB | Polars |
+|---|---|---|---|
+| Register | `XarrayContext` / any `SessionContext` | `xql.register(con, name, ds)` | `pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))` |
+| Projection pushdown | yes | yes | yes |
+| Chunk pruning on dim predicates | yes | yes | yes |
+| Eager round-trip (`xql.to_dataset`) | yes | yes | yes |
+| Chunked round-trip (`chunks=`) | re-execution | `spill=True` only [^duckdb-spill] | re-execution (streaming engine) |
+| `geometry` column | passes through as annotated WKB | native `GEOMETRY` (`"wkb"` encoding only) [^geometry] | plain binary/struct; no geo types |
+| Float `is_in` value sets | exact | exact | upstream precision bug — use `is_between` [^polars-isin] |
+| Concurrency | re-executable across threads | one dedicated engine thread per handle [^duckdb-serial] | single-threaded pull; parallelism from the scan's prefetch pool |
+| Mixed-dimension datasets | one schema, `name.group` tables | split into `<name>_<dims>` tables | filter `data_vars` before `arrow_dataset` |
+| Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` |
 
-## Adding an engine
+[^duckdb-spill]: Re-executing a relation from worker threads deadlocks
+    intermittently inside duckdb-python (reproduced on duckdb 1.4–1.5 /
+    CPython 3.12); without `spill=` the library raises instead of
+    hanging. Details under
+    [Round-trip behaviors](limitations.md#round-trip-behaviors).
 
-An adapter implements one small contract
-(`xarray_sql.backends.base.EngineAdapter`): `matches(con)` recognizes
-the engine's connection object without importing the engine, and
-`register(con, name, ds, chunks=...)` attaches the Dataset as a table.
-Arrow C streams are the common wire; pushdown quality is where adapters
-differ. The round-trip needs no per-engine work as long as the engine
-can hand back Arrow.
+[^geometry]: DuckDB does not consume GeoArrow-native points; Polars has
+    no geo support at all. Pick the encoding per destination — see
+    [Geospatial in SQL](geospatial.md#geoarrow-point-geometry-columns).
+
+[^polars-isin]: Polars' translation of `is_in` **float** literals into
+    pyarrow expressions can silently drop matching rows (reproducible
+    without xarray-sql); integer and timestamp value sets are
+    unaffected. The lazy round-trip's own window queries render float
+    value lists as ranges internally for this reason.
+
+[^duckdb-serial]: Derived relations share execution state upstream, so
+    the round-trip handle serializes all engine calls on one dedicated
+    thread; concurrent materialization of derived relations raises
+    otherwise.
+
+The general scan behaviors every engine shares — pruning soundness,
+`count(*)` cost, NaN and non-numeric dimensions, memory bounds — are
+cataloged in [Behaviors & limitations](limitations.md).
 
 ## The lazy round-trip across engines
 
@@ -169,12 +189,9 @@ table registered through xarray-sql, the window's range predicate flows
 back into chunk pruning at the source — accessing one output chunk reads
 only the source chunks it maps onto.
 
-| Result type | Eager (`chunks=None`) | Chunked (`chunks=...`) |
-|---|---|---|
-| DataFusion `DataFrame` | yes | yes |
-| Polars `LazyFrame` / `DataFrame` | yes | yes (windows run on the streaming engine) |
-| DuckDB relation | yes | via `spill=True` (one-pass on-disk spill) |
-| `pyarrow` tables/readers, C-stream objects | yes | via `spill=True` |
+One-shot results (`pyarrow` tables/readers, C-stream objects) are
+eager-only unless spilled; engine support for `chunks=` is in the
+matrix above.
 
 Two knobs matter at scale:
 
@@ -189,14 +206,21 @@ Two knobs matter at scale:
   push and the source can prune on; stepped or fancy selections fall
   back to explicit value lists (exact, just less prunable).
 
-Chunked reconstruction of **DuckDB relations** never re-executes the
-relation from worker threads: doing so deadlocks intermittently inside
-duckdb-python (reproduced on duckdb 1.4–1.5 / CPython 3.12; unaffected
-by `SET threads=1` or connection-level serialization). Without
-`spill=`, the library raises immediately with guidance instead of
-hanging. With `spill=True`, the result is streamed **once** (bounded
-memory, on the handle's dedicated engine thread) into a temporary
-Parquet file and windows re-execute against that file — the right
-shape when most of the result will be touched, and the only chunked
-option for one-shot Arrow streams. Polars/DataFusion re-execution
-remains the default for window-at-a-time access over huge results.
+With `spill=True`, the result is streamed **once** (bounded memory)
+into a temporary Parquet file and windows re-execute against that
+file — the right shape when most of the result will be touched, the
+only chunked option for one-shot Arrow streams, and the required path
+for DuckDB relations (see the DuckDB section above). Polars/DataFusion
+re-execution remains the default for window-at-a-time access over huge
+results.
+
+## Adding an engine
+
+An adapter implements one small contract
+(`xarray_sql.backends.base.EngineAdapter`): `matches(con)` recognizes
+the engine's connection object without importing the engine, and
+`register(con, name, ds, chunks=...)` attaches the Dataset as a table.
+Arrow C streams are the common wire; pushdown quality is where adapters
+differ. The round-trip needs no per-engine work as long as the engine
+can hand back Arrow.
+
