@@ -1,8 +1,8 @@
-"""Tests for pyramid cubes and the documented caching recipe.
+"""The performance guide's SQL recipes, pinned on both engines.
 
-Parametrized over both supported engines: the helper dispatches through
-the adapter layer, so DuckDB connections and DataFusion contexts must
-behave identically.
+The guide documents caching and pyramid building as plain engine SQL
+rather than wrapping them in helpers; these tests run the documented
+statements on DuckDB and DataFusion so the recipes cannot rot.
 """
 
 import duckdb
@@ -61,19 +61,58 @@ def test_documented_caching_recipe(con):
     assert _rows(con, "SELECT SUM(n) FROM cube")[0][0] == 64 * 64
 
 
-def test_pyramid_levels_roll_up_exactly(con):
-    xql.pyramid(
+def _run(con, sql):
+    result = con.sql(sql)
+    if hasattr(result, "collect"):
+        result.collect()  # DataFusion DDL/DML is a lazy plan
+
+
+def _build_pyramid(con, base_cell=0.5, levels=3):
+    # The documented pyramid recipe: level 0 bins the source once into
+    # integer cell indices; each coarser level halves the indices and
+    # rolls up from the level below. Indices stay integers because
+    # rebinning float origins level-over-level can alias boundary
+    # points into the wrong parent cell.
+    _run(
         con,
-        "pyr",
-        "grid",
-        aggs={
-            "n": ("count", "*"),
-            "class4_n": ("sum", "CASE WHEN klass >= 4 THEN 1 ELSE 0 END"),
-            "max_class": ("max", "klass"),
-        },
-        base_cell=0.5,
-        levels=3,
+        f"""
+        CREATE OR REPLACE TABLE pyr AS
+        SELECT 0 AS level, x_idx, y_idx,
+               x_idx * {base_cell} AS x_bin, y_idx * {base_cell} AS y_bin,
+               count(*) AS n,
+               sum(CASE WHEN klass >= 4 THEN 1 ELSE 0 END) AS class4_n,
+               max(klass) AS max_class
+        FROM (
+            SELECT CAST(FLOOR(x / {base_cell}) AS BIGINT) AS x_idx,
+                   CAST(FLOOR(y / {base_cell}) AS BIGINT) AS y_idx, *
+            FROM grid
+        )
+        GROUP BY x_idx, y_idx
+    """,
     )
+    for level in range(1, levels):
+        cell = base_cell * 2**level
+        _run(
+            con,
+            f"""
+            INSERT INTO pyr
+            SELECT {level} AS level,
+                   CAST(FLOOR(x_idx / 2.0) AS BIGINT) AS x_idx,
+                   CAST(FLOOR(y_idx / 2.0) AS BIGINT) AS y_idx,
+                   CAST(FLOOR(x_idx / 2.0) AS BIGINT) * {cell} AS x_bin,
+                   CAST(FLOOR(y_idx / 2.0) AS BIGINT) * {cell} AS y_bin,
+                   sum(n) AS n, sum(class4_n) AS class4_n,
+                   max(max_class) AS max_class
+            FROM pyr
+            WHERE level = {level - 1}
+            GROUP BY CAST(FLOOR(x_idx / 2.0) AS BIGINT),
+                     CAST(FLOOR(y_idx / 2.0) AS BIGINT)
+        """,
+        )
+
+
+def test_documented_pyramid_recipe(con):
+    _build_pyramid(con)
     totals = _rows(
         con,
         "SELECT level, SUM(n), SUM(class4_n), MAX(max_class) FROM pyr "
@@ -85,25 +124,11 @@ def test_pyramid_levels_roll_up_exactly(con):
         assert n == 64 * 64
         assert class4_n == totals[0][2]
         assert max_class == totals[0][3]
-    # Coarser levels have fewer cells.
+    # Coarser levels have fewer cells, and shares match a direct query.
     counts = _rows(
         con, "SELECT level, COUNT(*) FROM pyr GROUP BY level ORDER BY level"
     )
     assert counts[0][1] > counts[1][1] > counts[2][1]
-
-
-def test_pyramid_share_matches_direct_query(con):
-    xql.pyramid(
-        con,
-        "pyr",
-        "grid",
-        aggs={
-            "n": ("count", "*"),
-            "class4_n": ("sum", "CASE WHEN klass >= 4 THEN 1 ELSE 0 END"),
-        },
-        base_cell=1.0,
-        levels=1,
-    )
     via_pyramid = _rows(
         con,
         "SELECT SUM(class4_n) * 1.0 / SUM(n) FROM pyr "
@@ -115,50 +140,3 @@ def test_pyramid_share_matches_direct_query(con):
         "WHERE x >= -65 AND x < -63",
     )[0][0]
     assert via_pyramid == pytest.approx(direct)
-
-
-def test_pyramid_rejects_non_decomposable_aggs(con):
-    with pytest.raises(ValueError, match="unsupported kinds"):
-        xql.pyramid(
-            con,
-            "pyr",
-            "grid",
-            aggs={"m": ("avg", "klass")},
-            base_cell=1.0,
-            levels=1,
-        )
-
-
-def test_pyramid_filter_prunes_source_scan(con):
-    xql.pyramid(
-        con,
-        "pyr",
-        "grid",
-        aggs={"n": ("count", "*")},
-        base_cell=1.0,
-        levels=1,
-        filter="y > -32",
-    )
-    n = _rows(con, "SELECT SUM(n) FROM pyr")[0][0]
-    direct = _rows(con, "SELECT COUNT(*) FROM grid WHERE y > -32")[0][0]
-    assert n == direct
-
-
-def test_pyramid_cell_membership_is_exact_across_levels():
-    # Rebinning float origins level-over-level can alias points across
-    # cell boundaries; integer indices must halve exactly instead.
-    import math
-
-    con = duckdb.connect()
-    con.execute("CREATE TABLE pts AS SELECT -130.943 AS x, 0.0005 AS y")
-    xql.pyramid(
-        con,
-        "pyr",
-        "pts",
-        aggs={"n": ("count", "*")},
-        base_cell=0.001,
-        levels=2,
-    )
-    rows = con.sql("SELECT level, x_idx FROM pyr ORDER BY level").fetchall()
-    assert rows[0][1] == math.floor(-130.943 / 0.001)
-    assert rows[1][1] == math.floor(-130.943 / 0.002)

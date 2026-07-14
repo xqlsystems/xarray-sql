@@ -196,23 +196,56 @@ it or nothing happens:
 ctx.sql("CREATE OR REPLACE TABLE grid_cube AS ...").collect()
 ```
 
-### `pyramid`: one cube, every zoom level
+### Pyramids: one cube, every zoom level (plain SQL)
 
-Use it when the *resolution* of the question varies — dashboards,
-maps, "country then province then plot" drill-downs. Think raster
-overviews / map-tile pyramids, in SQL.
-
-Smallest possible example — a 4x4 grid of pixels valued 1..16 on a
-2x2-degree extent, binned into 1-degree cells (`base_cell=1.0`), three
-levels:
+When the *resolution* of the question varies — dashboards, maps,
+"country then province then plot" drill-downs — build a
+multi-resolution cube: bin the grid into cells once, then roll coarser
+levels up from finer ones without ever rescanning the source. Think
+raster overviews / map-tile pyramids, in SQL. Like caching, this is
+plain engine SQL — two statements and a loop:
 
 ```python
-xql.pyramid(con, "pyr", "grid",
-    aggs={"n": ("count", "*"), "total": ("sum", "v")},
-    base_cell=1.0, levels=3)
+BASE = 0.05  # level-0 cell size, in coordinate units
+
+# Level 0: the ONLY scan of the source, binned to integer cell indices.
+con.sql(f"""
+    CREATE OR REPLACE TABLE grid_pyramid AS
+    SELECT 0 AS level, x_idx, y_idx,
+           x_idx * {BASE} AS x_bin, y_idx * {BASE} AS y_bin,
+           count(*) AS n,
+           sum(CASE WHEN klass >= 4 THEN 1 ELSE 0 END) AS hits
+    FROM (
+        SELECT CAST(FLOOR(x / {BASE}) AS BIGINT) AS x_idx,
+               CAST(FLOOR(y / {BASE}) AS BIGINT) AS y_idx, *
+        FROM grid
+    )
+    GROUP BY x_idx, y_idx
+""")
+
+# Each coarser level halves the indices and adds up the level below.
+for level in range(1, 6):
+    cell = BASE * 2**level
+    con.sql(f"""
+        INSERT INTO grid_pyramid
+        SELECT {level} AS level,
+               CAST(FLOOR(x_idx / 2.0) AS BIGINT) AS x_idx,
+               CAST(FLOOR(y_idx / 2.0) AS BIGINT) AS y_idx,
+               CAST(FLOOR(x_idx / 2.0) AS BIGINT) * {cell} AS x_bin,
+               CAST(FLOOR(y_idx / 2.0) AS BIGINT) * {cell} AS y_bin,
+               sum(n) AS n, sum(hits) AS hits
+        FROM grid_pyramid
+        WHERE level = {level - 1}
+        GROUP BY CAST(FLOOR(x_idx / 2.0) AS BIGINT),
+                 CAST(FLOOR(y_idx / 2.0) AS BIGINT)
+    """)
 ```
 
-The entire resulting table:
+(On DataFusion, `.collect()` each statement — DDL/DML plans are lazy.)
+
+Smallest possible example of what this builds — a 4x4 grid of pixels
+valued 1..16 on a 2x2-degree extent, `BASE = 1.0`, three levels; the
+entire resulting table:
 
 ```text
  level  x_idx  y_idx  x_bin  y_bin   n  total
@@ -224,38 +257,34 @@ The entire resulting table:
      2      0      0    0.0    0.0  16  136.0   ← same again (extent < cell)
 ```
 
-Each level doubles the cell size and is computed by *adding up* the
-level below — never rescanning the source. That is why aggregates must
-be decomposable (`sum`/`count`/`min`/`max`): sums and counts add.
-An average is a sum plus a count, divided at query time —
-`SELECT total / n FROM pyr WHERE level = 2` gives 8.5, exactly the
-mean of pixels 1..16.
+Because each level is *added up* from the one below, only decomposable
+statistics roll up losslessly — sums, counts (rolled up with `sum`),
+minima, maxima. An average is a sum plus a count divided at query time:
+`SELECT total / n FROM pyr WHERE level = 2` gives 8.5, exactly the mean
+of pixels 1..16.
 
-The use case, on an eri-shaped grid (16.7M uint8 pixels, ~500 m cells):
-the cube builds in one scan into ~365k rows, and then
+Querying picks the level whose cell size matches what you render:
 
 ```sql
--- Country-wide overview map: share of high-risk pixels per ~1.6° cell.
-SELECT x_bin, y_bin, high / n AS share
-FROM eri_pyr WHERE level = 5;                    -- 286 rows, ~1 ms
+-- Country-wide overview: a few hundred pre-aggregated rows, ~1 ms —
+-- vs grouping every pixel of the source (minutes on a remote raster).
+SELECT x_bin, y_bin, hits / n AS share
+FROM grid_pyramid WHERE level = 5;
 
--- User zooms into one province: same cube, finer level, range filter.
-SELECT x_bin, y_bin, high / n AS share
-FROM eri_pyr
+-- Zoomed into one province: same cube, finer level, range filter.
+SELECT x_bin, y_bin, hits / n AS share
+FROM grid_pyramid
 WHERE level = 1
-  AND x_bin BETWEEN -60 AND -58 AND y_bin BETWEEN -34 AND -32;
+  AND x_bin BETWEEN -58.5 AND -57.0 AND y_bin BETWEEN -29.0 AND -28.0;
 ```
 
-The overview reads a few hundred pre-aggregated rows instead of
-grouping every pixel — ~100x faster than the raw `GROUP BY FLOOR(...)`
-even with this source in local memory, and the gap grows with the
-source: against a remote 9-billion-pixel raster the raw side is a
-minutes-long scan while the pyramid stays at milliseconds.
-
-Practical notes: query the level whose cell size matches what you are
-rendering; filter `x_bin`/`y_bin` with ranges (float cell origins), or
-join on the exact integer `x_idx`/`y_idx` when combining levels or
-cubes. `pyramid` runs identically on DuckDB and DataFusion.
+Two details the recipe encodes on purpose: cells are tracked as
+**integer indices** and only labeled with float origins
+(`x_bin = x_idx * cell`), because rebinning float origins level over
+level occasionally lands boundary points in a different parent cell;
+and filter `x_bin`/`y_bin` with **ranges**, not equality (they are
+floats). Both statements stay within the SQL DuckDB and DataFusion
+share; the recipe is pinned by tests on both engines.
 
 ## The round-trip is optimized for grids
 
