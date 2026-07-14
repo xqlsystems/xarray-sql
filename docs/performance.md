@@ -120,6 +120,7 @@ same scan while cutting wall time ~1.5-2x). Size the two together.
 counts are pure chunk arithmetic, and filtered counts scan only the
 boundary chunks the filter cannot prove — at any filter breadth; see
 [What counting costs](#what-counting-costs).
+
 ## Let pushdown do its job
 
 Selective queries are fast *because of their predicates*: bounding-box
@@ -191,6 +192,19 @@ adds value when the question is relational.
 
 ## Per-engine notes
 
+=== "DataFusion"
+
+    **Two registration paths.** `XarrayContext.from_dataset` uses the
+    native Rust table provider — partition-parallel, with `chunks=`
+    controlling partition granularity; the `prefetch`/`coalesce_rows`
+    scanner knobs on this page apply to the *pyarrow-dataset* path
+    (`ctx.register_dataset(xql.arrow_dataset(ds))`), not to the native
+    provider.
+
+    **DDL/DML is lazy.** `CREATE TABLE`/`INSERT` statements are plans —
+    `.collect()` them or nothing executes (the caching recipe above
+    shows this).
+
 === "DuckDB"
 
     **Connections and threads.** Registered Python objects are
@@ -229,16 +243,3 @@ adds value when the question is relational.
 
     **Large results.** Collect with `engine="streaming"` to keep
     memory bounded; the lazy round-trip's windows already do this.
-
-=== "DataFusion"
-
-    **Two registration paths.** `XarrayContext.from_dataset` uses the
-    native Rust table provider — partition-parallel, with `chunks=`
-    controlling partition granularity; the `prefetch`/`coalesce_rows`
-    scanner knobs on this page apply to the *pyarrow-dataset* path
-    (`ctx.register_dataset(xql.arrow_dataset(ds))`), not to the native
-    provider.
-
-    **DDL/DML is lazy.** `CREATE TABLE`/`INSERT` statements are plans —
-    `.collect()` them or nothing executes (the caching recipe above
-    shows this).

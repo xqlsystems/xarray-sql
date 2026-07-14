@@ -9,6 +9,12 @@ page is only the sharp edges. Everything here is pinned by tests.
 
 Pick your engine:
 
+=== "DataFusion"
+
+    No engine-specific known issues. DataFusion is the deepest
+    integration (native table provider, chunked round-trip via
+    re-execution); the constraints below apply as everywhere.
+
 === "DuckDB"
 
     **Re-executing relations from worker threads deadlocks.**
@@ -75,12 +81,6 @@ Pick your engine:
     from the adapter's prefetch pool (`prefetch`, `prefetch_bytes`),
     not from the consumer. Not a bug — worth knowing when sizing
     scans.
-
-=== "DataFusion"
-
-    No engine-specific known issues. DataFusion is the deepest
-    integration (native table provider, chunked round-trip via
-    re-execution); the constraints below apply as everywhere.
 
 ## Constraints in any engine
 
