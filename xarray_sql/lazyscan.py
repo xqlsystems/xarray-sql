@@ -28,6 +28,7 @@ output chunk's access reads only the source chunks it maps onto.
 
 from __future__ import annotations
 
+import weakref
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Protocol, cast
@@ -186,6 +187,13 @@ class DuckDBHandle:
         self._rel = rel
         self._runner = ThreadPoolExecutor(max_workers=1)
         self._runner.submit(lambda: None).result()  # start the thread now
+        # Stop the dedicated engine thread when the handle dies; it
+        # would otherwise linger for the life of the process, one per
+        # discarded handle. The callback is bound to the executor, not
+        # the handle, so the finalizer holds no reference back to self.
+        weakref.finalize(
+            self, self._runner.shutdown, wait=False, cancel_futures=True
+        )
 
     def _run(self, fn: Any) -> Any:
         return self._runner.submit(fn).result()

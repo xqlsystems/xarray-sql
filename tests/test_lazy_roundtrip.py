@@ -351,6 +351,22 @@ def test_spill_requires_chunks(source, registered):
         xql.to_dataset(rel, template=source, spill=True)
 
 
+def test_duckdb_handle_runner_stopped_when_handle_dies(source, registered):
+    import gc
+
+    from xarray_sql.lazyscan import DuckDBHandle
+
+    con, _ = registered
+    handle = DuckDBHandle(con.sql("SELECT * FROM t"))
+    runner = handle._runner
+    del handle
+    gc.collect()
+    # A shut-down executor refuses new work — the observable contract
+    # that the handle's dedicated engine thread has been told to exit.
+    with pytest.raises(RuntimeError):
+        runner.submit(lambda: None)
+
+
 def test_polars_spill_uses_streaming_sink(source, tmp_path):
     pl = pytest.importorskip("polars")
 
