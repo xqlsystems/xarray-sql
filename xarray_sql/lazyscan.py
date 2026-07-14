@@ -44,6 +44,20 @@ requested coordinate positions are contiguous) or ``("values", array,
 None)`` (explicit value list, for stepped/fancy indexers)."""
 
 
+def _collect_streaming(lf: Any) -> Any:
+    """Collect a Polars LazyFrame on the streaming engine, if available.
+
+    ``collect(engine="streaming")`` needs polars >= 1.25 (the test
+    extra pins higher); an older installed polars raises TypeError on
+    the unknown keyword, and the plain in-memory collect is a correct,
+    if less memory-frugal, fallback.
+    """
+    try:
+        return lf.collect(engine="streaming")
+    except TypeError:
+        return lf.collect()
+
+
 def _plain(value: Any) -> Any:
     """A plain-Python literal (numpy scalars don't travel to engines)."""
     if isinstance(value, np.datetime64):
@@ -257,9 +271,7 @@ class PolarsHandle:
     def distinct(self, column: str) -> np.ndarray:
         import polars as pl
 
-        out = self._lf.select(pl.col(column).unique()).collect(
-            engine="streaming"
-        )
+        out = _collect_streaming(self._lf.select(pl.col(column).unique()))
         return out.to_series().to_numpy()
 
     def fetch(
@@ -283,9 +295,7 @@ class PolarsHandle:
             else:
                 exprs.append(pl.col(dim).is_in([_plain(v) for v in a]))
         lf = self._lf.filter(*exprs) if exprs else self._lf
-        out = lf.select([pl.col(n) for n in columns]).collect(
-            engine="streaming"
-        )
+        out = _collect_streaming(lf.select([pl.col(n) for n in columns]))
         return cast(list[pa.RecordBatch], out.to_arrow().to_batches())
 
     def stream(self, columns: list[str]) -> Iterator[pa.RecordBatch]:

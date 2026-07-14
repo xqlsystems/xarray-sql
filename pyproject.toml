@@ -42,7 +42,10 @@ duckdb = [
 test = [
   "cftime",
   "duckdb>=1.4.0",
-  "polars",
+  # collect(engine="streaming") landed in polars 1.25;
+  # LazyFrame.collect_batches (streamed max_result_bytes enforcement)
+  # in 1.33. PolarsHandle degrades gracefully below both floors.
+  "polars>=1.33",
   "pytest",
   "xarray[io]",
   "gcsfs",

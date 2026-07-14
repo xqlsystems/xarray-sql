@@ -206,6 +206,17 @@ def test_max_result_bytes_guards_stream_collection(source, registered):
     xr.testing.assert_allclose(out, source)
 
 
+def test_collect_streaming_falls_back_on_older_polars():
+    from xarray_sql.lazyscan import _collect_streaming
+
+    class OldLazyFrame:
+        # Pre-1.25 collect(): no ``engine`` keyword.
+        def collect(self):
+            return "collected"
+
+    assert _collect_streaming(OldLazyFrame()) == "collected"
+
+
 def test_max_result_bytes_guards_polars_lazyframe(source):
     pl = pytest.importorskip("polars")
 
