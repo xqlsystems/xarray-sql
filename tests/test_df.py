@@ -534,3 +534,24 @@ def test_compute_chunks_tuples_sum_to_dim_size():
     result = compute_chunks(ds, {"a": 3, "b": 4, "c": 5})
     for dim, tup in result.items():
         assert sum(tup) == ds.sizes[dim]
+
+
+def test_iter_record_batches_large_string_dim_coord():
+    """A string dim coord big enough that pa.array returns a ChunkedArray.
+
+    Pivoting tiles a string dimension coordinate across every row of the
+    partition; for a few million rows pyarrow's numpy-unicode conversion
+    returns a ChunkedArray, which RecordBatch.from_arrays rejects.
+    Regression: found by the forecast-skill benchmark (a 2-model x 3.3M-row
+    window) streaming through the pyarrow dataset protocol into DuckDB.
+    """
+    n_x = 1_700_000  # 2 * n_x rows: comfortably past the chunking threshold
+    ds = xr.Dataset(
+        {"value": (("model", "x"), np.zeros((2, n_x), dtype="float32"))},
+        coords={"model": ["pangu", "graphcast"], "x": np.arange(n_x)},
+    )
+    schema = _parse_schema(ds)
+    got_rows = 0
+    for batch in iter_record_batches(ds, schema, batch_size=DEFAULT_BATCH_SIZE):
+        got_rows += batch.num_rows
+    assert got_rows == 2 * n_x

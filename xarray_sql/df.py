@@ -309,6 +309,21 @@ DEFAULT_BATCH_SIZE: int = 65_536
 _FULL_PIVOT_MAX_ROWS: int = 8_388_608
 
 
+def _as_single_array(values, type: pa.DataType, *, from_pandas: bool = False):
+    """``pa.array`` that always returns a contiguous ``pa.Array``.
+
+    ``pa.array`` may return a ``ChunkedArray`` instead of an ``Array`` for
+    large inputs (observed for numpy fixed-width unicode columns of a few
+    million rows — e.g. a string dimension coordinate tiled across a full
+    partition). ``RecordBatch.from_arrays`` rejects chunked input, so
+    flatten it back to one contiguous array.
+    """
+    arr = pa.array(values, type=type, from_pandas=from_pandas)
+    if isinstance(arr, pa.ChunkedArray):
+        arr = arr.combine_chunks()
+    return arr
+
+
 def iter_record_batches(
     ds: xr.Dataset,
     schema: pa.Schema,
@@ -392,13 +407,11 @@ def iter_record_batches(
                 col = np.repeat(coord_values[name], strides[k])
                 if outer > 1:
                     col = np.tile(col, outer)
-                full_arrays.append(pa.array(col, type=field.type))
+                full_arrays.append(_as_single_array(col, field.type))
             else:
                 full_arrays.append(
-                    pa.array(
-                        data_arrays[name],
-                        type=field.type,
-                        from_pandas=True,
+                    _as_single_array(
+                        data_arrays[name], field.type, from_pandas=True
                     )
                 )
         for row_start in range(0, total_rows, batch_size):
@@ -419,13 +432,13 @@ def iter_record_batches(
                 k = dim_names.index(name)
                 coord_idx = (row_idx // strides[k]) % shape[k]
                 arrays.append(
-                    pa.array(coord_values[name][coord_idx], type=field.type)
+                    _as_single_array(coord_values[name][coord_idx], field.type)
                 )
             else:
                 arrays.append(
-                    pa.array(
+                    _as_single_array(
                         data_arrays[name][row_start:row_end],
-                        type=field.type,
+                        field.type,
                         from_pandas=True,
                     )
                 )
