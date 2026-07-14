@@ -307,6 +307,23 @@ class XarrayPushdownDataset(pads.Dataset):
         self._coalesce_rows = coalesce_rows
         self._iteration_callback = _iteration_callback
         self._shadows: dict[str, _DimShadow] | None = None
+        # One long-lived pool shared by every scan, its threads spawned
+        # NOW — never from inside an engine's scan callback. Creating a
+        # pool (and its OS threads) per scan deadlocks when the scan is
+        # driven from an engine executing under another thread pool
+        # (dask computing chunks of a lazy round-trip): thread startup
+        # and concurrent.futures' global shutdown lock interleave with
+        # the engine's callback needing the GIL. Scans that stop early
+        # cancel their queued loads instead of tearing the pool down.
+        self._pool: ThreadPoolExecutor | None = None
+        if self._prefetch > 1:
+            self._pool = ThreadPoolExecutor(max_workers=self._prefetch)
+            spawn = [
+                self._pool.submit(lambda: None)
+                for _ in range(self._prefetch)
+            ]
+            for f in spawn:
+                f.result()
 
     # ------------------------------------------------------------------
     # The consumer-facing surface
@@ -748,23 +765,36 @@ class XarrayPushdownDataset(pads.Dataset):
             )
 
         def generate() -> Iterator[pa.RecordBatch]:
-            if self._prefetch <= 1:
-                for block in blocks:
-                    yield from load(block)
+            block_iter = iter(blocks)
+            first = next(block_iter, None)
+            if first is None:
                 return
-            pool = ThreadPoolExecutor(max_workers=self._prefetch)
+            second = next(block_iter, None)
+            if self._pool is None or second is None:
+                # Single-block scans (a lazy round-trip window that maps
+                # onto one source chunk) skip the pool entirely.
+                yield from load(first)
+                if second is not None:
+                    yield from load(second)
+                    for block in block_iter:
+                        yield from load(block)
+                return
             pending: deque = deque()
             try:
-                for block in blocks:
-                    pending.append(pool.submit(load, block))
+                pending.append(self._pool.submit(load, first))
+                pending.append(self._pool.submit(load, second))
+                for block in block_iter:
+                    pending.append(self._pool.submit(load, block))
                     if len(pending) >= self._prefetch:
                         yield from pending.popleft().result()
                 while pending:
                     yield from pending.popleft().result()
             finally:
                 # Consumer may stop early (e.g. LIMIT): drop queued work
-                # without waiting for in-flight loads.
-                pool.shutdown(wait=False, cancel_futures=True)
+                # without waiting for in-flight loads. The pool itself is
+                # shared across scans and stays up.
+                for f in pending:
+                    f.cancel()
 
         return generate()
 
