@@ -169,25 +169,75 @@ cross combinations.
 
 ## Stop re-scanning: materialize and pyramid
 
-Repeated statistics should pay the scan once:
+Both helpers trade **one scan of the source** for cheap re-querying,
+but they build different things for different question shapes:
+
+| | `materialize` | `pyramid` |
+|---|---|---|
+| What it builds | any query's result, as a native engine table | a multi-resolution grid of pre-aggregated cells |
+| Shape | whatever your `SELECT` returns | fixed: `(level, x_idx, y_idx, x_bin, y_bin, <aggs>)` |
+| Answers | the *same* derived table, repeatedly | the *same statistics* at *different resolutions* |
+| Think of it as | `CREATE TABLE AS SELECT`, sorted for the engine | raster overviews / map-tile pyramids, in SQL |
+
+### `materialize`: cache one derived table
+
+Use it when you keep querying the same derived shape — a class
+histogram per degree cell, a daily series — and each run re-scans the
+source. `materialize` runs the query once into a native table; pass
+`order_by` with the coordinate columns so the engine's storage
+compresses the repetitive coordinates and prunes range predicates with
+zone maps:
 
 ```python
-xql.materialize(con, "cube",
-    "SELECT FLOOR(y) AS lat, klass, COUNT(*) AS n FROM grid GROUP BY 1, 2",
-    order_by=["lat", "klass"])
+xql.materialize(con, "grid_cube",
+    "SELECT FLOOR(y) AS lat, FLOOR(x) AS lon, klass, COUNT(*) AS n "
+    "FROM grid GROUP BY 1, 2, 3",
+    order_by=["lat", "lon"])
 
+con.sql("SELECT * FROM grid_cube WHERE lat = -32")   # native speed
+```
+
+The table is exactly your query's rows — no more, no less. If you need
+a different aggregation later, that is a new `materialize`.
+
+### `pyramid`: one cube, every zoom level
+
+Use it when the *resolution* of the question varies — dashboards,
+maps, "country then province then plot" drill-downs. `pyramid` scans
+the source once, bins `x`/`y` into square cells of `base_cell`
+coordinate units (level 0), then rolls each coarser level up from the
+one below (cells double in size per level, so rollups are exact and
+cost almost nothing beyond the single scan):
+
+```python
 xql.pyramid(con, "grid_pyramid", "grid",
     aggs={"n": ("count", "*"),
           "hits": ("sum", "CASE WHEN klass >= 4 THEN 1 ELSE 0 END")},
     base_cell=0.05, levels=6)
+
+# Continental overview: a few thousand coarse cells, not 9B pixels.
+con.sql("""
+    SELECT x_bin, y_bin, hits / n AS rate
+    FROM grid_pyramid
+    WHERE level = 5
+""")
+
+# Zoomed-in region: same cube, finer level, range-filtered.
+con.sql("""
+    SELECT x_bin, y_bin, hits / n AS rate
+    FROM grid_pyramid
+    WHERE level = 1
+      AND x_bin BETWEEN -58.5 AND -57.0 AND y_bin BETWEEN -29.0 AND -28.0
+""")
 ```
 
-`materialize` writes a native, sorted engine table (DuckDB compresses
-the repetitive coordinate columns automatically and prunes range
-predicates with zone maps). `pyramid` builds a multi-resolution
-pre-aggregated cube in one source pass — coarse queries then read a few
-thousand rows instead of billions of pixels. Both work on DuckDB and
-DataFusion.
+Query the level whose cell size matches what you are rendering or
+summarizing; filter `x_bin`/`y_bin` with ranges (they are float cell
+origins), or join on the exact integer `x_idx`/`y_idx` when combining
+levels or cubes.
+
+Both helpers run the same way on DuckDB and DataFusion (they go through
+the adapter's `run_sql` seam).
 
 ## The round-trip is optimized for grids
 
