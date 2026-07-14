@@ -156,3 +156,42 @@ the engine's connection object without importing the engine, and
 Arrow C streams are the common wire; pushdown quality is where adapters
 differ. The round-trip needs no per-engine work as long as the engine
 can hand back Arrow.
+
+## The lazy round-trip across engines
+
+`xql.to_dataset(result, chunks=...)` reconstructs a query result as a
+*chunked, lazy* `xr.Dataset`: each output chunk re-executes the engine's
+query narrowed to that chunk's coordinate window on first access. Over a
+table registered through xarray-sql, the window's range predicate flows
+back into chunk pruning at the source — accessing one output chunk reads
+only the source chunks it maps onto.
+
+| Result type | Eager (`chunks=None`) | Chunked (`chunks=...`) |
+|---|---|---|
+| DataFusion `DataFrame` | yes | yes |
+| Polars `LazyFrame` / `DataFrame` | yes | yes (windows run on the streaming engine) |
+| DuckDB relation | yes | no — fails fast (see below) |
+| `pyarrow` tables/readers, C-stream objects | yes | no (one-shot: nothing to re-execute) |
+
+Two knobs matter at scale:
+
+- `coords="template"` trusts the template's coordinate arrays instead of
+  running one `DISTINCT` query per dimension — construction then reads
+  nothing at all. Only valid when the result spans the template's full
+  extent (an unfiltered scan). On ARCO-ERA5 (1.32M hourly chunks) this
+  builds a lazy view over a 1.37-trillion-row table in ~0.3 s with zero
+  source reads; a one-day window then computes in ~2 s reading only the
+  source chunks under the window.
+- Contiguous windows become two-literal range predicates the engine can
+  push and the source can prune on; stepped or fancy selections fall
+  back to explicit value lists (exact, just less prunable).
+
+Chunked reconstruction of **DuckDB relations** is deliberately not
+supported: re-executing a relation that scans a Python-backed table
+while other threads start or stop deadlocks intermittently inside
+duckdb-python (reproduced on duckdb 1.4–1.5 / CPython 3.12; unaffected
+by `SET threads=1` or connection-level serialization). The library
+raises immediately with guidance instead of hanging. For chunked
+round-trips of large results, run the query through Polars
+(`pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))`) or a DataFusion
+context; DuckDB's eager round-trip is unaffected.

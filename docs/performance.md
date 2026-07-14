@@ -138,3 +138,21 @@ Sparse or irregular results fall back to a positional scatter
 automatically. If you want the raw sub-array of a registered Dataset
 rather than a relational answer, plain `ds.sel(...)` is the direct
 path — SQL adds value when the question is relational.
+
+## The memory contract
+
+Peak scan memory is bounded by `prefetch × pivoted-block-size` plus the
+engine's own aggregation state — it does not grow with the amount of
+data scanned. Measured on ARCO-ERA5 over anonymous GCS: a one-month
+full-globe aggregation (772M rows) peaks at the same RSS as the
+one-week scan (174M rows), ~0.75 GB with the defaults.
+
+The block size is the source chunk size unless `coalesce_rows` is set,
+in which case in-flight units are merged blocks: raising
+`coalesce_rows` buys fewer round-trips at proportionally higher peak
+memory (`prefetch=16, coalesce_rows=8_000_000` peaked at ~1.2 GB on the
+same scan while cutting wall time ~1.5-2x). Size the two together.
+
+`count(*)`-shaped queries never pay scan memory at all: unfiltered
+counts are pure chunk arithmetic, and filtered counts scan only the
+boundary chunks the filter cannot prove (see `count_rows`).
