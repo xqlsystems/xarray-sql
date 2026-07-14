@@ -11,7 +11,8 @@ The array paradigm (NumPy, Xarray, Dask) is a wonderful *interface* for these
 operations. But it is not the only one, and for a large and growing audience —
 the people fluent in SQL rather than in `apply_ufunc` and rechunking — it is not
 the most accessible one. [`xarray-sql`](../README.md) lets you pose these
-questions in SQL and answers them with a real query engine (DataFusion). The
+questions in SQL and answers them with a real query engine (DataFusion here;
+[the same tables serve DuckDB and Polars](engines.md)). The
 datasets are opened *lazily*, so a query against the whole archive reads only the
 variable and the slice it actually needs. And because a gridded result is still
 gridded data, every query here round-trips its answer straight back to an

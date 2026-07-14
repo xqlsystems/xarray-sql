@@ -15,7 +15,11 @@ pip install xarray-sql
 
 This is an experiment to provide a SQL interface for array datasets.
 Succinctly, we "pivot" Xarray Datasets to treat them like tables so we can run
-SQL queries against them.
+SQL queries against them — on the query engine of your choice. xarray-sql
+translates data, not queries: it registers a lazy Dataset as a table on
+DataFusion (built in), DuckDB, or Polars, and turns any engine's Arrow result
+back into a labeled Dataset. Dialects, geometry functions, and optimizers stay
+with the engine.
 
 ## Quickstart
 
@@ -57,6 +61,21 @@ clim_ds["air"].plot()  # in a script, call matplotlib.pyplot.show() to display
 
 That's the round trip — Xarray in, SQL in the middle, Xarray (and a plot) back
 out.
+
+The same Dataset registers on other engines with one call — DuckDB gets a
+native lazy table with predicate pushdown, Polars scans the same object:
+
+```python
+import duckdb
+
+con = duckdb.connect()
+xql.register(con, 'air', ds, chunks=dict(time=100))
+rel = con.sql('SELECT time, AVG("air") AS air FROM air GROUP BY time ORDER BY time')
+xql.to_dataset(rel, template=ds)   # any engine's Arrow result round-trips
+```
+
+See [Engines](docs/engines.md) for the support matrix, DuckDB/Polars details,
+and the lazy chunked round-trip.
 
 ## A bigger example: ARCO-ERA5
 
@@ -188,6 +207,9 @@ pure DataFusion and PyArrow, but works with the same principle!
 _2026 update_: Instead of `from_map()`, we create a way to translate Xarray chunks
 into Arrow RecordBatches. We pass a Python callback into a DataFusion `TableProvider`
 that lets the DB engine translate the underlying Dataset arrays into DataFusion partitions.
+The same chunks-to-batches translation is also exposed as a
+`pyarrow.dataset.Dataset` with predicate and projection pushdown, which is how
+DuckDB and Polars consume registered Datasets with no engine-specific code.
 Ultimately, the initial insight of the `pivot()` function -- that any ndarray can be
 translated into a 2D table -- underlies this performant query mechanism. 
 
@@ -227,11 +249,13 @@ chunks and represented contiguously in memory. It is only a matter of metadata
 that breaks them up into ndarrays. `pivot()`, which uses `to_dataframe()`,
 just changes this metadata (via a `ravel()`/`reshape()`), back into a column
 amenable to a DataFrame. We take advantage of this light weight metadata change to
-make chunked information scannable by a DB engine (DataFusion).
+make chunked information scannable by a DB engine (DataFusion, DuckDB, Polars —
+anything that speaks Arrow).
 
 ## What are the current limitations?
 
-TBD, DataFusion provides a whole new world! Currently, we're looking for
+The sharp edges we know about — per engine and fundamental — are cataloged in
+[Known issues & limitations](docs/limitations.md). Currently, we're looking for
 early users – "tire kickers", if you will. We'd love your input to shape the direction of this
 project! Please, give this a try and [file issues](https://github.com/alxmrs/xarray-sql/issues) as
 you see fit. Check out our [contributing guide](CONTRIBUTING.md), too 😉.
