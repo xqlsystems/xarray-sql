@@ -5,46 +5,87 @@ What does not work, why, and what to do instead. How the machinery
 [Engines](engines.md) and the [performance guide](performance.md); this
 page is only the sharp edges. Everything here is pinned by tests.
 
-## Upstream issues
+## Engine-specific issues
 
-### DuckDB: re-executing relations from worker threads deadlocks
+Pick your engine:
 
-**Symptom.** A chunked round-trip (`chunks=`) of a DuckDB relation would
-hang intermittently (~50% of runs) when dask workers re-execute the
-relation, whenever the query scans a Python-backed table.
+=== "DuckDB"
 
-**Scope.** duckdb-python 1.4–1.5 with CPython 3.12 (observed on macOS);
-unaffected by `SET threads=1`, connection-level serialization, or
-thread-pool pre-warming. The identical topology through Polars never
-hangs. The deadlock is in the interpreter/engine thread-state
-interaction, not in xarray-sql.
+    **Re-executing relations from worker threads deadlocks.**
 
-**What the library does.** `chunks=` on a DuckDB relation raises
-`NotImplementedError` immediately rather than hanging. `spill=True`
-provides the chunked path without ever re-executing: the result is
-streamed once (bounded memory, on the handle's dedicated engine thread)
-into a temporary Parquet file that windows re-execute against. The
-eager round-trip is unaffected.
+    - *Symptom:* a chunked round-trip (`chunks=`) of a DuckDB relation
+      would hang intermittently (~50% of runs) when dask workers
+      re-execute the relation, whenever the query scans a
+      Python-backed table.
+    - *Scope:* duckdb-python 1.4–1.5 with CPython 3.12 (observed on
+      macOS); unaffected by `SET threads=1`, connection-level
+      serialization, or thread-pool pre-warming. The identical
+      topology through Polars never hangs. The deadlock is in the
+      interpreter/engine thread-state interaction, not in xarray-sql.
+    - *What the library does:* `chunks=` on a DuckDB relation raises
+      `NotImplementedError` immediately rather than hanging.
+      `spill=True` provides the chunked path without ever
+      re-executing: the result is streamed once (bounded memory, on
+      the handle's dedicated engine thread) into a temporary Parquet
+      file that windows re-execute against. The eager round-trip is
+      unaffected.
 
-### DuckDB: derived relations break under concurrent materialization
+    **Derived relations break under concurrent materialization.**
 
-Relations derived from the same base share pending-query state
-upstream; materializing two concurrently raises
-`InvalidInputException`. The round-trip handle therefore serializes
-every engine call on one dedicated thread — nothing to do on your side,
-documented so the serialization is not mistaken for a missing
-optimization.
+    - *Symptom:* materializing two relations derived from the same
+      base concurrently raises `InvalidInputException` (they share
+      pending-query state upstream).
+    - *What the library does:* the round-trip handle serializes every
+      engine call on one dedicated thread. Nothing to do on your
+      side — documented so the serialization is not mistaken for a
+      missing optimization.
 
-### Polars: float `is_in` literals lose precision
+    **GeoArrow-native points are not consumed.**
 
-Polars' translation of `is_in` **float** literals into pyarrow
-expressions can silently match nothing (reproducible without
-xarray-sql; integer and timestamp value sets are unaffected). Prefer
-`is_between` for float coordinates in your own queries. The lazy
-round-trip's window queries render float value lists as degenerate
-ranges internally, so reconstruction is immune.
+    - *Symptom:* a `geometry` column registered with
+      `geometry_encoding="point"` binds as a plain struct; `ST_*`
+      functions reject it.
+    - *What to do:* use the default `"wkb"` encoding for DuckDB — it
+      binds as a native `GEOMETRY` with the CRS attached. See
+      [Geospatial in SQL](geospatial.md#geoarrow-point-geometry-columns).
 
-## Fundamental constraints
+=== "Polars"
+
+    **Float `is_in` literals lose precision.**
+
+    - *Symptom:* `is_in` with **float** literals can silently match
+      nothing (reproducible without xarray-sql; integer and timestamp
+      value sets are unaffected).
+    - *What to do:* prefer `is_between` for float coordinates in your
+      own queries.
+    - *What the library does:* the lazy round-trip's window queries
+      render float value lists as degenerate ranges internally, so
+      reconstruction is immune.
+
+    **No geometry types.**
+
+    - *Symptom:* a registered `geometry` column arrives as plain
+      binary (WKB) or a plain struct; there are no `ST_*` functions.
+    - *What to do:* filter on the coordinate columns instead, and do
+      geometry work in DuckDB, DataFusion, or GeoPandas.
+
+    **Single-threaded source pull.**
+
+    Polars pulls the scan sequentially; source-side parallelism comes
+    from the adapter's prefetch pool (`prefetch`, `prefetch_bytes`),
+    not from the consumer. Not a bug — worth knowing when sizing
+    scans.
+
+=== "DataFusion"
+
+    No engine-specific known issues. DataFusion is the deepest
+    integration (native table provider, chunked round-trip via
+    re-execution); the constraints below apply as everywhere.
+
+## Constraints in any engine
+
+These follow from the data model — no engine or configuration avoids
+them.
 
 ### Geometry predicates alone cannot prune
 
