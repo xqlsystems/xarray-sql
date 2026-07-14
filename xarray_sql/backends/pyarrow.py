@@ -48,6 +48,7 @@ from ..df import (
     iter_record_batches,
     resolve_chunks,
 )
+from ..geometry import GEOMETRY_COLUMN, build_geometry, geometry_field
 from ..reader import XarrayRecordBatchReader
 
 DEFAULT_PREFETCH = 4
@@ -271,6 +272,9 @@ class XarrayPushdownDataset(pads.Dataset):
         batch_size: int = DEFAULT_BATCH_SIZE,
         prefetch: int = DEFAULT_PREFETCH,
         coalesce_rows: int | None = None,
+        geometry: tuple[str, str] | None = None,
+        geometry_encoding: str = "wkb",
+        geometry_crs: str | None = "OGC:CRS84",
         coord_arrays: dict[str, np.ndarray] | None = None,
         _iteration_callback: (
             Callable[[Block, list[str] | None], None] | None
@@ -287,6 +291,25 @@ class XarrayPushdownDataset(pads.Dataset):
                 )
         self._ds = ds
         self._schema = _parse_schema(ds)
+        self._geometry = tuple(geometry) if geometry else None
+        self._geometry_encoding = geometry_encoding
+        if self._geometry:
+            if GEOMETRY_COLUMN in self._schema.names:
+                raise ValueError(
+                    f"geometry= would shadow an existing column named "
+                    f"{GEOMETRY_COLUMN!r}."
+                )
+            missing = [
+                d for d in self._geometry if d not in self._schema.names
+            ]
+            if missing:
+                raise ValueError(
+                    f"geometry dims {missing} are not columns of the "
+                    f"table; available: {self._schema.names}"
+                )
+            self._schema = self._schema.append(
+                geometry_field(geometry_encoding, geometry_crs)
+            )
         self._resolved = resolve_chunks(ds, chunks)
         if not self._resolved and ds.sizes:
             raise ValueError(
@@ -372,12 +395,49 @@ class XarrayPushdownDataset(pads.Dataset):
         proj = list(self._schema.names) if columns is None else list(columns)
         scan_names = self._scan_columns(proj, filter)
         scan_schema = pa.schema([self._schema.field(n) for n in scan_names])
-        batches = self._batch_generator(
-            scan_schema, blocks, batch_size or self._batch_size
-        )
+        size = batch_size or self._batch_size
+        if self._geometry and GEOMETRY_COLUMN in scan_names:
+            batches = self._with_geometry(scan_schema, blocks, size)
+        else:
+            batches = self._batch_generator(scan_schema, blocks, size)
         return pads.Scanner.from_batches(
             batches, schema=scan_schema, columns=proj, filter=filter
         )
+
+    def _with_geometry(
+        self,
+        scan_schema: pa.Schema,
+        blocks: Iterator[Block] | list[Block],
+        batch_size: int,
+    ) -> Iterator[pa.RecordBatch]:
+        """Emit ``scan_schema`` batches, synthesizing the geometry column.
+
+        The pivot never materializes geometry: batches are produced with
+        the coordinate dims the geometry derives from, and the geometry
+        column is built per batch from those columns (for the native
+        encoding the point struct's children *are* the coordinate
+        arrays — a schema annotation, not a copy).
+        """
+        assert self._geometry is not None
+        x_dim, y_dim = self._geometry
+        base_names = [n for n in scan_schema.names if n != GEOMETRY_COLUMN]
+        for d in (x_dim, y_dim):
+            if d not in base_names:
+                base_names.append(d)
+        base_schema = pa.schema([self._schema.field(n) for n in base_names])
+        for batch in self._batch_generator(base_schema, blocks, batch_size):
+            geom = build_geometry(
+                self._geometry_encoding,
+                batch.column(base_names.index(x_dim)),
+                batch.column(base_names.index(y_dim)),
+            )
+            arrays = [
+                geom
+                if name == GEOMETRY_COLUMN
+                else batch.column(base_names.index(name))
+                for name in scan_schema.names
+            ]
+            yield pa.RecordBatch.from_arrays(arrays, schema=scan_schema)
 
     def get_fragments(
         self, filter: pc.Expression | None = None
@@ -857,6 +917,9 @@ def arrow_dataset(
     batch_size: int = DEFAULT_BATCH_SIZE,
     prefetch: int = DEFAULT_PREFETCH,
     coalesce_rows: int | None = None,
+    geometry: tuple[str, str] | None = None,
+    geometry_encoding: str = "wkb",
+    geometry_crs: str | None = "OGC:CRS84",
 ) -> XarrayPushdownDataset:
     """A pushdown-capable ``pyarrow.dataset.Dataset`` view of ``ds``.
 
@@ -886,6 +949,18 @@ def arrow_dataset(
             fetches its member chunks through the store's own concurrent
             batching. Memory scales with ``prefetch`` x the *merged*
             block size, so size accordingly (e.g. ``8_000_000``).
+        geometry: ``(x_dim, y_dim)`` coordinate dims to derive a
+            ``geometry`` point column from (see
+            :mod:`xarray_sql.geometry`). With the default ``"wkb"``
+            encoding, DuckDB (spatial loaded) sees a native ``GEOMETRY``
+            column, so ``ST_Within(geometry, ...)`` works directly.
+        geometry_encoding: ``"wkb"`` (default; DuckDB-consumable) or
+            ``"point"`` (GeoArrow native separated coordinates — the
+            struct children are the coordinate arrays; for GeoPandas,
+            lonboard, geoarrow-rs consumers).
+        geometry_crs: CRS tag carried in the extension metadata.
+            Defaults to ``OGC:CRS84`` (plain longitude/latitude); pass
+            ``None`` to omit, or an authority code / PROJJSON string.
 
     Returns:
         An :class:`XarrayPushdownDataset`.
@@ -896,4 +971,7 @@ def arrow_dataset(
         batch_size=batch_size,
         prefetch=prefetch,
         coalesce_rows=coalesce_rows,
+        geometry=geometry,
+        geometry_encoding=geometry_encoding,
+        geometry_crs=geometry_crs,
     )

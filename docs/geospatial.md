@@ -472,3 +472,29 @@ scale. The point of this suite is not to crown a winner but to show that the lin
 between the two is exactly where the operation is dense versus where it is
 relational, and that for a surprising share of geoscience, the operation is
 relational.
+
+## GeoArrow point-geometry columns
+
+`register(..., geometry=("x", "y"))` derives a `geometry` point column
+from two coordinate dims. With the default `"wkb"` encoding DuckDB
+(spatial loaded) ingests it as a native `GEOMETRY` with the CRS
+attached, so geometry predicates need no `ST_Point(x, y)` construction:
+
+```sql
+SELECT avg(risk) FROM eri
+WHERE y BETWEEN -29 AND -28 AND x BETWEEN -58 AND -57   -- prunes chunks
+  AND ST_Within(geometry, ST_GeomFromText('POLYGON (...)'))  -- refines
+```
+
+**Always pair geometry predicates with bbox conjuncts on the coordinate
+columns.** Engines do not push functions like `ST_Within` into the
+scan, so a geometry-only predicate scans (and encodes) every chunk —
+measured ~29x slower than the paired form on a 10M-row grid, where the
+bbox prunes first and the exact polygon test is nearly free.
+
+`geometry_encoding="point"` emits GeoArrow-native separated coordinates
+instead (the struct children *are* the coordinate arrays): zero-parse
+for GeoPandas 1.x (`GeoDataFrame.from_arrow`), lonboard, geoarrow-rs
+and SedonaDB. DuckDB does not consume this encoding — pick per
+destination. The CRS tag defaults to `OGC:CRS84`; pass
+`geometry_crs=...` for anything else.
