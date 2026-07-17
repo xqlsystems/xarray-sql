@@ -1,6 +1,6 @@
 [package]
 name = "xarray_sql"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Alex Merose"]
 edition = "2021"
 exclude = [
