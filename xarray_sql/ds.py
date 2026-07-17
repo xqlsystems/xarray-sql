@@ -38,7 +38,8 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import xarray as xr
-from datafusion import col, literal
+
+from .lazyscan import DataFusionHandle, DimSpec, LazyResultHandle
 
 Sparsity = Literal["result", "template"]
 """Output coordinate extent for a filtered round-trip.
@@ -147,6 +148,36 @@ def _apply_template(ds: xr.Dataset, template: xr.Dataset) -> xr.Dataset:
     return out
 
 
+def _axis_numeric(values: np.ndarray) -> np.ndarray:
+    """View an axis as float64 for affine position arithmetic."""
+    if values.dtype.kind == "M":
+        return values.astype("datetime64[ns]").view("int64").astype("float64")
+    return values.astype("float64", copy=False)
+
+
+def _affine_axis(requested: np.ndarray) -> tuple[float, float] | None:
+    """``(origin, step)`` when *requested* is uniformly spaced, else None.
+
+    Uniform spacing must hold exactly enough that ``rint((v - origin) /
+    step)`` recovers every index: the deviation of each element from its
+    affine prediction is checked against a quarter step. Non-numeric
+    axes (strings, cftime objects) never qualify.
+    """
+    if requested.dtype.kind not in ("i", "u", "f", "M") or len(requested) < 2:
+        return None
+    numeric = _axis_numeric(requested)
+    step = (numeric[-1] - numeric[0]) / (len(numeric) - 1)
+    if step == 0 or not np.isfinite(step):
+        return None
+    predicted = numeric[0] + step * np.arange(len(numeric))
+    # Written as a <= comparison so a NaN anywhere in the axis (e.g. a
+    # NULL dim value in the result) fails the check and falls back to
+    # the searchsorted path, which handles it positionally.
+    if not (np.abs(numeric - predicted) <= 0.25 * abs(step)).all():
+        return None
+    return float(numeric[0]), float(step)
+
+
 def _scatter_batches_to_ndarray(
     batches: list[pa.RecordBatch],
     dimension_columns: list[str],
@@ -182,8 +213,17 @@ def _scatter_batches_to_ndarray(
     # positions, and template coords like air_temperature.lat are descending).
     # ``np.searchsorted`` requires ascending input, so we sort each requested
     # array once, search there, and remap back to the original positions.
-    sorted_idx = {d: np.argsort(requested[d]) for d in dimension_columns}
-    sorted_req = {d: requested[d][sorted_idx[d]] for d in dimension_columns}
+    # Uniformly spaced axes (the norm for rasters and regular time steps,
+    # ascending or descending) skip the search entirely: the position is
+    # ``rint((value - origin) / step)``, a fused vector op several times
+    # faster than a per-row binary search.
+    affine = {d: _affine_axis(requested[d]) for d in dimension_columns}
+    sorted_idx = {
+        d: np.argsort(requested[d])
+        for d in dimension_columns
+        if affine[d] is None
+    }
+    sorted_req = {d: requested[d][sorted_idx[d]] for d in sorted_idx}
 
     for batch in batches:
         if batch.num_rows == 0:
@@ -195,8 +235,15 @@ def _scatter_batches_to_ndarray(
         for d in dimension_columns:
             col_arr = batch.column(schema_names.index(d))
             vals = col_arr.to_numpy(zero_copy_only=False)
-            pos_in_sorted = np.searchsorted(sorted_req[d], vals)
-            positions.append(sorted_idx[d][pos_in_sorted])
+            if affine[d] is not None:
+                origin, step = affine[d]
+                pos = np.rint((_axis_numeric(vals) - origin) / step).astype(
+                    np.intp
+                )
+                positions.append(pos)
+            else:
+                pos_in_sorted = np.searchsorted(sorted_req[d], vals)
+                positions.append(sorted_idx[d][pos_in_sorted])
         value_arr = batch.column(schema_names.index(var_name)).to_numpy(
             zero_copy_only=False
         )
@@ -208,28 +255,31 @@ def _scatter_batches_to_ndarray(
 
 
 class SQLBackendArray(xr.backends.BackendArray):
-    """Read-only lazy N-D array view over a DataFusion DataFrame.
+    """Read-only lazy N-D array view over a re-executable SQL result.
 
     Bridges xarray's lazy-indexing interface
-    (:class:`xarray.backends.BackendArray`) to a DataFusion query result,
+    (:class:`xarray.backends.BackendArray`) to an engine query result,
     so an xarray ``Dataset`` can present a SQL query as if it were a
     materialized N-D array without actually loading any data until the
     caller asks for it. This is the workhorse that lets
-    :meth:`XarrayDataFrame.to_dataset` return a Dataset cheaply.
+    :meth:`XarrayDataFrame.to_dataset` (and the engine-agnostic
+    ``xql.to_dataset(chunks=...)``) return a Dataset cheaply.
 
     On each ``__getitem__`` call, the requested xarray indexer is
-    translated into a DataFusion filter expression (``df.filter(expr)``)
-    and a column projection (``df.select(*cols)``). The filtered
-    DataFrame is consumed via ``execute_stream`` as a sequence of Arrow
-    ``RecordBatch`` es and scattered into a preallocated numpy buffer,
-    so only the requested data is materialized.
+    translated into per-dimension coordinate windows and a column
+    projection, executed through a
+    :class:`~xarray_sql.lazyscan.LazyResultHandle` (DataFusion, DuckDB,
+    or Polars — each renders the windows with its own typed expression
+    API). The resulting Arrow ``RecordBatch`` es are scattered into a
+    preallocated numpy buffer, so only the requested data is
+    materialized.
 
     Constraints and caveats:
 
     - Read-only: there is no write path; the backend exists to surface
       query results, not to round-trip writes into a SQL store.
-    - The underlying DataFusion ``DataFrame`` holds a reference to its
-      originating ``SessionContext``, which is not picklable. The class
+    - The underlying engine object may hold non-picklable references
+      (DataFusion's ``SessionContext``, a DuckDB connection). The class
       therefore overrides ``__copy__`` and ``__deepcopy__`` to return
       ``self`` -- this is safe because the backend is read-only.
     - ``IndexingSupport.OUTER``: ``BasicIndexer`` and ``OuterIndexer``
@@ -238,10 +288,10 @@ class SQLBackendArray(xr.backends.BackendArray):
       works, just less efficiently.
 
     Raises:
-        ValueError, datafusion exceptions: propagated from the
-            underlying ``df.filter().select().execute_stream()`` chain
-            if a predicate refers to a missing column, the dtype of a
-            literal is incompatible, or the execution itself fails.
+        ValueError, engine exceptions: propagated from the underlying
+            filter/project/execute chain if a predicate refers to a
+            missing column, the dtype of a literal is incompatible, or
+            the execution itself fails.
         AssertionError: from ``np.searchsorted`` mis-alignment, which
             indicates the result contains coordinate values not present
             in the wrapper's pre-computed coord arrays -- usually a
@@ -254,17 +304,23 @@ class SQLBackendArray(xr.backends.BackendArray):
 
     def __init__(
         self,
-        inner_df: Any,
+        handle: LazyResultHandle,
         var_name: str,
         dimension_columns: list[str],
         coord_arrays: dict[str, np.ndarray],
         shape: tuple[int, ...],
         dtype: np.dtype,
     ) -> None:
-        self._inner_df = inner_df
+        self._handle = handle
         self._var_name = var_name
         self._dimension_columns = list(dimension_columns)
         self._coord_arrays = coord_arrays
+        # Computed once per dim: whether the whole coordinate array is
+        # strictly monotonic, the precondition for translating contiguous
+        # positional windows into value ranges (see _dim_spec).
+        self._monotonic = {
+            d: _strictly_monotonic(coord_arrays[d]) for d in dimension_columns
+        }
         self.shape = tuple(shape)
         self.dtype = np.dtype(dtype)
 
@@ -291,28 +347,30 @@ class SQLBackendArray(xr.backends.BackendArray):
     # ------------------------------------------------------------------
 
     def _raw_getitem(self, key: tuple) -> np.ndarray:
-        """Materialize the indexed region described by *key* via DataFusion + Arrow.
+        """Materialize the indexed region described by *key* via the engine.
 
         ``key`` is a tuple of ``int``/``slice``/1-D integer-array, one per
         dim, in :attr:`_dimension_columns` order.
         """
         requested: dict[str, np.ndarray] = {}
-        # Dims whose indexer covers the full extent (slice(None) or
-        # equivalent). For these we omit the filter predicate entirely
-        # so DataFusion doesn't have to evaluate a tautology.
-        full_dims: set[str] = set()
+        # Per-dim windows for the engine. Dims whose indexer covers the
+        # full extent are omitted entirely so the engine doesn't have to
+        # evaluate a tautology.
+        specs: dict[str, DimSpec] = {}
         drop_axes: list[int] = []
         for axis, (dim, k) in enumerate(
             zip(self._dimension_columns, key, strict=True)
         ):
             coord = self._coord_arrays[dim]
+            contiguous = False
             if isinstance(k, slice):
                 start = 0 if k.start is None else k.start
                 stop = len(coord) if k.stop is None else k.stop
                 step = 1 if k.step is None else k.step
                 requested[dim] = np.asarray(coord[start:stop:step])
+                contiguous = step == 1
                 if start == 0 and stop >= len(coord) and step == 1:
-                    full_dims.add(dim)
+                    continue
             elif isinstance(k, (int, np.integer)):
                 requested[dim] = np.asarray([coord[int(k)]])
                 drop_axes.append(axis)
@@ -323,7 +381,11 @@ class SQLBackendArray(xr.backends.BackendArray):
                     len(arr) == len(coord)
                     and (arr == np.arange(len(coord))).all()
                 ):
-                    full_dims.add(dim)
+                    continue
+                contiguous = len(arr) > 1 and bool((np.diff(arr) == 1).all())
+            specs[dim] = _dim_spec(
+                requested[dim], contiguous, self._monotonic[dim]
+            )
 
         out_shape = tuple(len(requested[d]) for d in self._dimension_columns)
         if any(n == 0 for n in out_shape):
@@ -333,38 +395,9 @@ class SQLBackendArray(xr.backends.BackendArray):
             )
             return cast(np.ndarray, squeezed)
 
-        # Build a single DataFusion filter expression as the AND of per-dim
-        # predicates. For a single requested value: equality. For multiple:
-        # OR-chain of equalities (DataFusion 52.0.0 does not expose a clean
-        # ``Expr.in_list`` from Python; OR-chained equalities constant-fold
-        # equivalently and stay typed).
-        predicates = []
-        for dim in self._dimension_columns:
-            if dim in full_dims:
-                continue
-            vals = requested[dim]
-            if len(vals) == 1:
-                predicates.append(col(f'"{dim}"') == literal(vals[0]))
-            else:
-                eq = col(f'"{dim}"') == literal(vals[0])
-                for v in vals[1:]:
-                    eq = eq | (col(f'"{dim}"') == literal(v))
-                predicates.append(eq)
-
-        filtered = self._inner_df
-        if predicates:
-            combined = predicates[0]
-            for p in predicates[1:]:
-                combined = combined & p
-            filtered = filtered.filter(combined)
-        projected = filtered.select(
-            *(col(f'"{c}"') for c in self._dimension_columns + [self._var_name])
+        batches = self._handle.fetch(
+            specs, self._dimension_columns + [self._var_name]
         )
-
-        # Consume the projected DataFrame as Arrow RecordBatches. The
-        # DataFusion wrapper exposes ``.to_pyarrow()`` to convert each
-        # batch into a true ``pyarrow.RecordBatch``.
-        batches = [b.to_pyarrow() for b in projected.execute_stream()]
         return _scatter_batches_to_ndarray(
             batches=batches,
             dimension_columns=self._dimension_columns,
@@ -374,6 +407,150 @@ class SQLBackendArray(xr.backends.BackendArray):
             dtype=self.dtype,
             drop_axes=drop_axes,
         )
+
+
+def _strictly_monotonic(coord: np.ndarray) -> bool:
+    """Whether ``coord`` is strictly increasing or strictly decreasing.
+
+    Strict monotonicity of the whole coordinate array is the
+    precondition for translating a contiguous positional window into a
+    value range: with duplicated or unsorted values, ``[min, max]`` of a
+    window admits coordinate values at positions outside the window.
+    NaN/NaT (whose comparisons are all false) and non-comparable object
+    arrays report ``False``, which safely falls back to value lists.
+    """
+    if len(coord) < 2:
+        return True
+    head, tail = coord[:-1], coord[1:]
+    try:
+        return bool((tail > head).all() or (tail < head).all())
+    except TypeError:
+        return False
+
+
+def _dim_spec(
+    vals: np.ndarray, contiguous: bool, coord_monotonic: bool
+) -> DimSpec:
+    """The engine window for one dim's requested coordinate values.
+
+    A contiguous run of positions over a strictly monotonic coordinate
+    array is exactly the value range ``[min, max]`` — a two-literal
+    predicate engines can push into range pruning. Monotonicity must
+    hold for the *entire* coordinate array (``coord_monotonic``), not
+    just the requested window: template coords are used verbatim, and
+    over a non-monotonic array a window's ``[min, max]`` admits values
+    at positions outside the window, which the scatter would then write
+    to wrong cells. Anything else (stepped slices, fancy indexers,
+    non-monotonic or duplicated coords) must be an explicit value list:
+    a range would admit rows the scatter did not request.
+    """
+    if contiguous and coord_monotonic and len(vals) > 1:
+        return ("range", vals.min(), vals.max())
+    return ("values", vals, None)
+
+
+def _c_order_grid(
+    dim_cols: dict[str, np.ndarray],
+    coord_arrays: dict[str, np.ndarray],
+    dimension_columns: list[str],
+    total_rows: int,
+) -> bool:
+    """Whether the result rows form the complete grid in C order.
+
+    True iff the row count is exactly the coordinate product and every
+    dimension column is its coordinates repeated/tiled in C order — the
+    shape any unfiltered or bbox-windowed scan produces. When it holds,
+    data variables are dense row-major arrays already and can be
+    reshaped instead of scatter-written (one memcpy versus a
+    ``searchsorted`` per dimension per row).
+    """
+    shape = tuple(len(coord_arrays[d]) for d in dimension_columns)
+    if total_rows != int(np.prod(shape)) or total_rows == 0:
+        return False
+    for k, d in enumerate(dimension_columns):
+        inner = int(np.prod(shape[k + 1 :]))
+        outer = int(np.prod(shape[:k]))
+        view = dim_cols[d].reshape(outer, shape[k], inner)
+        if not (view == coord_arrays[d][None, :, None]).all():
+            return False
+    return True
+
+
+def _dataset_from_batches(
+    batches: list[pa.RecordBatch],
+    dimension_columns: list[str],
+    field_names: list[str],
+    field_types: dict[str, Any],
+) -> xr.Dataset:
+    """Build a dense in-memory Dataset from Arrow ``RecordBatch`` es.
+
+    The engine-agnostic core of the eager round-trip: derives the
+    coordinates and every data variable from a single already-executed
+    result, whichever engine produced it. ``field_types`` values only
+    need a ``to_pandas_dtype()`` method (both ``pyarrow.DataType`` and
+    DataFusion's Arrow type wrappers qualify).
+
+    Complete grid-ordered results (unfiltered scans, bbox windows) are
+    reshaped directly; anything else — sparse results from filtered
+    queries, engine-reordered rows — falls back to the positional
+    scatter, which handles arbitrary row order.
+    """
+    dim_cols: dict[str, np.ndarray] = {}
+    coord_arrays: dict[str, np.ndarray] = {}
+    for d in dimension_columns:
+        if not batches:
+            dim_cols[d] = np.asarray([])
+            coord_arrays[d] = np.asarray([])
+            continue
+        vals = np.concatenate(
+            [
+                b.column(b.schema.names.index(d)).to_numpy(zero_copy_only=False)
+                for b in batches
+            ]
+        )
+        dim_cols[d] = vals
+        # Preserve the order coordinate values first appear in the result so an
+        # ORDER BY direction (e.g. ``ORDER BY level DESC``) carries through to
+        # the Dataset dimension instead of being force-sorted ascending.
+        # pd.unique keeps first-appearance order; the scatter below argsorts
+        # internally, so arbitrarily-ordered coordinates are placed correctly.
+        coord_arrays[d] = np.asarray(pd.unique(vals))
+    shape = tuple(len(coord_arrays[d]) for d in dimension_columns)
+    total_rows = sum(b.num_rows for b in batches)
+
+    grid_ordered = _c_order_grid(
+        dim_cols, coord_arrays, dimension_columns, total_rows
+    )
+
+    data_vars: dict[str, xr.Variable] = {}
+    for name in field_names:
+        if name in dimension_columns:
+            continue
+        np_dtype = np.dtype(field_types[name].to_pandas_dtype())
+        if grid_ordered:
+            flat = np.concatenate(
+                [
+                    b.column(b.schema.names.index(name)).to_numpy(
+                        zero_copy_only=False
+                    )
+                    for b in batches
+                ]
+            )
+            dense = flat.astype(np_dtype, copy=False).reshape(shape)
+        else:
+            dense = _scatter_batches_to_ndarray(
+                batches=batches,
+                dimension_columns=dimension_columns,
+                requested=coord_arrays,
+                var_name=name,
+                out_shape=shape,
+                dtype=np_dtype,
+                drop_axes=[],
+            )
+        data_vars[name] = xr.Variable(dimension_columns, dense)
+
+    coords_arg = {d: coord_arrays[d] for d in dimension_columns}
+    return xr.Dataset(data_vars=data_vars, coords=coords_arg)
 
 
 def _materialize(
@@ -392,44 +569,9 @@ def _materialize(
     scan, regardless of how many dimensions or variables the result has.
     """
     batches = [b.to_pyarrow() for b in inner_df.execute_stream()]
-
-    coord_arrays: dict[str, np.ndarray] = {}
-    for d in dimension_columns:
-        if not batches:
-            coord_arrays[d] = np.asarray([])
-            continue
-        vals = np.concatenate(
-            [
-                b.column(b.schema.names.index(d)).to_numpy(zero_copy_only=False)
-                for b in batches
-            ]
-        )
-        # Preserve the order coordinate values first appear in the result so an
-        # ORDER BY direction (e.g. ``ORDER BY level DESC``) carries through to
-        # the Dataset dimension instead of being force-sorted ascending.
-        # pd.unique keeps first-appearance order; the scatter below argsorts
-        # internally, so arbitrarily-ordered coordinates are placed correctly.
-        coord_arrays[d] = np.asarray(pd.unique(vals))
-    shape = tuple(len(coord_arrays[d]) for d in dimension_columns)
-
-    data_vars: dict[str, xr.Variable] = {}
-    for name in field_names:
-        if name in dimension_columns:
-            continue
-        np_dtype = np.dtype(field_types[name].to_pandas_dtype())
-        dense = _scatter_batches_to_ndarray(
-            batches=batches,
-            dimension_columns=dimension_columns,
-            requested=coord_arrays,
-            var_name=name,
-            out_shape=shape,
-            dtype=np_dtype,
-            drop_axes=[],
-        )
-        data_vars[name] = xr.Variable(dimension_columns, dense)
-
-    coords_arg = {d: coord_arrays[d] for d in dimension_columns}
-    return xr.Dataset(data_vars=data_vars, coords=coords_arg)
+    return _dataset_from_batches(
+        batches, dimension_columns, field_names, field_types
+    )
 
 
 _PURE_SCAN_NODES = {"Projection", "Sort", "TableScan", "SubqueryAlias"}
@@ -486,7 +628,7 @@ def _maybe_template_coords(
     table and the registered Dataset carries all requested dims. Returns
     ``None`` otherwise so the caller falls back to per-dim discovery.
     Skipping discovery avoids one full plan execution per dim and
-    preserves the source's coordinate order (xarray-sql#171).
+    preserves the source's coordinate order.
 
     Coord values come from the **scanned** registered Dataset, not from
     any user-supplied ``template=`` (which is for metadata recovery
@@ -506,41 +648,29 @@ def _maybe_template_coords(
 
 
 def _build_lazy_scan(
-    inner_df: Any,
+    handle: LazyResultHandle,
     dimension_columns: list[str],
     field_names: list[str],
     field_types: dict[str, Any],
-    templates: dict[str, xr.Dataset] | None = None,
+    coord_arrays: dict[str, np.ndarray] | None = None,
 ) -> xr.Dataset:
     """Build a lazy Dataset whose data vars are :class:`SQLBackendArray`.
 
     Used when output chunking is requested: each data variable stays lazy and,
-    once wrapped by ``Dataset.chunk``, every chunk reads its coordinate range via
-    a pushdown filter on first access. Coordinates come either from the
-    scanned table's registered Dataset (fast path, for unfiltered scans -- see
-    :func:`_maybe_template_coords`) or from per-dim
-    ``inner_df.select(col(d)).distinct().sort(...).execute_stream()``; the table
-    provider projects to that single coordinate column and skips data variables,
-    so discovery reads coordinate values only (no data-variable I/O).
+    once wrapped by ``Dataset.chunk``, every chunk reads its coordinate range
+    via a pushdown filter on first access. Coordinates come either from the
+    caller (the scanned table's registered Dataset for unfiltered DataFusion
+    scans -- see :func:`_maybe_template_coords` -- or an explicitly trusted
+    template) or from per-dim distinct queries through the handle; over a
+    registered pushdown table the engine projects to that single coordinate
+    column, so discovery reads coordinate values only (no data-variable I/O).
     """
-    coord_arrays = _maybe_template_coords(
-        templates, dimension_columns, inner_df
-    )
     if coord_arrays is None:
         coord_arrays = {}
         for d in dimension_columns:
-            dim_only = (
-                inner_df.select(col(f'"{d}"'))
-                .distinct()
-                .sort(col(f'"{d}"').sort())
-            )
-            chunks = [b.to_pyarrow() for b in dim_only.execute_stream()]
-            if not chunks:
-                coord_arrays[d] = np.asarray([])
-                continue
-            coord_arrays[d] = np.concatenate(
-                [c.column(0).to_numpy(zero_copy_only=False) for c in chunks]
-            )
+            # ``distinct`` returns engine order; sort ascending so
+            # positional slices map onto contiguous value ranges.
+            coord_arrays[d] = np.sort(handle.distinct(d))
     shape = tuple(len(coord_arrays[d]) for d in dimension_columns)
 
     data_vars: dict[str, xr.Variable] = {}
@@ -549,7 +679,7 @@ def _build_lazy_scan(
             continue
         np_dtype = field_types[name].to_pandas_dtype()
         backend = SQLBackendArray(
-            inner_df=inner_df,
+            handle=handle,
             var_name=name,
             dimension_columns=dimension_columns,
             coord_arrays=coord_arrays,
@@ -666,13 +796,35 @@ def _result_to_xarray(
         ds = _materialize(inner_df, dimension_columns, field_names, field_types)
     else:
         ds = _build_lazy_scan(
-            inner_df,
+            DataFusionHandle(inner_df),
             dimension_columns,
             field_names,
             field_types,
-            templates=templates,
+            coord_arrays=_maybe_template_coords(
+                templates, dimension_columns, inner_df
+            ),
         )
+    return _finish_dataset(
+        ds,
+        dimension_columns,
+        template,
+        sparsity,
+        fill_value,
+        chunks,
+        field_types,
+    )
 
+
+def _finish_dataset(
+    ds: xr.Dataset,
+    dimension_columns: list[str],
+    template: xr.Dataset | None,
+    sparsity: Sparsity,
+    fill_value: Any,
+    chunks: Mapping[str, int] | str | None,
+    field_types: dict[str, Any],
+) -> xr.Dataset:
+    """Shared reconstruction tail: sparsity, template metadata, chunking."""
     if sparsity == "template":
         assert template is not None
         indexers = {

@@ -44,8 +44,7 @@ import datetime
 import numpy as np
 import xarray as xr
 
-import xarray_sql as xql
-
+from _engines import EngineContext
 from _harness import (
     CaseSkipped,
     assert_grid_close,
@@ -101,7 +100,8 @@ def main() -> None:
         f"vector: {len(_REGIONS)} continental boxes"
     )
 
-    ctx = xql.XarrayContext()
+    ctx = EngineContext()
+    print(f"  engine: {ctx.flavor}")
     with timed("register full ERA5 + regions"):
         ctx.from_dataset(
             "era5",
@@ -131,9 +131,11 @@ def main() -> None:
     show_sql(sql)
 
     for _ in measured("SQL zonal stats (raster × vector range JOIN)"):
-        got = ctx.sql(
-            sql, param_values={"start": _START, "end": _END}
-        ).to_dataset(dims=["region_id"])
+        got = ctx.sql_to_dataset(
+            sql,
+            dims=["region_id"],
+            param_values={"start": _START, "end": _END},
+        )
 
     # Array reference: one lazy pass — stack the region masks and reduce. No
     # .load(): the day's field is read inside this timed block (exactly like the

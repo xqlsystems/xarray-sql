@@ -45,8 +45,7 @@ from __future__ import annotations
 
 import xarray as xr
 
-import xarray_sql as xql
-
+from _engines import EngineContext
 from _harness import (
     CaseSkipped,
     assert_grid_close,
@@ -111,7 +110,8 @@ def main() -> None:
         f"  scene window: {dict(scene.sizes)}  ({n:,} pixels, B04=red/B08=NIR)"
     )
 
-    ctx = xql.XarrayContext()
+    ctx = EngineContext()
+    print(f"  engine: {ctx.flavor}")
     ctx.from_dataset("scene", scene, chunks={"y": 256, "x": 256})
 
     sql = """
@@ -122,7 +122,7 @@ def main() -> None:
     show_sql(sql)
 
     for _ in measured("SQL NDVI"):
-        got = ctx.sql(sql).to_dataset(dims=["y", "x"]).ndvi
+        got = ctx.sql_to_dataset(sql, dims=["y", "x"]).ndvi
 
     # Array reference: the same formula in pure xarray. ``.compute()`` reads the
     # window and evaluates it here (the scene is lazy), so this measures the same

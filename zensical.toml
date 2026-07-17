@@ -2,16 +2,25 @@
 site_name = "xarray-sql"
 site_description = "Query Xarray with SQL"
 site_author = "Alexander Merose"
-site_url = "https://alxmrs.github.io/xarray-sql"
-repo_url = "https://github.com/alxmrs/xarray-sql"
-repo_name = "alxmrs/xarray-sql"
+site_url = "https://xqlsystems.github.io/xarray-sql"
+repo_url = "https://github.com/xqlsystems/xarray-sql"
+repo_name = "xqlsystems/xarray-sql"
 edit_uri = "edit/main/docs/"
 nav = [
   {"Home" = "index.md"},
-  {"Examples" = "examples.md"},
-  {"Geospatial in SQL" = "geospatial.md"},
-  {"Contributing" = "contributing.md"},
-  {"Reference" = "reference/xarray_sql.md"}
+  {"Getting started" = "examples.md"},
+  {"Concepts" = [
+    {"Engines" = "engines.md"},
+  ]},
+  {"Guides" = [
+    {"Geospatial in SQL" = "geospatial.md"},
+    {"Performance" = "performance.md"},
+  ]},
+  {"Reference" = [
+    {"API" = "reference/xarray_sql.md"},
+    {"Known issues" = "limitations.md"},
+    {"Contributing" = "contributing.md"},
+  ]}
 ]
 
 # Theme configuration
@@ -71,6 +80,10 @@ line_spans = "__span"
 pygments_lang_class = true
 
 [project.markdown_extensions.pymdownx.superfences]
+[[project.markdown_extensions.pymdownx.superfences.custom_fences]]
+name = "mermaid"
+class = "mermaid"
+format = "pymdownx.superfences.fence_code_format"
 
 [project.markdown_extensions.pymdownx.tasklist]
 custom_checkbox = true
@@ -78,6 +91,8 @@ custom_checkbox = true
 [project.markdown_extensions.pymdownx.inlinehilite]
 
 [project.markdown_extensions.admonition]
+
+[project.markdown_extensions.footnotes]
 
 [project.markdown_extensions.pymdownx.snippets]
 url_download = true
@@ -116,7 +131,7 @@ filters = ["!^_"]
 
 [[project.extra.social]]
 icon = "fontawesome/brands/github"
-link = "https://github.com/alxmrs/xarray-sql"
+link = "https://github.com/xqlsystems/xarray-sql"
 
 [[project.extra.social]]
 icon = "fontawesome/brands/python"

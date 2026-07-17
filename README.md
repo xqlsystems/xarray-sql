@@ -2,10 +2,10 @@
 
 _Query [Xarray](https://xarray.dev/) with SQL_
 
-[![ci](https://github.com/alxmrs/xarray-sql/actions/workflows/ci.yml/badge.svg)](https://github.com/alxmrs/xarray-sql/actions/workflows/ci.yml)
-[![lint](https://github.com/alxmrs/xarray-sql/actions/workflows/lint.yml/badge.svg)](https://github.com/alxmrs/xarray-sql/actions/workflows/lint.yml)
-[![ci-build](https://github.com/alxmrs/xarray-sql/actions/workflows/ci-build.yml/badge.svg)](https://github.com/alxmrs/xarray-sql/actions/workflows/ci-build.yml)
-[![ci-rust](https://github.com/alxmrs/xarray-sql/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/alxmrs/xarray-sql/actions/workflows/ci-rust.yml)
+[![ci](https://github.com/xqlsystems/xarray-sql/actions/workflows/ci.yml/badge.svg)](https://github.com/xqlsystems/xarray-sql/actions/workflows/ci.yml)
+[![lint](https://github.com/xqlsystems/xarray-sql/actions/workflows/lint.yml/badge.svg)](https://github.com/xqlsystems/xarray-sql/actions/workflows/lint.yml)
+[![ci-build](https://github.com/xqlsystems/xarray-sql/actions/workflows/ci-build.yml/badge.svg)](https://github.com/xqlsystems/xarray-sql/actions/workflows/ci-build.yml)
+[![ci-rust](https://github.com/xqlsystems/xarray-sql/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/xqlsystems/xarray-sql/actions/workflows/ci-rust.yml)
 
 ```shell
 pip install xarray-sql
@@ -15,7 +15,11 @@ pip install xarray-sql
 
 This is an experiment to provide a SQL interface for array datasets.
 Succinctly, we "pivot" Xarray Datasets to treat them like tables so we can run
-SQL queries against them.
+SQL queries against them — on the query engine of your choice. xarray-sql
+translates data, not queries: it registers a lazy Dataset as a table on
+DataFusion (built in), DuckDB, or Polars, and turns any engine's Arrow result
+back into a labeled Dataset. Dialects, geometry functions, and optimizers stay
+with the engine.
 
 ## Quickstart
 
@@ -57,6 +61,21 @@ clim_ds["air"].plot()  # in a script, call matplotlib.pyplot.show() to display
 
 That's the round trip — Xarray in, SQL in the middle, Xarray (and a plot) back
 out.
+
+The same Dataset registers on other engines with one call — DuckDB gets a
+native lazy table with predicate pushdown, Polars scans the same object:
+
+```python
+import duckdb
+
+con = duckdb.connect()
+xql.register(con, 'air', ds, chunks=dict(time=100))
+rel = con.sql('SELECT time, AVG("air") AS air FROM air GROUP BY time ORDER BY time')
+xql.to_dataset(rel, template=ds)   # any engine's Arrow result round-trips
+```
+
+See [Engines](https://xqlsystems.github.io/xarray-sql/engines/) for the support matrix, DuckDB/Polars details,
+and the lazy chunked round-trip.
 
 ## A bigger example: ARCO-ERA5
 
@@ -130,6 +149,8 @@ result = ctx.sql('''
 # | 775   | -2.3064649711534457  |
 # +-------+----------------------+
 
+# `latitude`/`longitude` are inferred from the registered table's surviving
+# dims; `template` is kept only to recover metadata (attrs, encoding).
 ctx.sql('''
   SELECT latitude, longitude, AVG("2m_temperature") - 273.15 AS avg_c
   FROM era5.surface
@@ -137,8 +158,6 @@ ctx.sql('''
                  AND TIMESTAMP '2020-01-01 05:00:00'
   GROUP BY latitude, longitude
   ORDER BY latitude DESC, longitude
-# `latitude`/`longitude` are inferred from the registered table's surviving
-# dims; `template` is kept only to recover metadata (attrs, encoding).
 ''').to_dataset(template=ds)
 # <xarray.Dataset> Size: 8MB
 # Dimensions:    (latitude: 721, longitude: 1440)
@@ -155,7 +174,7 @@ ctx.sql('''
 ```
 
 _(A runnable version of this example lives at
-[`perf_tests/era5_temp_profile.py`](perf_tests/era5_temp_profile.py).)_
+[`perf_tests/era5_temp_profile.py`](https://github.com/xqlsystems/xarray-sql/blob/main/perf_tests/era5_temp_profile.py).)_
 
 ## Why build this?
 
@@ -188,6 +207,9 @@ pure DataFusion and PyArrow, but works with the same principle!
 _2026 update_: Instead of `from_map()`, we create a way to translate Xarray chunks
 into Arrow RecordBatches. We pass a Python callback into a DataFusion `TableProvider`
 that lets the DB engine translate the underlying Dataset arrays into DataFusion partitions.
+The same chunks-to-batches translation is also exposed as a
+`pyarrow.dataset.Dataset` with predicate and projection pushdown, which is how
+DuckDB and Polars consume registered Datasets with no engine-specific code.
 Ultimately, the initial insight of the `pivot()` function -- that any ndarray can be
 translated into a 2D table -- underlies this performant query mechanism. 
 
@@ -217,8 +239,8 @@ against an xarray/array reference** to floating-point tolerance:
 Every case matches its array reference. The headline finding: these operations
 are not really "array" operations at all — they are `GROUP BY`, `JOIN`, window
 functions, and `CASE` in disguise, and a query engine runs them at scale. See
-[`benchmarks/geospatial/`](benchmarks/geospatial/) and the write-up,
-[Geospatial operations are relational operations](docs/geospatial.md).
+[`benchmarks/geospatial/`](https://github.com/xqlsystems/xarray-sql/tree/main/benchmarks/geospatial/) and the write-up,
+[Geospatial operations are relational operations](https://xqlsystems.github.io/xarray-sql/geospatial/).
 
 ## Why does this work?
 
@@ -226,15 +248,17 @@ Underneath Xarray, Dask, and Pandas, there are NumPy arrays. These are paged in
 chunks and represented contiguously in memory. It is only a matter of metadata
 that breaks them up into ndarrays. `pivot()`, which uses `to_dataframe()`,
 just changes this metadata (via a `ravel()`/`reshape()`), back into a column
-amenable to a DataFrame. We take advantage of this light weight metadata change to
-make chunked information scannable by a DB engine (DataFusion).
+amenable to a DataFrame. We take advantage of this lightweight metadata change to
+make chunked information scannable by a DB engine (DataFusion, DuckDB, Polars —
+anything that speaks Arrow).
 
 ## What are the current limitations?
 
-TBD, DataFusion provides a whole new world! Currently, we're looking for
+The sharp edges we know about — per engine and fundamental — are cataloged in
+[Known issues & limitations](https://xqlsystems.github.io/xarray-sql/limitations/). Currently, we're looking for
 early users – "tire kickers", if you will. We'd love your input to shape the direction of this
-project! Please, give this a try and [file issues](https://github.com/alxmrs/xarray-sql/issues) as
-you see fit. Check out our [contributing guide](CONTRIBUTING.md), too 😉.
+project! Please, give this a try and [file issues](https://github.com/xqlsystems/xarray-sql/issues) as
+you see fit. Check out our [contributing guide](https://xqlsystems.github.io/xarray-sql/contributing/), too 😉.
 
 ## What would a deeper integration look like?
 
@@ -247,7 +271,7 @@ a [virtual](https://fsspec.github.io/kerchunk/)
 filesystem for parquet that would internally map to Zarr. Raster-backed virtual
 parquet would open up integrations to numerous tools like dask, pyarrow, duckdb,
 and BigQuery. More thoughts on this
-in [#4](https://github.com/alxmrs/xarray-sql/issues/4).
+in [#4](https://github.com/xqlsystems/xarray-sql/issues/4).
 
 _2025 update_: Something like this is being built across a few projects! The ones I know about are:
 
@@ -257,18 +281,18 @@ _2025 update_: Something like this is being built across a few projects! The one
 _2026 update_: A colleague and I are experimenting with native Zarr RDBMS engines. Check out:
 
 - [Zarr-Datafusion](https://lib.rs/crates/zarr-datafusion)
-- [DuckDB-Zarr](https://github.com/alxmrs/duckdb-zarr)
+- [DuckDB-Zarr](https://github.com/xqlsystems/duckdb-zarr)
 
 ## Roadmap
 
-- [x] ~Lazy evaluation via the pyarrow Dataset interface [#93](https://github.com/alxmrs/xarray-sql/issues/93).~ _Implemented in [#100](https://github.com/alxmrs/xarray-sql/pull/100)_
-- [x] Support proper parallelism via proper partition handling on the rust/datafusion side. [#106](https://github.com/alxmrs/xarray-sql/issues/106)
-- [x] Support core datafusion optimizations to scan less data, like [104](https://github.com/alxmrs/xarray-sql/issues/104), ...
-- [x] Translate a single Zarr to a collection of tables [#85](https://github.com/alxmrs/xarray-sql/issues/85).
-- [ ] Distributed beyond a single node through the DataFusion integration with Ray Datasets [#68](https://github.com/alxmrs/xarray-sql/issues/68) or Apache Ballista [#98](https://github.com/alxmrs/xarray-sql/issues/98).
-- [ ] Demo: calculate Sea Surface Temperature from 1940 - Present in SQL [#36](https://github.com/alxmrs/xarray-sql/issues/36).
-- [ ] Provide an option to integrate DataFusion directly to Zarr via Rust [#4](https://github.com/alxmrs/xarray-sql/issues/4).
-- [ ] (To be formally announced eventually): The 100 Trillion Row Challenge [#34](https://github.com/alxmrs/xarray-sql/issues/34).
+- [x] ~Lazy evaluation via the pyarrow Dataset interface [#93](https://github.com/xqlsystems/xarray-sql/issues/93).~ _Implemented in [#100](https://github.com/xqlsystems/xarray-sql/pull/100)_
+- [x] Support proper parallelism via proper partition handling on the rust/datafusion side. [#106](https://github.com/xqlsystems/xarray-sql/issues/106)
+- [x] Support core datafusion optimizations to scan less data, like [#104](https://github.com/xqlsystems/xarray-sql/issues/104), ...
+- [x] Translate a single Zarr to a collection of tables [#85](https://github.com/xqlsystems/xarray-sql/issues/85).
+- [ ] Distributed beyond a single node through the DataFusion integration with Ray Datasets [#68](https://github.com/xqlsystems/xarray-sql/issues/68) or Apache Ballista [#98](https://github.com/xqlsystems/xarray-sql/issues/98).
+- [ ] Demo: calculate Sea Surface Temperature from 1940 - Present in SQL [#36](https://github.com/xqlsystems/xarray-sql/issues/36).
+- [ ] Provide an option to integrate DataFusion directly to Zarr via Rust [#4](https://github.com/xqlsystems/xarray-sql/issues/4).
+- [ ] (To be formally announced eventually): The 100 Trillion Row Challenge [#34](https://github.com/xqlsystems/xarray-sql/issues/34).
 
 ## Sponsors & Contributors
 

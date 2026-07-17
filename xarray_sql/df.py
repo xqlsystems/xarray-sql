@@ -297,6 +297,32 @@ def dataset_to_record_batch(
 #: 64 K rows balances DataFusion pipeline depth against per-batch overhead.
 DEFAULT_BATCH_SIZE: int = 65_536
 
+#: Row cap for the whole-partition coordinate fast path in
+#: iter_record_batches. Below this, coordinate columns are materialised
+#: for the full partition with repeat/tile (sequential writes, ~3x
+#: faster than per-batch index arithmetic) and batches are zero-copy
+#: slices; the cost is holding every coordinate column of the partition
+#: in memory at once (rows x 8 bytes x n_dims). Above it — e.g.
+#: single-time-step reanalysis partitions with tens of millions of
+#: rows — the per-batch path keeps peak memory at O(batch_size) per
+#: coordinate instead.
+_FULL_PIVOT_MAX_ROWS: int = 8_388_608
+
+
+def _as_single_array(values, type: pa.DataType, *, from_pandas: bool = False):
+    """``pa.array`` that always returns a contiguous ``pa.Array``.
+
+    ``pa.array`` may return a ``ChunkedArray`` instead of an ``Array`` for
+    large inputs (observed for numpy fixed-width unicode columns of a few
+    million rows — e.g. a string dimension coordinate tiled across a full
+    partition). ``RecordBatch.from_arrays`` rejects chunked input, so
+    flatten it back to one contiguous array.
+    """
+    arr = pa.array(values, type=type, from_pandas=from_pandas)
+    if isinstance(arr, pa.ChunkedArray):
+        arr = arr.combine_chunks()
+    return arr
+
 
 def iter_record_batches(
     ds: xr.Dataset,
@@ -338,8 +364,12 @@ def iter_record_batches(
 
     # Preload small 1-D coordinate arrays (negligible memory).
     # Convert cftime objects to numeric values matching the schema type.
+    # Projected scans may omit dimension columns from the schema; those
+    # dims still shape the iteration but never emit a column.
     coord_values = {}
     for name in dim_names:
+        if name not in schema.names:
+            continue
         vals = ds.coords[name].values
         if cft.is_cftime(vals):
             coord_values[name] = cft.convert_for_field(vals, schema.field(name))
@@ -361,6 +391,36 @@ def iter_record_batches(
             else:
                 data_arrays[field.name] = raw.ravel()
 
+    if 0 < total_rows <= _FULL_PIVOT_MAX_ROWS:
+        # Fast path: build each coordinate column once for the whole
+        # partition. In C order, dim k's flat column is its coord values
+        # each repeated prod(shape[k+1:]) times, with that pattern tiled
+        # prod(shape[:k]) times — two sequential-write kernels, much
+        # faster than per-batch division/modulo plus gather. Batches are
+        # then zero-copy slices of the full-partition Arrow arrays.
+        full_arrays = []
+        for field in schema:
+            name = field.name
+            if name in ds.coords and name in ds.dims:
+                k = dim_names.index(name)
+                outer = int(np.prod(shape[:k]))
+                col = np.repeat(coord_values[name], strides[k])
+                if outer > 1:
+                    col = np.tile(col, outer)
+                full_arrays.append(_as_single_array(col, field.type))
+            else:
+                full_arrays.append(
+                    _as_single_array(
+                        data_arrays[name], field.type, from_pandas=True
+                    )
+                )
+        for row_start in range(0, total_rows, batch_size):
+            yield pa.RecordBatch.from_arrays(
+                [a.slice(row_start, batch_size) for a in full_arrays],
+                schema=schema,
+            )
+        return
+
     for row_start in range(0, total_rows, batch_size):
         row_end = min(row_start + batch_size, total_rows)
         row_idx = np.arange(row_start, row_end)
@@ -372,13 +432,13 @@ def iter_record_batches(
                 k = dim_names.index(name)
                 coord_idx = (row_idx // strides[k]) % shape[k]
                 arrays.append(
-                    pa.array(coord_values[name][coord_idx], type=field.type)
+                    _as_single_array(coord_values[name][coord_idx], field.type)
                 )
             else:
                 arrays.append(
-                    pa.array(
+                    _as_single_array(
                         data_arrays[name][row_start:row_end],
-                        type=field.type,
+                        field.type,
                         from_pandas=True,
                     )
                 )
