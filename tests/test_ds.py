@@ -37,14 +37,28 @@ def test_ctx_sql_returns_xarray_dataframe(air_dataset_small):
     assert isinstance(result, XarrayDataFrame)
 
 
-def test_to_pandas_unchanged_behavior(air_dataset_small):
-    """Wrapped ``.to_pandas()`` is bit-for-bit equal to the un-wrapped path."""
+def test_to_pandas_decodes_dictionary_columns(air_dataset_small):
+    """Wrapped ``.to_pandas()`` surfaces coordinates as plain values.
+
+    Coordinate columns are dictionary-encoded internally, which the raw
+    DataFusion ``.to_pandas()`` returns as pandas ``Categorical``. The wrapper
+    decodes those back to their value dtype so callers see the same plain
+    columns as before the encoding — no ``Categorical`` leaks, and the values
+    match the raw path once its categoricals are decoded.
+    """
     from datafusion import SessionContext
 
     ctx = XarrayContext()
     ctx.from_dataset("air", air_dataset_small)
     wrapped = ctx.sql("SELECT * FROM air LIMIT 7").to_pandas()
     raw = SessionContext.sql(ctx, "SELECT * FROM air LIMIT 7").to_pandas()
+
+    assert not any(
+        isinstance(wrapped[c].dtype, pd.CategoricalDtype) for c in wrapped
+    )
+    for c in raw.columns:
+        if isinstance(raw[c].dtype, pd.CategoricalDtype):
+            raw[c] = raw[c].astype(raw[c].cat.categories.dtype)
     pd.testing.assert_frame_equal(wrapped, raw)
 
 

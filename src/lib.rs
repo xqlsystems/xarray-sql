@@ -93,6 +93,13 @@ impl ScalarBound {
     /// Compare this bound with a DataFusion ScalarValue.
     /// Returns None if types are incompatible.
     fn compare_to_scalar(&self, scalar: &ScalarValue) -> Option<std::cmp::Ordering> {
+        // Coordinate columns are dictionary-encoded, so DataFusion coerces the
+        // comparison literal to a `Dictionary` scalar (the column stays a bare
+        // Column). Unwrap it to the underlying value and compare against that,
+        // so partition pruning keeps working on dictionary coordinates.
+        if let ScalarValue::Dictionary(_, value) = scalar {
+            return self.compare_to_scalar(value);
+        }
         match (self, scalar) {
             // Integer comparisons
             (ScalarBound::Int64(a), ScalarValue::Int64(Some(b))) => Some(a.cmp(b)),
@@ -265,8 +272,11 @@ impl PrunableStreamingTable {
         right: &Expr,
         meta: &PartitionMetadata,
     ) -> bool {
-        // Try to extract column and literal from either side
-        let (col_name, scalar, flipped) = match (left, right) {
+        // Try to extract column and literal from either side. Coordinate
+        // columns are dictionary-encoded, so a filter may arrive as
+        // `Cast(col AS value_type) op literal`; strip the (lossless) decode cast
+        // to reach the column.
+        let (col_name, scalar, flipped) = match (strip_cast(left), strip_cast(right)) {
             (Expr::Column(c), Expr::Literal(s, _)) => (c.name.clone(), s, false),
             (Expr::Literal(s, _), Expr::Column(c)) => (c.name.clone(), s, true),
             _ => return false, // Not a simple column-literal comparison
@@ -348,8 +358,8 @@ impl PrunableStreamingTable {
             return false;
         }
 
-        // Extract column name
-        let col_name = match between.expr.as_ref() {
+        // Extract column name (peeling any dictionary-decode cast)
+        let col_name = match strip_cast(between.expr.as_ref()) {
             Expr::Column(c) => c.name.clone(),
             _ => return false,
         };
@@ -387,8 +397,8 @@ impl PrunableStreamingTable {
             return false;
         }
 
-        // Extract column name
-        let col_name = match in_list.expr.as_ref() {
+        // Extract column name (peeling any dictionary-decode cast)
+        let col_name = match strip_cast(in_list.expr.as_ref()) {
             Expr::Column(c) => c.name.clone(),
             _ => return false,
         };
@@ -440,9 +450,29 @@ impl PrunableStreamingTable {
 
     /// Check if an expression references a dimension column.
     fn expr_references_dimension(&self, expr: &Expr) -> bool {
-        match expr {
+        match strip_cast(expr) {
             Expr::Column(c) => self.dimension_columns.contains(&c.name),
             _ => false,
+        }
+    }
+}
+
+/// Peel `Cast`/`TryCast` wrappers to reach the inner expression.
+///
+/// Dictionary-encoded coordinate columns are decoded with a lossless
+/// `CAST(col AS value_type)` before a comparison, so a filter on a coordinate
+/// can arrive as `Cast(Column) op literal`. Stripping the cast lets pruning see
+/// the underlying column; the cast targets the dictionary's own value type, so
+/// it never changes the compared value. If a cast were ever lossy, the bound
+/// comparison would simply fail to match and the partition is conservatively
+/// kept — pruning never becomes wrong, only (at worst) less effective.
+fn strip_cast(expr: &Expr) -> &Expr {
+    let mut current = expr;
+    loop {
+        match current {
+            Expr::Cast(cast) => current = &cast.expr,
+            Expr::TryCast(cast) => current = &cast.expr,
+            _ => return current,
         }
     }
 }
@@ -702,6 +732,12 @@ fn fold_bound(a: &ScalarBound, b: &ScalarBound, keep_min: bool) -> Option<Scalar
 /// unit we can't scale exactly), in which case the column is left without
 /// min/max rather than risk a wrong value.
 fn bound_to_scalar(bound: &ScalarBound, dtype: &DataType) -> Option<ScalarValue> {
+    // Coordinate columns are dictionary-encoded; their min/max is the min/max of
+    // the underlying values, so report a value-type scalar (what DataFusion uses
+    // for dictionary-column statistics).
+    if let DataType::Dictionary(_, value_type) = dtype {
+        return bound_to_scalar(bound, value_type);
+    }
     match (bound, dtype) {
         (ScalarBound::Int64(v), DataType::Int64) => Some(ScalarValue::Int64(Some(*v))),
         (ScalarBound::Int64(v), DataType::Int32) => {
@@ -736,21 +772,46 @@ fn bound_to_scalar(bound: &ScalarBound, dtype: &DataType) -> Option<ScalarValue>
     }
 }
 
-/// Exact in-memory byte size of `num_rows` rows of `schema`, or `Absent` if any
-/// column is variable-width (e.g. Utf8) and cannot be sized from the row count
-/// alone. Our data model is dense fixed-width grids, so this is normally exact.
+/// Fixed byte width of one value of `dtype`, or `None` if it is variable-width.
+///
+/// A dictionary-encoded column is sized by its *value* type — a safe upper bound
+/// on the encoded column's real footprint (the actual indices are narrower). We
+/// deliberately over- rather than under-count so a memory-based rule never
+/// under-provisions; the caller marks the total `Inexact` to reflect it.
+fn fixed_width(dtype: &DataType) -> Option<usize> {
+    match dtype {
+        DataType::Dictionary(_, value_type) => fixed_width(value_type),
+        other => other.primitive_width(),
+    }
+}
+
+/// In-memory byte size of `num_rows` rows of `schema`.
+///
+/// `Absent` if any column is variable-width (e.g. Utf8). `Exact` for a plain
+/// fixed-width grid; `Inexact` when any column is dictionary-encoded, since we
+/// size those by the value type (a safe upper bound) rather than the narrower
+/// index — an honest label now that coordinates can be dictionary-encoded.
 fn total_byte_size(schema: &Schema, num_rows: &Precision<usize>) -> Precision<usize> {
     let Precision::Exact(rows) = num_rows else {
         return Precision::Absent;
     };
     let mut row_width = 0usize;
+    let mut any_dictionary = false;
     for field in schema.fields() {
-        match field.data_type().primitive_width() {
+        if matches!(field.data_type(), DataType::Dictionary(_, _)) {
+            any_dictionary = true;
+        }
+        match fixed_width(field.data_type()) {
             Some(w) => row_width += w,
             None => return Precision::Absent,
         }
     }
-    Precision::Exact(rows.saturating_mul(row_width))
+    let total = rows.saturating_mul(row_width);
+    if any_dictionary {
+        Precision::Inexact(total)
+    } else {
+        Precision::Exact(total)
+    }
 }
 
 /// Build `Statistics` for a scan over the given partitions.

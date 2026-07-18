@@ -271,15 +271,29 @@ def dataset_to_record_batch(
     for field in schema:
         name = field.name
         if name in ds.coords and name in ds.dims:
-            # Broadcast 1-D coordinate to the full N-D partition shape, then ravel.
             axis = dim_names.index(name)
             coord = ds.coords[name].values
             if cft.is_cftime(coord):
                 coord = cft.convert_for_field(coord, field)
             reshape = [1] * len(shape)
             reshape[axis] = coord.shape[0]
-            arr = np.broadcast_to(coord.reshape(reshape), shape).ravel()
-            arrays.append(pa.array(arr, type=field.type))
+            if pa.types.is_dictionary(field.type):
+                # Dictionary-encode: the distinct coordinate values are the
+                # dictionary, and the per-row indices are the coordinate's own
+                # axis index broadcast across the partition — no dense array of
+                # repeated values is ever built.
+                idx = np.broadcast_to(
+                    np.arange(coord.shape[0]).reshape(reshape), shape
+                ).ravel()
+                dictionary = pa.array(coord, type=field.type.value_type)
+                indices = pa.array(idx, type=field.type.index_type)
+                arrays.append(
+                    pa.DictionaryArray.from_arrays(indices, dictionary)
+                )
+            else:
+                # Broadcast 1-D coordinate to the full partition shape, ravel.
+                arr = np.broadcast_to(coord.reshape(reshape), shape).ravel()
+                arrays.append(pa.array(arr, type=field.type))
         else:
             # Data variable: ravel to 1-D (zero-copy for C-contiguous arrays).
             raw = ds[name].values.ravel()
@@ -371,9 +385,22 @@ def iter_record_batches(
             if name in ds.coords and name in ds.dims:
                 k = dim_names.index(name)
                 coord_idx = (row_idx // strides[k]) % shape[k]
-                arrays.append(
-                    pa.array(coord_values[name][coord_idx], type=field.type)
-                )
+                if pa.types.is_dictionary(field.type):
+                    # Emit the coordinate as a dictionary array: the distinct
+                    # coordinate values are the dictionary, and the strided
+                    # per-row indices we just computed are exactly the
+                    # dictionary indices — no broadcast of repeated values.
+                    dictionary = pa.array(
+                        coord_values[name], type=field.type.value_type
+                    )
+                    indices = pa.array(coord_idx, type=field.type.index_type)
+                    arrays.append(
+                        pa.DictionaryArray.from_arrays(indices, dictionary)
+                    )
+                else:
+                    arrays.append(
+                        pa.array(coord_values[name][coord_idx], type=field.type)
+                    )
             else:
                 arrays.append(
                     pa.array(
@@ -384,6 +411,53 @@ def iter_record_batches(
                 )
 
         yield pa.RecordBatch.from_arrays(arrays, schema=schema)
+
+
+def _coord_index_type(n_values: int) -> pa.DataType:
+    """Signed Arrow int type for a coordinate dictionary of ``n_values`` keys.
+
+    The index must survive DataFusion *concatenating* per-batch dictionaries
+    across a scan. Those concatenations are not always unified (arrow merges
+    dictionary values on a size heuristic, not a guarantee), so the *combined*
+    dictionary an operator sees can be many times a single partition's
+    cardinality — an unchunked coordinate repeated across N partitions can reach
+    ``card × N``. A narrow key (int8/int16) therefore overflows under streaming
+    aggregation ("Dictionary key bigger than the key type"), so we do not use
+    one. ``int32`` covers ~2.1B combined entries (any realistic grid), and
+    ``int64`` backstops the astronomically-large case. Indices run
+    ``0 .. n_values - 1``, so a signed max ``M`` holds a cardinality of ``M + 1``.
+    """
+    if n_values <= np.iinfo(np.int32).max + 1:
+        return pa.int32()
+    return pa.int64()
+
+
+def _as_dictionary_field(field: pa.Field, n_values: int) -> pa.Field:
+    """Dictionary-encode a coordinate field when it is worthwhile and safe.
+
+    Coordinate columns repeat each value across the whole grid — a chunk of
+    shape ``(time, lat, lon)`` carries each latitude ``time × lon`` times. A
+    dictionary stores only the distinct values plus integer indices, shrinking
+    the bytes the engine moves and letting ``GROUP BY`` / equality ``JOIN``
+    compare integer keys instead of rehashing repeated floats.
+
+    We only encode when the index type (see :func:`_coord_index_type`) is
+    *strictly narrower* than the value type. That keeps 8-byte coordinates
+    (``float64``, ``int64``, timestamps) — a 2× win with an overflow-safe int32
+    key — while leaving 4-byte ``float32`` / ``int32`` coordinates dense, where a
+    dictionary would be pure overhead and a narrower (overflow-prone) key would
+    be the only way to win. Variable-width value types (e.g. strings) are always
+    encoded — the classic dictionary win. The field's name, nullability, and
+    metadata (e.g. cftime units/calendar) are preserved.
+    """
+    index_type = _coord_index_type(n_values)
+    try:
+        value_bit_width = field.type.bit_width
+    except (ValueError, NotImplementedError):
+        value_bit_width = None  # variable-width (e.g. string): always encode
+    if value_bit_width is not None and index_type.bit_width >= value_bit_width:
+        return field
+    return field.with_type(pa.dictionary(index_type, field.type))
 
 
 def _parse_schema(ds: xr.Dataset) -> pa.Schema:
@@ -413,10 +487,13 @@ def _parse_schema(ds: xr.Dataset) -> pa.Schema:
         if coord_name in ds.dims:
             if cft.is_cftime_index(ds, coord_name):
                 units, calendar = cft.encoding(ds, coord_name)
-                columns.append(cft.arrow_field(coord_name, units, calendar))
+                field = cft.arrow_field(coord_name, units, calendar)
             else:
                 pa_type = pa.from_numpy_dtype(coord_var.dtype)
-                columns.append(pa.field(coord_name, pa_type))
+                field = pa.field(coord_name, pa_type)
+            # Dictionary-encode the coordinate column (see _as_dictionary_field),
+            # sizing the index type to the dimension length.
+            columns.append(_as_dictionary_field(field, ds.sizes[coord_name]))
 
     for var_name, var in ds.data_vars.items():
         # Data variables are virtually never cftime, but check dtype as a

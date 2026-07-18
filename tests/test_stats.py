@@ -48,8 +48,10 @@ def test_exact_byte_size_in_scan_statistics():
     ctx = XarrayContext()
     ctx.from_dataset("air", ds, chunks={"time": 50})
     plan = _explain(ctx, "SELECT lat, lon, air FROM air")
-    # 2000 rows x (lat int64 + lon int64 + air float64) = 2000 x 24 bytes.
-    assert f"Bytes=Exact({100 * 4 * 5 * 24})" in plan
+    # 2000 rows x (lat int64 + lon int64 + air float64) = 2000 x 24 bytes, sized
+    # by value type. lat/lon are dictionary-encoded (int32 keys), so the value
+    # sizing is a safe upper bound and the total is reported Inexact.
+    assert f"Bytes=Inexact({100 * 4 * 5 * 24})" in plan
 
 
 def test_dimension_column_min_max_in_scan_statistics():

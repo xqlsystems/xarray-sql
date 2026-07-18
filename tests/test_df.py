@@ -198,6 +198,7 @@ def test_dataset_to_record_batch_matches_pivot(air_small):
     we sort by the coordinate columns before comparing.
     """
     schema = _parse_schema(air_small)
+    schema_cols = [f.name for f in schema]
     dim_cols = [f.name for f in schema if f.name in air_small.dims]
     blocks = list(
         block_slices(air_small, chunks={"time": 4, "lat": 3, "lon": 4})
@@ -205,18 +206,20 @@ def test_dataset_to_record_batch_matches_pivot(air_small):
 
     for block in blocks:
         ds_block = air_small.isel(block)
-        actual_df = (
-            dataset_to_record_batch(ds_block, schema)
-            .to_pandas()
-            .sort_values(dim_cols)
-            .reset_index(drop=True)
-        )
         expected_df = (
-            pa.RecordBatch.from_pandas(pivot(ds_block), schema=schema)
-            .to_pandas()
+            pivot(ds_block)[schema_cols]
             .sort_values(dim_cols)
             .reset_index(drop=True)
         )
+        actual_df = dataset_to_record_batch(ds_block, schema).to_pandas()[
+            schema_cols
+        ]
+        # Coordinate columns are dictionary-encoded, so they come back from
+        # Arrow as pandas Categorical; decode them to the plain dtype pivot uses
+        # before comparing values.
+        for col in dim_cols:
+            actual_df[col] = actual_df[col].astype(expected_df[col].dtype)
+        actual_df = actual_df.sort_values(dim_cols).reset_index(drop=True)
 
         pd.testing.assert_frame_equal(actual_df, expected_df, check_like=False)
 
@@ -403,19 +406,21 @@ def test_read_xarray_loads_one_chunk_at_a_time(large_ds):
             peaks.append(cur_peak)
 
         for size in sizes:
-            # Observed range: 1.59–1.83× on macOS, up to ~2.7× on Linux
-            # (glibc + Arrow allocate more intermediate buffers).
-            # iter_record_batches holds data-variable arrays (≈1× chunk) while
-            # yielding sub-batches, plus the current Arrow batch (≈0.65× chunk).
-            assert chunk_size * 1.3 < size, f"size {size} unexpectedly low"
+            # iter_record_batches holds the data-variable arrays (≈1× chunk)
+            # while yielding sub-batches, plus the current Arrow batch. The
+            # batch's coordinate columns are dictionary-encoded (only the
+            # distinct values plus small int32 indices), so they add far less
+            # than a broadcast column would — steady state sits just above 1×.
+            assert chunk_size * 1.1 < size, f"size {size} unexpectedly low"
             assert chunk_size * 3.5 > size, f"size {size} unexpectedly high"
 
         for peak in peaks:
-            # Observed range: 1.84–3.28× on macOS, up to ~4.15× on Linux
-            # (glibc + Arrow hold more intermediate buffers at peak).
-            # Peak includes data arrays + Arrow batch + temporary coordinate index
-            # arrays; the first batch of each chunk is highest (Dask compute overhead).
-            assert chunk_size * 1.5 < peak, f"peak {peak} unexpectedly low"
+            # Peak includes the data arrays + the current Arrow batch +
+            # temporary coordinate index arrays; the first batch of each chunk
+            # is highest (Dask compute overhead). Dictionary-encoded coordinate
+            # columns keep the batch (and so the peak) smaller than a broadcast
+            # column would.
+            assert chunk_size * 1.3 < peak, f"peak {peak} unexpectedly low"
             assert chunk_size * 5.0 > peak, f"peak {peak} unexpectedly high"
 
         assert max(peaks) < large_ds.nbytes
