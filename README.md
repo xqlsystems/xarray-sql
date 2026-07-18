@@ -2,10 +2,13 @@
 
 _Query [Xarray](https://xarray.dev/) with SQL_
 
+![PyPI Version](https://img.shields.io/pypi/v/xarray-sql?color=green)
 [![ci](https://github.com/alxmrs/xarray-sql/actions/workflows/ci.yml/badge.svg)](https://github.com/alxmrs/xarray-sql/actions/workflows/ci.yml)
 [![lint](https://github.com/alxmrs/xarray-sql/actions/workflows/lint.yml/badge.svg)](https://github.com/alxmrs/xarray-sql/actions/workflows/lint.yml)
 [![ci-build](https://github.com/alxmrs/xarray-sql/actions/workflows/ci-build.yml/badge.svg)](https://github.com/alxmrs/xarray-sql/actions/workflows/ci-build.yml)
 [![ci-rust](https://github.com/alxmrs/xarray-sql/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/alxmrs/xarray-sql/actions/workflows/ci-rust.yml)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/xarray-sql?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/xarray-sql)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/xarray-sql?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads%2Fmonth)](https://pepy.tech/projects/xarray-sql)
 
 ```shell
 pip install xarray-sql
