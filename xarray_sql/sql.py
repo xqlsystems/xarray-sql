@@ -1,12 +1,20 @@
+import re
+
 import xarray as xr
 from datafusion import SessionContext
 from datafusion.catalog import Schema
 from collections import defaultdict
 
+from . import _native
 from . import cftime as cft
 from .df import Chunks
 from .ds import XarrayDataFrame
 from .reader import read_xarray_table
+
+# Matches a call to an autograd marker function (``grad(`` / ``jvp(`` / ``vjp(``,
+# case-insensitive), used as a cheap gate so ordinary queries skip the grad
+# source-to-source rewrite.
+_GRAD_CALL = re.compile(r"\b(grad|jvp|vjp)\s*\(", re.IGNORECASE)
 
 
 class XarrayContext(SessionContext):
@@ -166,6 +174,11 @@ class XarrayContext(SessionContext):
         ``.to_dataset(dimension_columns=[...])`` for round-tripping the
         result back to an ``xr.Dataset``.
 
+        If the query contains ``grad`` / ``jvp`` / ``vjp`` calls, they are
+        differentiated and substituted as SQL text *before* planning (see
+        :meth:`_rewrite_autograd`), so the differentiation works inside any
+        query shape — recursive CTEs, DML, and subqueries included.
+
         Args:
             query: A SQL query string.
             *args: Forwarded to ``SessionContext.sql``.
@@ -174,8 +187,33 @@ class XarrayContext(SessionContext):
         Returns:
             An :class:`XarrayDataFrame` wrapping the DataFusion DataFrame.
         """
+        if _GRAD_CALL.search(query):
+            query = self._rewrite_autograd(query)
         inner = super().sql(query, *args, **kwargs)
         return XarrayDataFrame(inner, templates=self._registered_datasets)
+
+    def _rewrite_autograd(self, query: str) -> str:
+        """Differentiate ``grad`` / ``jvp`` / ``vjp`` calls into SQL text.
+
+        The differentiation engine lives in the native (Rust) extension and
+        operates on DataFusion logical expressions. Rather than round-tripping a
+        whole plan across that extension's boundary, we hand it the query as SQL
+        text: it parses each marker call, differentiates it symbolically, and
+        renders the derivative back into the query in place. The result is an
+        ordinary SQL string this context can plan and execute directly.
+
+        * ``grad(expr, column)`` -> ``d(expr)/d(column)``.
+        * ``jvp(expr, column, tangent)`` -> forward-mode directional derivative
+          ``d(expr)/d(column) * tangent`` (seed a tangent on an input). A
+          multi-input directional derivative is a sum of jvp terms.
+        * ``vjp(expr, column, cotangent)`` -> reverse-mode pullback
+          ``cotangent * d(expr)/d(column)`` (seed a cotangent on the output).
+
+        A full gradient/Jacobian is expressed as several scalar columns, e.g.
+        ``grad(f, x) AS dfdx, grad(f, y) AS dfdy``.
+        """
+        rewritten: str = _native.rewrite_grad_sql(query)
+        return rewritten
 
 
 def _group_vars_by_dims(ds: xr.Dataset) -> dict[tuple[str, ...], list[str]]:

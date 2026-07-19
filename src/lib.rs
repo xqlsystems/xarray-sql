@@ -41,13 +41,15 @@
 //! Will skip loading partitions whose time ranges are entirely before 2020-02-01.
 //! Supported operators: `=`, `<`, `>`, `<=`, `>=`, `BETWEEN`, `IN`, `AND`, `OR`.
 
+mod autograd;
+
 use std::collections::{HashMap, HashSet};
 use std::ffi::CString;
 use std::fmt::Debug;
 use std::sync::Arc;
 
 use arrow::array::RecordBatch;
-use arrow::datatypes::{DataType, Schema, SchemaRef, TimeUnit};
+use arrow::datatypes::{DataType, Field, Schema, SchemaRef, TimeUnit};
 use arrow::pyarrow::{FromPyArrow, ToPyArrow};
 use async_stream::try_stream;
 use async_trait::async_trait;
@@ -55,7 +57,7 @@ use datafusion::catalog::streaming::StreamingTable;
 use datafusion::catalog::Session;
 use datafusion::common::stats::Precision;
 use datafusion::common::{
-    ColumnStatistics, DataFusionError, Result as DFResult, ScalarValue, Statistics,
+    ColumnStatistics, DFSchema, DataFusionError, Result as DFResult, ScalarValue, Statistics,
 };
 use datafusion::datasource::TableProvider;
 use datafusion::execution::TaskContext;
@@ -68,6 +70,8 @@ use datafusion::physical_plan::streaming::PartitionStream;
 use datafusion::physical_plan::{
     DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties, SendableRecordBatchStream,
 };
+use datafusion::prelude::SessionContext;
+use datafusion::sql::unparser::expr_to_sql;
 use datafusion_ffi::proto::logical_extension_codec::FFI_LogicalExtensionCodec;
 use datafusion_ffi::table_provider::FFI_TableProvider;
 use pyo3::prelude::*;
@@ -1267,9 +1271,91 @@ impl LazyArrowStreamTable {
     }
 }
 
+// ============================================================================
+// Autograd: SQL-level grad() rewrite
+// ============================================================================
+
+/// Rewrite every `grad`/`jvp`/`vjp` call in a SQL query into its symbolic
+/// derivative, returning the rewritten SQL text.
+///
+/// The autograd engine operates on DataFusion logical `Expr` trees. Rather than
+/// round-tripping a whole plan across the cdylib boundary, this rewrites the
+/// query as **SQL text** before it is planned: each marker call is parsed,
+/// differentiated, and rendered back to SQL in place. Because it runs before
+/// planning, it works for any query shape the parser accepts — recursive CTEs,
+/// DML, and subqueries — which the plan-level Substrait bridge could not carry.
+///
+/// Args:
+///     query: A SQL query string that may contain `grad`/`jvp`/`vjp` calls.
+///
+/// Returns:
+///     The rewritten SQL string, ready to pass to ``SessionContext.sql``.
+#[pyfunction]
+fn rewrite_grad_sql(query: &str) -> PyResult<String> {
+    autograd::rewrite_grad_in_sql(query).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "rewrite_grad_sql: failed to rewrite grad() calls: {e}"
+        ))
+    })
+}
+
+/// Differentiate a SQL scalar expression symbolically and return the
+/// derivative as SQL text.
+///
+/// Where [`grad_rewrite`] rewrites `grad(...)` calls inside a whole plan, this
+/// differentiates a single expression and hands back the result as SQL — the
+/// autograd engine acting as a "calculus compiler". It lets a caller obtain an
+/// update rule once and embed it in queries the Substrait round-trip can't
+/// carry a `grad` marker through, such as a recursive-CTE training loop.
+///
+/// Args:
+///     expr: A SQL scalar expression over `columns` (e.g. `"sin(x) * x"`).
+///     wrt: The column name to differentiate with respect to.
+///     columns: The column names in scope; all treated as `Float64` (enough to
+///         parse and differentiate — types don't affect the symbolic result).
+///
+/// Returns:
+///     The derivative as a SQL string (e.g. `"cos(x) * x + sin(x)"`).
+#[pyfunction]
+fn differentiate_sql(expr: &str, wrt: &str, columns: Vec<String>) -> PyResult<String> {
+    let ctx = SessionContext::new();
+
+    let fields: Vec<Field> = columns
+        .iter()
+        .map(|name| Field::new(name, DataType::Float64, true))
+        .collect();
+    let df_schema = DFSchema::try_from(Schema::new(fields)).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "differentiate_sql: failed to build schema: {e}"
+        ))
+    })?;
+
+    let parsed = ctx.parse_sql_expr(expr, &df_schema).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "differentiate_sql: failed to parse expression '{expr}': {e}"
+        ))
+    })?;
+
+    let derivative = autograd::differentiate(&parsed, wrt).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "differentiate_sql: failed to differentiate: {e}"
+        ))
+    })?;
+
+    let sql = expr_to_sql(&derivative).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "differentiate_sql: failed to render derivative to SQL: {e}"
+        ))
+    })?;
+
+    Ok(sql.to_string())
+}
+
 /// Python module initialization
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<LazyArrowStreamTable>()?;
+    m.add_function(wrap_pyfunction!(rewrite_grad_sql, m)?)?;
+    m.add_function(wrap_pyfunction!(differentiate_sql, m)?)?;
     Ok(())
 }
