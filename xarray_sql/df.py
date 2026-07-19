@@ -386,6 +386,20 @@ def iter_record_batches(
         yield pa.RecordBatch.from_arrays(arrays, schema=schema)
 
 
+def _arrow_type_for_object(values: np.ndarray) -> pa.DataType:
+    """Infer an Arrow type for a non-cftime object-dtype array.
+
+    ``pa.from_numpy_dtype`` cannot map numpy object dtype, so let pyarrow infer
+    the type from the data instead: strings become ``pa.string()``, bytes
+    ``pa.binary()``, and other representable Python scalars their Arrow
+    equivalent. An all-null array stays ``pa.null()``, and a column mixing
+    incompatible types (e.g. str and int) raises, surfacing a clear error
+    rather than a silent coercion. Object-dtype arrays are never Dask/Zarr
+    backed, so this triggers no remote I/O.
+    """
+    return pa.array(np.asarray(values).ravel()).type
+
+
 def _parse_schema(ds: xr.Dataset) -> pa.Schema:
     """Extracts a `pa.Schema` from the Dataset, treating dims and data_vars as columns.
 
@@ -414,19 +428,29 @@ def _parse_schema(ds: xr.Dataset) -> pa.Schema:
             if cft.is_cftime_index(ds, coord_name):
                 units, calendar = cft.encoding(ds, coord_name)
                 columns.append(cft.arrow_field(coord_name, units, calendar))
+            elif coord_var.dtype == np.dtype("O"):
+                # Object dtype that isn't cftime (e.g. string station names).
+                arrow_type = _arrow_type_for_object(coord_var.values)
+                columns.append(pa.field(coord_name, arrow_type))
             else:
                 pa_type = pa.from_numpy_dtype(coord_var.dtype)
                 columns.append(pa.field(coord_name, pa_type))
 
     for var_name, var in ds.data_vars.items():
-        # Data variables are virtually never cftime, but check dtype as a
-        # cheap guard.  Only fall back to _is_cftime (which materializes
-        # element 0) when dtype is object.
-        if var.dtype == np.dtype("O") and cft.is_cftime(var.values):
-            # Rare: a data variable holding cftime objects.  Use same encoding
-            # as the first cftime dimension coordinate, or default.
-            cal = var.values.ravel()[0].calendar
-            columns.append(cft.arrow_field(var_name, cft.DEFAULT_UNITS, cal))
+        # An object-dtype data variable may hold cftime objects (encode it like
+        # a cftime coordinate) or strings/other Python scalars (infer the Arrow
+        # type from the data). The dtype check keeps the common numeric path off
+        # the object branch.
+        if var.dtype == np.dtype("O"):
+            if cft.is_cftime(var.values):
+                # Encode with the same units/calendar as a cftime coordinate.
+                cal = var.values.ravel()[0].calendar
+                columns.append(
+                    cft.arrow_field(var_name, cft.DEFAULT_UNITS, cal)
+                )
+            else:
+                arrow_type = _arrow_type_for_object(var.values)
+                columns.append(pa.field(var_name, arrow_type))
         else:
             pa_type = pa.from_numpy_dtype(var.dtype)
             columns.append(pa.field(var_name, pa_type))
@@ -466,14 +490,19 @@ def _block_metadata(
         coord_values = coord_arrays[str(dim)][slc]
         if len(coord_values) == 0:
             continue
+        # cftime coordinates are object dtype but carry their own bound
+        # encoding, so they must be handled before the string/object skip
+        # below (otherwise pruning is silently disabled for them).
+        # partition_bounds returns None when the bound overflows int64.
+        if cft.is_cftime(coord_values):
+            bounds = cft.partition_bounds(coord_values)
+            if bounds is not None:
+                ranges[str(dim)] = bounds
+            continue
         # String/object dtypes are not representable as ScalarBound
         # (Int64/Float64/TimestampNanos) and numpy min/max ufuncs do not
         # support them.  Skip so pruning treats the dimension conservatively.
         if coord_values.dtype.kind in ("U", "S", "O"):
-            continue
-
-        if cft.is_cftime(coord_values):
-            ranges[str(dim)] = cft.partition_bounds(coord_values)
             continue
 
         # Use actual min/max rather than first/last so that non-monotonic
@@ -483,9 +512,18 @@ def _block_metadata(
         max_val = coord_values.max()
 
         if isinstance(min_val, (np.datetime64, pd.Timestamp)):
-            min_val = int(pd.Timestamp(min_val).value)
-            max_val = int(pd.Timestamp(max_val).value)
-            ranges[str(dim)] = (min_val, max_val, "timestamp_ns")
+            # The Rust pruning layer only accepts int64 nanosecond bounds
+            # (ScalarBound::TimestampNanos).  Dates outside the
+            # datetime64[ns] range (pre-1678 / post-2262) cannot be
+            # represented, so skip pruning for this dimension rather than
+            # raising -- registration still succeeds and the Rust pruner
+            # treats a missing dimension conservatively (never prunes on it).
+            try:
+                min_ns = int(pd.Timestamp(min_val).value)
+                max_ns = int(pd.Timestamp(max_val).value)
+            except (OverflowError, pd.errors.OutOfBoundsDatetime):
+                continue
+            ranges[str(dim)] = (min_ns, max_ns, "timestamp_ns")
         elif hasattr(min_val, "item"):
             min_val = min_val.item()
             max_val = max_val.item()

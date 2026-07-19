@@ -172,18 +172,27 @@ def convert_for_field(values, field: pa.Field) -> np.ndarray:
 
 def partition_bounds(
     values,
-) -> tuple[int, int, str]:
+) -> tuple[int, int, str] | None:
     """Return ``(min, max, dtype_tag)`` for a cftime coordinate slice.
 
     Gregorian-like calendars return nanosecond bounds tagged
     ``"timestamp_ns"`` (compatible with ``ScalarBound::TimestampNanos``
     in the Rust pruning layer).  Non-Gregorian calendars return int64
     offsets tagged ``"int64"``.
+
+    Returns ``None`` when the nanosecond bound falls outside the int64 range
+    (e.g. paleoclimate dates before ~1678), signalling the caller to skip
+    pruning for that dimension rather than emit a bound the Rust layer would
+    reject.
     """
     cal = values.ravel()[0].calendar
     if is_gregorian_like(cal):
         us = to_microseconds(values)
-        return int(us.min()) * 1_000, int(us.max()) * 1_000, "timestamp_ns"
+        lo, hi = int(us.min()) * 1_000, int(us.max()) * 1_000
+        int64 = np.iinfo(np.int64)
+        if lo < int64.min or hi > int64.max:
+            return None
+        return lo, hi, "timestamp_ns"
     offsets = to_offsets(values, DEFAULT_UNITS, cal)
     return int(offsets.min()), int(offsets.max()), "int64"
 

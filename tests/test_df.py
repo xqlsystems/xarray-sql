@@ -8,6 +8,7 @@ import xarray as xr
 
 from xarray_sql.df import (
     DEFAULT_BATCH_SIZE,
+    _ensure_default_indexes,
     _parse_schema,
     block_slices,
     compute_chunks,
@@ -16,6 +17,7 @@ from xarray_sql.df import (
     from_map,
     from_map_batched,
     iter_record_batches,
+    partition_metadata,
     pivot,
 )
 from xarray_sql.reader import read_xarray, read_xarray_table
@@ -532,3 +534,138 @@ def test_compute_chunks_tuples_sum_to_dim_size():
     result = compute_chunks(ds, {"a": 3, "b": 4, "c": 5})
     for dim, tup in result.items():
         assert sum(tup) == ds.sizes[dim]
+
+
+# -- Object-dtype and out-of-ns-range coordinate support --------------------
+
+
+def _field_type(schema, name):
+    return schema.field(name).type
+
+
+def test_parse_schema_maps_object_string_data_var_to_string():
+    # A string variable arrives as numpy object dtype; _parse_schema must not
+    # hand it to pa.from_numpy_dtype (which raises "Unsupported numpy type 17").
+    ds = xr.Dataset(
+        {"label": (["x"], np.array(["a", "b"], dtype=object))},
+        coords={"x": [1, 2]},
+    )
+    schema = _parse_schema(_ensure_default_indexes(ds))
+    assert _field_type(schema, "label") == pa.string()
+
+
+def test_parse_schema_maps_object_string_coord_to_string():
+    # A string dimension coordinate (e.g. station names) is object dtype too.
+    ds = xr.Dataset(
+        {"v": (["station"], [1.0, 2.0])},
+        coords={"station": np.array(["A", "B"], dtype=object)},
+    )
+    schema = _parse_schema(_ensure_default_indexes(ds))
+    assert _field_type(schema, "station") == pa.string()
+
+
+def test_partition_metadata_skips_out_of_ns_datetime():
+    # datetime64 coordinates outside the datetime64[ns] range (pre-1678 /
+    # post-2262) cannot be represented as int64 nanoseconds, so partition
+    # pruning must be skipped for that dimension rather than raising
+    # OverflowError. Registration must still succeed.
+    times = xr.date_range(
+        "0001-01-01", periods=3, freq="100YS", use_cftime=True
+    ).to_datetimeindex(time_unit="us", unsafe=True)
+    ds = _ensure_default_indexes(
+        xr.Dataset({"v": (["time"], np.arange(3.0))}, coords={"time": times})
+    )
+    blocks = list(block_slices(ds, chunks={"time": 2}))
+
+    meta = partition_metadata(ds, blocks)  # must not raise
+
+    assert len(meta) == len(blocks)
+    # "time" is unpruneable here, so it is omitted from every partition.
+    assert all("time" not in m for m in meta)
+
+
+def test_parse_schema_all_null_object_var_stays_null():
+    # An all-null object column has no data to infer a type from; let null be
+    # null rather than coercing it to a string column.
+    ds = _ensure_default_indexes(
+        xr.Dataset(
+            {"label": (["x"], np.array([None, None], dtype=object))},
+            coords={"x": [1, 2]},
+        )
+    )
+    schema = _parse_schema(ds)
+    assert pa.types.is_null(schema.field("label").type)
+
+
+def test_partition_metadata_prunes_cftime_coord():
+    # cftime dimension coordinates must produce pruning bounds; previously the
+    # object-dtype skip shadowed the cftime branch, silently disabling pruning.
+    times = xr.date_range(
+        "2000-01-01", periods=4, freq="1D", calendar="noleap", use_cftime=True
+    )
+    ds = _ensure_default_indexes(
+        xr.Dataset({"v": (["time"], np.arange(4.0))}, coords={"time": times})
+    )
+    blocks = list(block_slices(ds, chunks={"time": 2}))
+
+    meta = partition_metadata(ds, blocks)
+
+    assert all("time" in m for m in meta)
+    for m in meta:
+        _, _, tag = m["time"]
+        assert tag == "timestamp_ns"
+
+
+def test_partition_metadata_skips_ancient_cftime():
+    # Ancient gregorian cftime dates overflow the int64 nanosecond range, so
+    # pruning must be skipped for that dim (no raise, dim omitted).
+    times = xr.date_range(
+        "0001-01-01", periods=3, freq="100YS", use_cftime=True
+    )
+    ds = _ensure_default_indexes(
+        xr.Dataset({"v": (["time"], np.arange(3.0))}, coords={"time": times})
+    )
+    blocks = list(block_slices(ds, chunks={"time": 2}))
+
+    meta = partition_metadata(ds, blocks)  # must not raise
+
+    assert all("time" not in m for m in meta)
+
+
+def test_string_dataset_round_trips_through_record_batch():
+    # The schema fix must also flow through the batch builders: a string
+    # column has to materialize as an Arrow string array, not error out.
+    ds = _ensure_default_indexes(
+        xr.Dataset(
+            {"label": (["x"], np.array(["a", "b", "c", "d"], dtype=object))},
+            coords={"x": [10, 20, 30, 40]},
+        )
+    )
+    schema = _parse_schema(ds)
+
+    batch = dataset_to_record_batch(ds, schema)
+    assert batch.schema.field("label").type == pa.string()
+    assert batch.column("label").to_pylist() == ["a", "b", "c", "d"]
+
+    # The streaming path must agree with the one-shot path.
+    streamed = pa.Table.from_batches(
+        list(iter_record_batches(ds, schema, batch_size=2)), schema=schema
+    )
+    assert streamed.column("label").to_pylist() == ["a", "b", "c", "d"]
+
+
+def test_partition_metadata_in_range_datetime_still_pruned():
+    # Regression guard: ordinary datetimes must keep producing timestamp_ns
+    # bounds so filter pushdown still works after the overflow fix.
+    times = pd.date_range("2000-01-01", periods=4, freq="D")
+    ds = _ensure_default_indexes(
+        xr.Dataset({"v": (["time"], np.arange(4.0))}, coords={"time": times})
+    )
+    blocks = list(block_slices(ds, chunks={"time": 2}))
+
+    meta = partition_metadata(ds, blocks)
+
+    assert all("time" in m for m in meta)
+    for m in meta:
+        _, _, tag = m["time"]
+        assert tag == "timestamp_ns"
