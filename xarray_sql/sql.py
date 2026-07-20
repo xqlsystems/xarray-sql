@@ -8,6 +8,11 @@ from .df import Chunks
 from .ds import XarrayDataFrame
 from .reader import read_xarray_table
 
+try:  # pyproj is an optional dependency (`pip install xarray-sql[geo]`).
+    from . import proj as _proj
+except ImportError:  # pragma: no cover - depends on the environment
+    _proj = None
+
 
 class XarrayContext(SessionContext):
     """A datafusion `SessionContext` that also supports `xarray.Dataset`s."""
@@ -21,6 +26,10 @@ class XarrayContext(SessionContext):
         # in SQL (e.g. ``"air"`` for a uniform-dim Dataset, or
         # ``"era5.surface"`` for one entry from a multi-dim-group split).
         self._registered_datasets: dict[str, xr.Dataset] = {}
+        # With pyproj installed, every context speaks CRS out of the box:
+        # reproject(x, y, src_crs, dst_crs), à la PostGIS ST_Transform.
+        if _proj is not None:
+            _proj.register(self)
 
     def from_dataset(
         self,

@@ -21,7 +21,7 @@ plain-English definition of the operation, and computes the same numbers.
 | 04 | `04_anomaly.py` | climatology broadcast-subtract | climatology CTE self-`JOIN` |
 | 05 | `05_forecast_skill.py` | align valid/init/lead, reduce | forecast↔truth `JOIN` on `valid_time` + aggregate |
 | 06 | `06_zonal_vector.py` | rasterize + mask per region | range `JOIN` raster↔regions |
-| 07 | `07_reproject_udf.py` | per-pixel CRS transform | scalar **UDF** (`reproject()`), à la PostGIS `ST_Transform` |
+| 07 | `07_reproject_udf.py` | per-pixel CRS transform | scalar **UDF** (`reproject()` from the pyproj extension), à la PostGIS `ST_Transform` |
 | 08 | `08_regrid_weights.py` | interpolation to a new grid | sparse-weight table `JOIN` + weighted `GROUP BY` |
 | 09 | `09_warp.py` | reproject **and** resample (warp) | reproject **UDF** (07) → weight table `JOIN` (08) |
 
