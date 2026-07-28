@@ -25,14 +25,15 @@ Design notes:
   row and, worse, evaluate the two projections concurrently on separate
   expression trees.
 * **All pyproj work runs on a dedicated pool of Python threads.**
-  Constructing a transformer on a DataFusion runtime thread segfaults
-  inside PROJ, while the identical work on Python-owned threads is
-  stable — so the UDF hands each batch to the pool rather than calling
-  pyproj in place. Each pool thread caches one transformer per CRS pair
-  (transformers must not be shared across threads), which also
-  amortizes the expensive PROJ database lookups of construction across
-  record batches. Concurrent partitions still transform in parallel
-  across the pool.
+  DataFusion's runtime workers are not Python-created threads, and
+  pyproj (< 3.8, see pyproj#1541) leaves a dangling ``PJ_CONTEXT``
+  behind when their ephemeral Python thread states are torn down, so
+  calling pyproj in place segfaults — the UDF hands each batch to the
+  pool instead. Pool threads are long-lived, so each caches one
+  transformer per CRS pair (transformers must not be shared across
+  threads), amortizing the expensive construction — PROJ database
+  lookups and candidate-operation selection — across record batches.
+  Concurrent partitions still transform in parallel across the pool.
 * Any CRS spelling ``pyproj.CRS`` accepts works: authority codes
   (``EPSG:4326``), WKT, PROJ strings (``+proj=utm +zone=10``), etc.
   An unknown CRS raises ``pyproj.exceptions.CRSError`` and fails the
@@ -70,16 +71,21 @@ RETURN_TYPE = pa.struct([("x", pa.float64()), ("y", pa.float64())])
 # The PROJ worker pool
 # ---------------------------------------------------------------------------
 #
-# DataFusion evaluates UDFs on its runtime's worker threads. Plain Python
-# threads run pyproj construction and transforms concurrently without
-# incident (pyproj keeps its PROJ contexts thread-local), but constructing
-# a ``Transformer`` *on a DataFusion runtime thread* segfaults inside
-# PROJ's CRS machinery — Rust runtime threads are provisioned differently
-# from Python threads (notably a much smaller stack). So the UDF never
-# calls pyproj in place: every batch is handed to a small pool of
-# Python-owned worker threads. pyproj releases the GIL during the
-# transform loop, so concurrent partitions still run in parallel across
-# the pool.
+# DataFusion evaluates UDFs on its tokio runtime's worker threads, which
+# are not created by Python: a Python thread state is created and
+# destroyed around every UDF call. pyproj keeps its per-thread PJ_CONTEXT
+# in CPython thread-specific storage but does not clear that pointer when
+# the context dies with the ephemeral thread state (fixed by pyproj#1541,
+# unreleased as of 3.7.2), so the next call on the same OS thread
+# dereferences a dangling context and segfaults inside ``proj_create``.
+# Python-owned threads keep their thread state — and thus their contexts —
+# alive for the thread's lifetime, so the UDF never calls pyproj in place:
+# every batch is handed to a small pool of Python-owned worker threads.
+# The pool stays worthwhile on fixed pyproj too: ephemeral thread states
+# would rebuild context and transformer per batch (0.07–12 ms measured)
+# versus ~10 µs for the pool round-trip. pyproj releases the GIL during
+# the transform loop, so concurrent partitions still run in parallel
+# across the pool.
 
 _local = threading.local()
 _pool_lock = threading.Lock()

@@ -230,8 +230,11 @@ this against **Earth Engine itself**: it opens a UTM grid through
 [Xee](https://github.com/google/Xee) carrying `ee.Image.pixelLonLat()`, so EE's
 own geodesy engine reports the true lon/lat of every pixel — an *independent*
 reprojection reference, not PROJ-vs-PROJ. The SQL UDF and EE agree to sub-metre
-precision. There is one practical gotcha — PROJ objects must not be shared
-across threads, so the extension runs all PROJ work on its own worker pool,
+precision. There is one practical gotcha — released pyproj mishandles threads
+not created by Python, like DataFusion's runtime workers
+([pyproj#1541](https://github.com/pyproj4/pyproj/pull/1541)), so the extension
+runs all PROJ work on its own pool of Python threads, which also caches
+transformers per thread,
 keeping the UDF safe (and parallel) under DataFusion's concurrent partitions —
 but the caveat that matters here is conceptual: reprojection
 moves the coordinates without resampling the data onto a new grid — and *that* is
