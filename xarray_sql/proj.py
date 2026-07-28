@@ -149,6 +149,10 @@ def _reproject(
     genuinely varies within the batch are rows grouped by pair and
     transformed per group.
     """
+    # Zero-copy read-only views when the batch has no nulls; with nulls,
+    # pyarrow must materialize the validity bitmap as NaN (the NULL -> NaN
+    # contract). pyproj copies into its own writable buffer either way --
+    # PROJ mutates buffers in place -- so this is the minimal-copy path.
     xs = np.asarray(x.to_numpy(zero_copy_only=False), dtype="float64")
     ys = np.asarray(y.to_numpy(zero_copy_only=False), dtype="float64")
 
