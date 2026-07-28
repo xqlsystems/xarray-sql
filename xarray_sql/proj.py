@@ -169,32 +169,33 @@ def _reproject(
     dst_unique = pc.unique(dst_crs)
 
     if len(src_unique) == 1 and len(dst_unique) == 1:
-        src, dst = src_unique[0].as_py(), dst_unique[0].as_py()
-        if src is not None and dst is not None and valid.any():
-            tx, ty = (
-                _proj_pool()
-                .submit(_transform_chunk, src, dst, xs[valid], ys[valid])
-                .result()
-            )
-            out_x[valid] = tx
-            out_y[valid] = ty
+        groups = [(src_unique[0].as_py(), dst_unique[0].as_py(), valid)]
     else:
         pairs = list(zip(src_crs.to_pylist(), dst_crs.to_pylist()))
-        for src, dst in set(pairs):
-            if src is None or dst is None:
-                continue
-            mask = valid & np.fromiter(
-                (p == (src, dst) for p in pairs), dtype=bool, count=len(pairs)
+        groups = [
+            (
+                src,
+                dst,
+                valid
+                & np.fromiter(
+                    (p == (src, dst) for p in pairs),
+                    dtype=bool,
+                    count=len(pairs),
+                ),
             )
-            if not mask.any():
-                continue
-            tx, ty = (
-                _proj_pool()
-                .submit(_transform_chunk, src, dst, xs[mask], ys[mask])
-                .result()
-            )
-            out_x[mask] = tx
-            out_y[mask] = ty
+            for src, dst in set(pairs)
+        ]
+
+    for src, dst, mask in groups:
+        if src is None or dst is None or not mask.any():
+            continue
+        tx, ty = (
+            _proj_pool()
+            .submit(_transform_chunk, src, dst, xs[mask], ys[mask])
+            .result()
+        )
+        out_x[mask] = tx
+        out_y[mask] = ty
 
     # PROJ signals out-of-domain points with inf; normalize to NaN so
     # the result round-trips to xarray like any other missing value.
