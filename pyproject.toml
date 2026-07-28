@@ -41,7 +41,7 @@ geo = [
 ]
 test = [
   "cftime",
-  "pyproj",
+  "xarray-sql[geo]",
   "pytest",
   "xarray[io]",
   "gcsfs",
