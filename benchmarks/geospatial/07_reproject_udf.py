@@ -2,10 +2,9 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#   "xarray-sql",
+#   "xarray-sql[geo]",
 #   "xarray",
 #   "numpy",
-#   "pyproj",
 #   "pyarrow",
 #   "xee",
 #   "earthengine-api",
