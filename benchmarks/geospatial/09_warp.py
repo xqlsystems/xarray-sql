@@ -180,7 +180,7 @@ def main() -> None:
         f"{len(tlat)}×{len(tlon)}  ({_SRC_CRS} → {_DST_CRS})"
     )
 
-    # XarrayContext registers reproject() automatically (the pyproj
+    # XarrayContext registers reproject() automatically (the geo
     # extension) — the direction is spelled in the query itself.
     ctx = xql.XarrayContext()
 

@@ -211,7 +211,7 @@ against an xarray/array reference** to floating-point tolerance:
 * **Raster × vector zonal stats** — a range `JOIN` of the ERA5 grid against a
   table of regions.
 * **Reprojection and regridding** — a `reproject(x, y, src_crs, dst_crs)`
-  scalar PROJ UDF, shipped as the optional pyproj extension
+  scalar PROJ UDF, shipped as the optional geo extension
   (`pip install xarray-sql[geo]`, validated against Earth Engine's own
   geodesy via [Xee](https://github.com/google/Xee)) and a
   sparse-weight-table `JOIN` (regridding real SRTM terrain).

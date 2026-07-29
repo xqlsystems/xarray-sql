@@ -1,4 +1,4 @@
-"""PROJ-backed CRS transforms for SQL — an optional pyproj extension.
+"""PROJ-backed CRS transforms for SQL — the optional geo extension.
 
 Geospatial SQL dialects expose coordinate reference system (CRS)
 transforms as a scalar function — PostGIS and DuckDB-spatial both call it

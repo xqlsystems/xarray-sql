@@ -23,7 +23,7 @@ the shape of a SQL *scalar UDF*, and it is precisely how the geospatial SQL
 world already does it — PostGIS ``ST_Transform`` and DuckDB-spatial
 ``ST_Transform`` are scalar PROJ wrappers.
 
-xarray-sql ships that UDF as its pyproj extension (``xarray_sql.proj``):
+xarray-sql ships that UDF as its geo extension (``xarray_sql.proj``):
 with pyproj installed, every ``XarrayContext`` speaks CRS out of the box,
 and the CRS pair is part of the query rather than baked into the UDF::
 
@@ -112,7 +112,7 @@ def main() -> None:
         f"{_SRC_CRS} → {_DST_CRS}"
     )
 
-    # XarrayContext registers reproject() automatically (the pyproj
+    # XarrayContext registers reproject() automatically (the geo
     # extension). The chunking deliberately splits the ~60-row grid into
     # 15-row slabs → 4 partitions, forcing DataFusion to evaluate the UDF
     # concurrently: the extension runs PROJ on its own worker pool, so
