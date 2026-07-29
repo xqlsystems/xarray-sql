@@ -114,7 +114,7 @@ def main() -> None:
 
     # XarrayContext registers reproject() automatically (the geo
     # extension). The chunking deliberately splits the ~60-row grid into
-    # 15-row slabs → 4 partitions, forcing DataFusion to evaluate the UDF
+    # 15-row chunks → 4 partitions, forcing DataFusion to evaluate the UDF
     # concurrently: the extension runs PROJ on its own worker pool, so
     # parallel partitions are safe (previously this required one chunk →
     # one partition → a serial UDF).
