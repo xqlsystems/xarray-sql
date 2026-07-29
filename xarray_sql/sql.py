@@ -2,14 +2,18 @@ import xarray as xr
 from datafusion import SessionContext
 from datafusion.catalog import Schema
 from collections import defaultdict
+from types import ModuleType
 
 from . import cftime as cft
 from .df import Chunks
 from .ds import XarrayDataFrame
 from .reader import read_xarray_table
 
+_proj: ModuleType | None
 try:  # pyproj is an optional dependency (`pip install xarray-sql[geo]`).
-    from . import proj as _proj
+    from . import proj
+
+    _proj = proj
 except ImportError:  # pragma: no cover - depends on the environment
     _proj = None
 

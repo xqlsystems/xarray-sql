@@ -131,7 +131,8 @@ def _transform_chunk(
     src_crs: str, dst_crs: str, xs: np.ndarray, ys: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
     """Transform one coordinate chunk; runs on a PROJ pool thread."""
-    return _transformer(src_crs, dst_crs).transform(xs, ys)
+    tx, ty = _transformer(src_crs, dst_crs).transform(xs, ys)
+    return tx, ty
 
 
 # ---------------------------------------------------------------------------
