@@ -36,8 +36,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+geo = [
+  "pyproj",
+]
 test = [
   "cftime",
+  "xarray-sql[geo]",
   "pytest",
   "xarray[io]",
   "gcsfs",
