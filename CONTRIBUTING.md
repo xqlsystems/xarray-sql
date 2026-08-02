@@ -62,3 +62,65 @@ Here are a few requests for your development process:
 - It's polite to do a self review before asking for one from a maintainer. Don't stress if you forget; we all do sometimes.
 - Please add (or update) documentation when adding new code. We use [Google Style docstrings](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html).
 - We are thrilled to get documentation-only PRs -- especially spelling and typo fixes (I am a bad speller). If writing tutorials excites you, it would be to everyone's benefit.
+
+## Versioning Guidelines
+
+We're using an "experimenter's" [SemVer](https://semver.org/): We're figuring
+out what a solid API should be, working towards finality and stability in the
+`1.0.0` release. Until then, new features will be introduced under the minor
+version (`XX.MINOR.ZZ`), and incremental (non-API surface) changes will live
+under the patch version (`XX.YY.PATCH`).
+
+## Releasing
+
+To create a release, please do the following:
+
+1. Increment the version in the `Cargo.toml` file manually to whatever the next release will be. This needs to be merged. You can make a PR, but I often just make a quick push to main.
+2. Git tag the release version: `git tag -a vXX.YY.ZZ -m 'Headline description goes here'`.
+3. Push the release to the remote: `git push origin vXX.YY.ZZ`
+4. In the GitHub, go to the [Releases page](https://github.com/xqlsystems/xarray-sql/releases). Please click "Draft new release."
+5. On that page, select the tag that you just pushed. Add a title that follows the pattern of all other releases: (Something like: `vXX.YY.ZZ: Headline description goes here`)
+6. Generate the release notes and maybe add a one line description to accompany it.
+7. Click "Publish Release". This will kick of a GitHub action to build the project and push the binaries + wheels to PyPI.
+8. Celebrate a successful release!
+
+## Undoing a bad release
+
+We all mess up sometimes. For example, I have often forgotten to do one of the steps (often, step 1) in the above process, and it leads to a failed release (i.e. an unsuccessful push to PyPI.)
+To recover from this, please do the following and then try the above steps again:
+
+1. Go to the [Releases page](https://github.com/xqlsystems/xarray-sql/releases). Click into the release that didn't go so well.
+2. Click the red delete button (a trash can).
+3. Delete the tag in the remote: `git push --delete origin vXX.YY.ZZ`
+4. Delete your tag locally with `git tag -d vXX.YY.ZZ`
+
+## Versioning Guidelines
+
+We're using an "experimenter's" [SemVer](https://semver.org/): We're figuring
+out what a solid API should be, working towards finality and stability in the
+`1.0.0` release. Until then, new features will be introduced under the minor
+version (`XX.MINOR.ZZ`), and incremental (non-API surface) changes will live
+under the patch version (`XX.YY.PATCH`).
+
+## Releasing
+
+To create a release, please do the following:
+
+1. Increment the version in the `Cargo.toml` file manually to whatever the next release will be. This needs to be merged. You can make a PR, but I often just make a quick push to main.
+2. Git tag the release version: `git tag -a vXX.YY.ZZ -m 'Headline description goes here'`.
+3. Push the release to the remote: `git push origin vXX.YY.ZZ`
+4. In the GitHub, go to the [Releases page](https://github.com/xqlsystems/xarray-sql/releases). Please click "Draft new release."
+5. On that page, select the tag that you just pushed. Add a title that follows the pattern of all other releases: (Something like: `vXX.YY.ZZ: Headline description goes here`)
+6. Generate the release notes and maybe add a one line description to accompany it.
+7. Click "Publish Release". This will kick of a GitHub action to build the project and push the binaries + wheels to PyPI.
+8. Celebrate a successful release!
+
+## Undoing a bad release
+
+We all mess up sometimes. For example, I have often forgotten to do one of the steps (often, step 1) in the above process, and it leads to a failed release (i.e. an unsuccessful push to PyPI.)
+To recover from this, please do the following and then try the above steps again:
+
+1. Go to the [Releases page](https://github.com/xqlsystems/xarray-sql/releases). Click into the release that didn't go so well.
+2. Click the red delete button (a trash can).
+3. Delete the tag in the remote: `git push --delete origin vXX.YY.ZZ`
+4. Delete your tag locally with `git tag -d vXX.YY.ZZ`
