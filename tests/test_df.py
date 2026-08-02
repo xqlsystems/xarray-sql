@@ -181,6 +181,30 @@ def test_iter_record_batches_matches_dataset_to_record_batch(air_small):
     pd.testing.assert_frame_equal(actual_df, expected_df)
 
 
+def test_iter_record_batches_projection_drops_cftime_dim():
+    """A projection that drops a cftime dim (e.g. time under GROUP BY level)
+    must not call schema.field() for it. The dim is absent from the projected
+    schema, and cftime coords take the convert_for_field(schema.field(name))
+    path, so an unguarded lookup raised KeyError during batch reading."""
+    cftime = pytest.importorskip("cftime")
+    times = np.array(
+        [cftime.DatetimeGregorian(2020, m, 1) for m in (1, 2, 3)], dtype=object
+    )
+    ds = xr.Dataset(
+        {"air": (["time", "lat"], np.arange(3 * 2, dtype=float).reshape(3, 2))},
+        coords={"time": times, "lat": [0.0, 1.0]},
+    )
+    full = _parse_schema(ds)
+    projected = pa.schema(
+        [full.field("lat"), full.field("air")]
+    )  # time dropped
+    table = pa.Table.from_batches(
+        list(iter_record_batches(ds, projected, batch_size=16)), projected
+    )
+    assert table.schema.names == ["lat", "air"]
+    assert table.num_rows == 6
+
+
 def test_iter_record_batches_default_batch_size():
     """A single-batch partition (rows <= DEFAULT_BATCH_SIZE) yields exactly one batch."""
     ds = xr.tutorial.open_dataset("air_temperature").isel(time=slice(0, 2))
