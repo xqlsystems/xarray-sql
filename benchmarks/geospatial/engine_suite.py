@@ -1,3 +1,32 @@
+#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#   "aiohttp",
+#   "coiled",
+#   "datafusion",
+#   "duckdb",
+#   "earthengine-api",
+#   "gcsfs",
+#   "numpy",
+#   "pandas",
+#   "polars",
+#   "psutil",
+#   "pyarrow",
+#   "pyproj",
+#   "pystac-client",
+#   "requests",
+#   "scipy",
+#   "shapely",
+#   "xarray",
+#   "xarray-sql",
+#   "xee",
+#   "zarr>=3",
+# ]
+#
+# [tool.uv.sources]
+# xarray-sql = { path = "../../", editable = true }
+# ///
 """The geospatial suite across engines and VM sizes, via Coiled Functions.
 
 Runs the nine geospatial cases (``01_ndvi`` … ``09_warp``) under every
@@ -37,9 +66,17 @@ prints one timestamped line per event.
 
 Usage::
 
-    python benchmarks/geospatial/engine_suite.py --local --reps 1 \
+    uv run benchmarks/geospatial/engine_suite.py --local --reps 1 \
         --cases 02_climatology --vms local            # in-process check
-    python benchmarks/geospatial/engine_suite.py     # 3 VMs, full suite
+    cd /tmp && uv run ~/path/to/xarray-sql/benchmarks/geospatial/engine_suite.py
+
+(or ``python .../engine_suite.py`` from an environment that already has
+the dependencies; the inline metadata above is for ``uv run``.)
+
+Remote runs (the second form) must be launched from a working directory
+outside the repository: Coiled's package sync resolves the repo's
+``uv.lock`` when it finds one at the cwd, and that lock does not carry
+the driver's dependencies. ``--local`` runs work from anywhere.
 """
 
 from __future__ import annotations
