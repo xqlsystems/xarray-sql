@@ -105,8 +105,8 @@ xql.register(con, "t", ds, prefetch=12, batch_size=262_144)
 Peak scan memory is bounded by `prefetch × pivoted-block-size` plus the
 engine's own aggregation state — it does not grow with the amount of
 data scanned. Measured on ARCO-ERA5 over anonymous GCS: a one-month
-full-globe aggregation (772M rows) peaks at the same RSS as the
-one-week scan (174M rows), ~0.75 GB with the defaults.
+full-globe aggregation (772M rows) peaks at the same resident set size
+as the one-week scan (174M rows), ~0.75 GB with the defaults.
 
 `prefetch_bytes` caps *estimated bytes* in flight instead of block
 count — set it when `coalesce_rows` makes blocks large or ragged.
