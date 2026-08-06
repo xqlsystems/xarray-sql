@@ -510,13 +510,13 @@ class XarrayPushdownDataset(pads.Dataset):
         columns the filter references).
         """
         if not self._ds.sizes:
-            return self.scanner(columns=[], filter=filter).count_rows()
+            return int(self.scanner(columns=[], filter=filter).count_rows())
         if filter is None:
             return int(np.prod([self._ds.sizes[d] for d in self._ds.dims]))
         kept = self._prune(filter)
         proven, boundary = self._strict_partition(kept, filter)
-        return (
-            proven + self._scanner_for_blocks(boundary, [], filter).count_rows()
+        return proven + int(
+            self._scanner_for_blocks(boundary, [], filter).count_rows()
         )
 
     # Inherited convenience methods (to_table, head, to_batches, take)
@@ -581,7 +581,10 @@ class XarrayPushdownDataset(pads.Dataset):
             except pa.lib.ArrowInvalid as exc:
                 match = re.search(r"FieldRef\.Name\((.*?)\)", str(exc))
                 name = match.group(1) if match else None
-                if name in set(self._schema.names) - wanted:
+                if (
+                    name is not None
+                    and name in set(self._schema.names) - wanted
+                ):
                     wanted.add(name)
                     continue
                 return list(self._schema.names)
@@ -864,6 +867,8 @@ class XarrayPushdownDataset(pads.Dataset):
             )
             return block
 
+        coalesce_rows = self._coalesce_rows
+        assert coalesce_rows is not None  # only reached with coalescing on
         for prefix in itertools.product(*(ranges[d] for d in others)):
             per_row = outer_rows
             for d, i in zip(others, prefix):
@@ -874,7 +879,7 @@ class XarrayPushdownDataset(pads.Dataset):
             for i in ranges[merge_dim]:
                 rows = int(merge_bounds[i + 1] - merge_bounds[i]) * per_row
                 if run and (
-                    i != run[-1] + 1 or run_rows + rows > self._coalesce_rows
+                    i != run[-1] + 1 or run_rows + rows > coalesce_rows
                 ):
                     yield flush(prefix, run)
                     run, run_rows = [], 0
@@ -946,6 +951,7 @@ class XarrayPushdownDataset(pads.Dataset):
                     for block in block_iter:
                         yield from load(block)
                 return
+            pool = self._pool
             budget = self._prefetch_bytes
             pending: deque = deque()
             inflight = 0
@@ -953,7 +959,7 @@ class XarrayPushdownDataset(pads.Dataset):
             def submit(block: Block) -> None:
                 nonlocal inflight
                 estimate = self._block_rows(block) * row_width
-                pending.append((self._pool.submit(load, block), estimate))
+                pending.append((pool.submit(load, block), estimate))
                 inflight += estimate
 
             def drain_one() -> Iterator[pa.RecordBatch]:
@@ -1014,13 +1020,13 @@ class _XarrayFragment:
         )
 
     def to_batches(self, **kwargs: Any) -> Iterator[pa.RecordBatch]:
-        return self.scanner(**kwargs).to_batches()
+        return iter(self.scanner(**kwargs).to_batches())
 
     def to_table(self, **kwargs: Any) -> pa.Table:
         return self.scanner(**kwargs).to_table()
 
     def count_rows(self, **kwargs: Any) -> int:
-        return self.scanner(**kwargs).count_rows()
+        return int(self.scanner(**kwargs).count_rows())
 
     def __dask_tokenize__(self) -> tuple:
         # Dask hashes from_map inputs; the parent dataset is unpicklable,

@@ -95,6 +95,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 REGION = "us-central1"
 
@@ -220,14 +221,31 @@ def _ensure_native(src_root: str) -> str:
         )
     wheel_dir = os.path.join(src_root, "wheelhouse")
     _run_logged(
-        [sys.executable, "-m", "pip", "wheel", "--no-deps",
-         "-w", wheel_dir, src_root],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            "--no-deps",
+            "-w",
+            wheel_dir,
+            src_root,
+        ],
         env=build_env,
     )
     wheel = sorted(glob.glob(os.path.join(wheel_dir, "xarray_sql-*.whl")))[-1]
     _run_logged(
-        [sys.executable, "-m", "pip", "install", "--no-deps", "--upgrade",
-         "--target", src_root, wheel],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--no-deps",
+            "--upgrade",
+            "--target",
+            src_root,
+            wheel,
+        ],
     )
     if not _importable():
         raise RuntimeError(f"built {wheel} but xarray_sql._native still fails")
@@ -242,7 +260,12 @@ def run_case_cell(
     rep_timeout: float = 600.0,
 ) -> dict:
     """One (case, engine) cell: ``reps`` fresh-process cold runs."""
-    result = {"case": case, "engine": engine, "status": "ok", "reps": []}
+    result: dict[str, Any] = {
+        "case": case,
+        "engine": engine,
+        "status": "ok",
+        "reps": [],
+    }
     try:
         src_root, geo_dir = _install_src(src_targz)
         if engine == "datafusion":
@@ -404,8 +427,13 @@ def _pack_src() -> bytes:
         ]
     # The crate sources, so `datafusion` cells can build the native
     # module where it is not already importable (see _ensure_native).
-    for rel in ["src", "Cargo.toml", "Cargo.lock", "pyproject.toml",
-                "README.md"]:
+    for rel in [
+        "src",
+        "Cargo.toml",
+        "Cargo.lock",
+        "pyproject.toml",
+        "README.md",
+    ]:
         target = repo / rel
         paths += (
             [p for p in sorted(target.rglob("*")) if p.is_file()]
@@ -414,7 +442,8 @@ def _pack_src() -> bytes:
         )
     buf = io.BytesIO()
     with gzip.GzipFile(fileobj=buf, mode="wb", mtime=0) as gz:
-        with tarfile.open(fileobj=gz, mode="w") as tf:
+        # GzipFile is a binary stream at runtime; typeshed wants IO[bytes].
+        with tarfile.open(fileobj=gz, mode="w") as tf:  # type: ignore[arg-type]
             for path in paths:
                 tf.add(
                     path,

@@ -235,8 +235,9 @@ def _scatter_batches_to_ndarray(
         for d in dimension_columns:
             col_arr = batch.column(schema_names.index(d))
             vals = col_arr.to_numpy(zero_copy_only=False)
-            if affine[d] is not None:
-                origin, step = affine[d]
+            pair = affine[d]
+            if pair is not None:
+                origin, step = pair
                 pos = np.rint((_axis_numeric(vals) - origin) / step).astype(
                     np.intp
                 )

@@ -41,7 +41,7 @@ def con(request):
 def _rows(con, sql) -> list[tuple]:
     result = con.sql(sql)
     if hasattr(result, "fetchall"):
-        return result.fetchall()
+        return list(result.fetchall())
     frame = result.to_pandas()
     return [tuple(r) for r in frame.itertuples(index=False)]
 

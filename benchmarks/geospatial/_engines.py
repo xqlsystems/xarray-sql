@@ -38,6 +38,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+
 def engine_name() -> str:
     """The engine selected for this process (``GEOBENCH_ENGINE``)."""
     engine = os.environ.get("GEOBENCH_ENGINE", "datafusion")
