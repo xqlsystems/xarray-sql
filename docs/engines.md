@@ -36,6 +36,17 @@ lazy chunked round-trip (`to_dataset(chunks=...)`).
 The generic entry point dispatches here too: `xql.register(ctx, "era5", ds)`
 works on any `datafusion.SessionContext`.
 
+### Relation to zarr-datafusion
+
+[zarr-datafusion](https://crates.io/crates/zarr-datafusion) extends
+DataFusion with SQL over Zarr stores natively (early days — a single
+0.1.0 release at the time of writing) — for plain-Zarr sources that is
+the engine-native path, the same role duckdb-zarr plays for DuckDB.
+This library's role is complementary there too: anything xarray can
+open (NetCDF, GRIB, Earth Engine via Xee, CF-decoded/virtual datasets,
+in-memory arrays), and the round-trip from a query result back to a
+labeled Dataset, which no engine extension provides.
+
 
 ## DuckDB (adapter)
 
