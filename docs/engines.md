@@ -62,7 +62,8 @@ out = xql.to_dataset(rel, template=ds)              # seam 2
 ```
 
 The adapter registers an `XarrayPushdownDataset` — a
-`pyarrow.dataset.Dataset` subclass (the same pattern Lance uses), so
+`pyarrow.dataset.Dataset` subclass (the same pattern
+[Lance](https://github.com/lancedb/lance) uses for `LanceDataset`), so
 DuckDB hands each query's column list and pushed predicate to the
 source. The scan then loads only the data variables the query mentions,
 prunes chunks whose coordinate ranges cannot satisfy the predicate

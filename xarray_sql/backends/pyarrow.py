@@ -283,6 +283,11 @@ class XarrayPushdownDataset(pads.Dataset):
     every entry point consumers touch is overridden in Python, and the
     few inherited members that would read uninitialized native state are
     stubbed out.
+
+    References:
+        Lance's ``LanceDataset``, a ``pyarrow.dataset.Dataset`` subclass
+        built the same way: https://github.com/lancedb/lance
+        (``python/python/lance/dataset.py``).
     """
 
     def __init__(
