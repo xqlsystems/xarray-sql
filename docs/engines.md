@@ -230,3 +230,31 @@ Arrow C streams are the common wire; pushdown quality is where adapters
 differ. The round-trip needs no per-engine work as long as the engine
 can hand back Arrow.
 
+A complete adapter, modeled on the DuckDB one:
+
+```python
+from xarray_sql.backends.base import register_adapter
+from xarray_sql.backends.pyarrow import XarrayPushdownDataset
+
+@register_adapter
+class AcmeAdapter:
+    """Registers Datasets on acme.Connection objects."""
+
+    @staticmethod
+    def matches(con) -> bool:
+        # type inspection only, so `acme` stays an optional dependency
+        return type(con).__module__.split(".")[0] == "acme"
+
+    @staticmethod
+    def register(con, name, ds, *, chunks=None, **kwargs):
+        dataset = XarrayPushdownDataset(ds, chunks, **kwargs)
+        con.register_arrow(name, dataset)  # the engine's own API
+        return con
+```
+
+`xql.register(con, "t", ds)` then dispatches here whenever `matches`
+recognizes the connection. Engines that consume the pyarrow dataset
+protocol (DuckDB, Polars) get projection pushdown and chunk pruning for
+free; an engine that only accepts Arrow streams can register
+`XarrayArrowStream(ds)` instead, trading pushdown away.
+
