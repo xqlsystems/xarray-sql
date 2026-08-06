@@ -1,8 +1,18 @@
-"""Benchmark: DuckDB re-scannable stream vs pushdown dataset vs ceilings.
+"""Benchmark: DuckDB re-scannable stream vs pushdown dataset vs ceiling.
+
+Times the three ways DuckDB can consume the same 10M-row synthetic
+dataset — the re-scannable stream (no pushdown), the default
+``register()`` pushdown dataset, and an in-memory ``pyarrow.dataset``
+as the ceiling — and asserts at the end that all three returned the
+same answers. Cross-engine comparisons live in
+``benchmarks/geospatial/``; this measures the adapter paths within one
+engine.
 
 Usage: python benchmarks/duckdb_pushdown.py  (needs duckdb installed)
 """
 
+import math
+import statistics
 import time
 
 import duckdb
@@ -50,8 +60,10 @@ QUERIES = {
 }
 
 
-def bench(table, label, n=3):
+def bench(table, label, n=5):
+    """Times each query; returns {query: answer} for equivalence checks."""
     print(f"\n== {label} ==")
+    answers = {}
     for qname, q in QUERIES.items():
         sql = q.format(t=table)
         times = []
@@ -59,32 +71,33 @@ def bench(table, label, n=3):
             t0 = time.perf_counter()
             r = con.sql(sql).fetchall()
             times.append(time.perf_counter() - t0)
-        print(f"  {qname:28s} {min(times):8.3f}s   -> {r[0][0]:.6g}")
+        answers[qname] = r[0][0]
+        med = statistics.median(times)
+        print(
+            f"  {qname:28s} {med:8.3f}s "
+            f"(min {min(times):.3f} / max {max(times):.3f})   -> {r[0][0]:.6g}"
+        )
+    return answers
 
 
 # re-scannable stream, registered via the stream wrapper explicitly:
 # DuckDB scans every row, no filter/projection pushdown
 con.register("t_stream", XarrayArrowStream(ds))
-bench("t_stream", "stream (no pushdown)")
+stream = bench("t_stream", "stream (no pushdown)")
 
 # default register(): the pushdown pyarrow-dataset path
 xql.register(con, "t_pushdown", ds)
-bench("t_pushdown", "register() [pushdown]")
+pushdown = bench("t_pushdown", "register() [pushdown]")
 
 # ceiling: materialized pa.Table via pyarrow.dataset
 table = xql.read_xarray(ds).read_all()
 con.register("t_ceiling", pads.dataset(table))
-bench("t_ceiling", "ceiling: in-memory pyarrow.dataset")
+ceiling = bench("t_ceiling", "ceiling: in-memory pyarrow.dataset")
 
-# reference: DataFusion engine on the same dataset
-ctx = xql.XarrayContext()
-xql.register(ctx, "t_df", ds)
-print("\n== DataFusion reference ==")
-for qname, q in QUERIES.items():
-    sql = q.format(t="t_df")
-    times = []
-    for _ in range(3):
-        t0 = time.perf_counter()
-        r = ctx.sql(sql).to_pandas()
-        times.append(time.perf_counter() - t0)
-    print(f"  {qname:28s} {min(times):8.3f}s   -> {float(r.iloc[0, 0]):.6g}")
+# The timings are only meaningful if every path computed the same thing.
+for qname in QUERIES:
+    a, b, c = stream[qname], pushdown[qname], ceiling[qname]
+    assert math.isclose(a, b, rel_tol=1e-9) and math.isclose(
+        a, c, rel_tol=1e-9
+    ), f"{qname}: paths disagree — stream={a} pushdown={b} ceiling={c}"
+print("\nall paths agree")
