@@ -350,6 +350,10 @@ class XarrayPushdownDataset(pads.Dataset):
         for d in ds.dims:
             if str(d) not in self._coord_arrays:
                 self._coord_arrays[str(d)] = ds.coords[d].values
+        if batch_size <= 0:
+            # A zero size would never advance the zero-column scan's
+            # row loop; fail here rather than mid-scan.
+            raise ValueError(f"batch_size must be positive, got {batch_size}")
         self._batch_size = batch_size
         self._prefetch = prefetch
         self._prefetch_bytes = prefetch_bytes
