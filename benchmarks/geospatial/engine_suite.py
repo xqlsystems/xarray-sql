@@ -416,7 +416,8 @@ def _drive_vm(vm, cells, args, src, results, jsonl_lock):
             break
         except Exception as exc:  # noqa: BLE001 — transient control plane
             log(vm, f"probe attempt {attempt} failed: {exc}"[:200])
-            time.sleep(30 * attempt)
+            if attempt < 3:
+                time.sleep(30 * attempt)
     if meta is None:
         log(vm, "giving up: VM never came up")
         return
@@ -472,9 +473,10 @@ def _drive_vm(vm, cells, args, src, results, jsonl_lock):
         else:
             detail = rec.get("reason") or rec.get("error", "")
             log(vm, f"{tag}: {rec['status']} {detail[:200]}")
-    results.append({"vm": vm, "case": "_meta", "engine": "", **meta})
+    meta_rec = {"vm": vm, "case": "_meta", "engine": "", **meta}
+    results.append(meta_rec)
     with jsonl_lock, open(args.jsonl, "a") as fh:
-        fh.write(json.dumps(results[-1]) + "\n")
+        fh.write(json.dumps(meta_rec) + "\n")
     if submit is not None:
         # Shut the VM down the moment its last cell finishes — don't
         # leave the teardown to keepalive expiry.
@@ -547,7 +549,13 @@ def main() -> None:
 
     cases = [c for c in args.cases.split(",") if c]
     engines = [e for e in args.engines.split(",") if e]
-    vms = ["local"] if args.local else [v for v in args.vms.split(",") if v]
+    # dict.fromkeys: duplicate VM names would share one cluster and defeat
+    # the incomplete-run detection, which matches records by VM name.
+    vms = (
+        ["local"]
+        if args.local
+        else list(dict.fromkeys(v for v in args.vms.split(",") if v))
+    )
     cells = [(c, e) for c in cases for e in engines]
     log("plan", f"{len(vms)} VMs x {len(cells)} cells, reps={args.reps}")
     for c, e in cells:
@@ -594,6 +602,18 @@ def main() -> None:
         fh.write(md + "\n")
     print(md)
     log("done", f"wrote {args.out}, {md_path}, {args.jsonl}")
+    # A VM that never produced its _meta record never ran its cells;
+    # exit nonzero so partial runs cannot pass for complete ones.
+    incomplete = [
+        vm
+        for vm in vms
+        if not any(
+            r.get("vm") == vm and r.get("case") == "_meta" for r in results
+        )
+    ]
+    if incomplete:
+        log("done", f"incomplete run: no results from {', '.join(incomplete)}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
