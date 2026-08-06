@@ -38,9 +38,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-_ENGINES = ("datafusion", "datafusion-arrow", "duckdb", "polars")
-
-
 def engine_name() -> str:
     """The engine selected for this process (``GEOBENCH_ENGINE``)."""
     engine = os.environ.get("GEOBENCH_ENGINE", "datafusion")
@@ -97,58 +94,43 @@ def _pandas_to_dataset(pdf: pd.DataFrame, dims: list[str]) -> xr.Dataset:
 
 
 class EngineContext:
-    """Uniform register-and-query facade over the suite's SQL engines."""
+    """Uniform register-and-query facade over the suite's SQL engines.
+
+    ``EngineContext(engine)`` instantiates the subclass ``_IMPLS`` maps
+    the engine name to (default: :func:`engine_name`). Subclasses set
+    ``flavor`` and implement three hooks: ``_connect`` (open the
+    engine's connection/context), ``_register`` (attach one pyarrow
+    dataset under a flat table name), and ``_execute`` (run SQL,
+    returning a ``pandas.DataFrame``). Engines that bypass the shared
+    pyarrow-dataset path override :meth:`from_dataset` /
+    :meth:`sql_to_dataset` instead.
+    """
+
+    flavor = ""
+
+    def __new__(cls, engine: str | None = None):
+        if cls is EngineContext:
+            cls = _IMPLS[engine or engine_name()]
+        return super().__new__(cls)
 
     def __init__(self, engine: str | None = None):
         self.engine = engine or engine_name()
-        self.flavor = self.engine
-        self._native = False
         self._renames: dict[str, str] = {}
-        if self.engine == "datafusion":
-            try:
-                import xarray_sql._native  # noqa: F401
-            except ImportError as exc:
-                raise RuntimeError(
-                    "GEOBENCH_ENGINE=datafusion requires the compiled "
-                    "xarray_sql._native module (`maturin develop`); use "
-                    "GEOBENCH_ENGINE=datafusion-arrow for the pure-Python "
-                    "pyarrow-dataset path."
-                ) from exc
-            import xarray_sql as xql
+        self._connect()
 
-            self.flavor = "datafusion (XarrayContext, native)"
-            self._native = True
-            self._ctx = xql.XarrayContext()
-        elif self.engine == "datafusion-arrow":
-            from datafusion import SessionContext
+    def _connect(self) -> None:
+        raise NotImplementedError
 
-            self.flavor = "datafusion-arrow (pyarrow dataset, pure Python)"
-            self._ctx = SessionContext()
-        elif self.engine == "duckdb":
-            import duckdb
+    def _register(self, flat: str, dataset) -> None:
+        raise NotImplementedError
 
-            self._con = duckdb.connect()
-        else:
-            # Polars: keep the pyarrow datasets and build the SQLContext
-            # per query. Polars' SQL layer renders TIMESTAMP literals as
-            # strptime-plus-cast expressions it cannot convert to pyarrow
-            # filters, so a WHERE over the full archive would scan
-            # everything; the same bounds applied as native expressions
-            # *do* push down. sql_to_dataset therefore pre-filters each
-            # frame with the query's window parameters (identical
-            # predicate to the SQL WHERE, which still runs on top).
-            self.flavor = "polars (SQLContext + expression window pushdown)"
-            self._polars_tables: dict[str, Any] = {}
+    def _execute(self, sql: str, param_values) -> pd.DataFrame:
+        raise NotImplementedError
 
     # -- registration -----------------------------------------------------
 
     def from_dataset(self, name, ds, *, chunks=None, table_names=None):
         """Register ``ds`` as SQL table(s), mirroring XarrayContext naming."""
-        if self._native:
-            self._ctx.from_dataset(
-                name, ds, chunks=chunks, table_names=table_names
-            )
-            return
         import xarray_sql as xql
 
         for flat, dotted, sub in _group_tables(name, ds, table_names):
@@ -159,43 +141,106 @@ class EngineContext:
                 if isinstance(chunks, dict)
                 else chunks
             ) or None
-            dataset = xql.arrow_dataset(sub, sub_chunks)
-            if self.engine == "duckdb":
-                self._con.register(flat, dataset)
-            elif self.engine == "polars":
-                self._polars_tables[flat] = dataset
-            else:
-                self._ctx.register_dataset(flat, dataset)
+            self._register(flat, xql.arrow_dataset(sub, sub_chunks))
 
     # -- querying ----------------------------------------------------------
 
     def _rewrite(self, sql: str, param_values) -> str:
         for dotted, flat in self._renames.items():
             sql = re.sub(rf"\b{re.escape(dotted)}\b", flat, sql)
-        if self.engine == "polars" and param_values:
-            for key, value in param_values.items():
-                sql = re.sub(rf"\${key}\b", _literal(value), sql)
         return sql
 
     def sql_to_dataset(
         self, sql: str, *, dims: list[str], param_values=None
     ) -> xr.Dataset:
         """Run ``sql`` and round-trip the result to an ``xr.Dataset``."""
-        sql = self._rewrite(sql, param_values)
-        if self.engine in ("datafusion", "datafusion-arrow"):
-            df = (
-                self._ctx.sql(sql, param_values=param_values)
-                if param_values
-                else self._ctx.sql(sql)
-            )
-            if self._native:
-                return df.to_dataset(dims=dims)
-            return _pandas_to_dataset(df.to_pandas(), dims)
-        if self.engine == "duckdb":
-            pdf = self._con.execute(sql, param_values or {}).df()
-            return _pandas_to_dataset(pdf, dims)
-        out = self._polars_execute(sql, param_values)
-        return _pandas_to_dataset(out.to_pandas(), dims)
+        pdf = self._execute(self._rewrite(sql, param_values), param_values)
+        return _pandas_to_dataset(pdf, dims)
+
+
+class _DataFusionNative(EngineContext):
+    """``xql.XarrayContext`` over the native DataFusion table provider."""
+
+    flavor = "datafusion (XarrayContext, native)"
+
+    def _connect(self):
+        try:
+            import xarray_sql._native  # noqa: F401
+        except ImportError as exc:
+            raise RuntimeError(
+                "GEOBENCH_ENGINE=datafusion requires the compiled "
+                "xarray_sql._native module (`maturin develop`); use "
+                "GEOBENCH_ENGINE=datafusion-arrow for the pure-Python "
+                "pyarrow-dataset path."
+            ) from exc
+        import xarray_sql as xql
+
+        self._ctx = xql.XarrayContext()
+
+    def from_dataset(self, name, ds, *, chunks=None, table_names=None):
+        self._ctx.from_dataset(name, ds, chunks=chunks, table_names=table_names)
+
+    def sql_to_dataset(self, sql, *, dims, param_values=None):
+        df = (
+            self._ctx.sql(sql, param_values=param_values)
+            if param_values
+            else self._ctx.sql(sql)
+        )
+        return df.to_dataset(dims=dims)
+
+
+class _DataFusionArrow(EngineContext):
+    """Plain ``datafusion.SessionContext`` over ``xql.arrow_dataset``."""
+
+    flavor = "datafusion-arrow (pyarrow dataset, pure Python)"
+
+    def _connect(self):
+        from datafusion import SessionContext
+
+        self._ctx = SessionContext()
+
+    def _register(self, flat, dataset):
+        self._ctx.register_dataset(flat, dataset)
+
+    def _execute(self, sql, param_values):
+        df = (
+            self._ctx.sql(sql, param_values=param_values)
+            if param_values
+            else self._ctx.sql(sql)
+        )
+        return df.to_pandas()
+
+
+class _DuckDB(EngineContext):
+    """DuckDB over the same pyarrow pushdown datasets."""
+
+    flavor = "duckdb"
+
+    def _connect(self):
+        import duckdb
+
+        self._con = duckdb.connect()
+
+    def _register(self, flat, dataset):
+        self._con.register(flat, dataset)
+
+    def _execute(self, sql, param_values):
+        return self._con.execute(sql, param_values or {}).df()
+
+
+class _Polars(EngineContext):
+    """``polars.SQLContext`` over ``scan_pyarrow_dataset`` frames.
+
+    Keeps the pyarrow datasets and builds the SQLContext per query.
+    Polars' SQL layer renders TIMESTAMP literals as strptime-plus-cast
+    expressions it cannot convert to pyarrow filters, so a WHERE over
+    the full archive would scan everything; the same bounds applied as
+    native expressions *do* push down. ``_execute`` therefore
+    pre-filters each frame with the query's window parameters
+    (identical predicate to the SQL WHERE, which still runs on top).
+    """
+
+    flavor = "polars (SQLContext + expression window pushdown)"
 
     # The window bounds a query passes as parameters, as (column, low
     # param, high param); applied per registered frame when the column
@@ -206,12 +251,24 @@ class EngineContext:
         ("longitude", "lon_w", "lon_e"),
     )
 
-    def _polars_execute(self, sql: str, param_values):
+    def _connect(self):
+        self._tables: dict[str, Any] = {}
+
+    def _register(self, flat, dataset):
+        self._tables[flat] = dataset
+
+    def _rewrite(self, sql, param_values):
+        sql = super()._rewrite(sql, param_values)
+        for key, value in (param_values or {}).items():
+            sql = re.sub(rf"\${key}\b", _literal(value), sql)
+        return sql
+
+    def _execute(self, sql, param_values):
         import polars as pl
 
         ctx = pl.SQLContext()
         params = param_values or {}
-        for flat, dataset in self._polars_tables.items():
+        for flat, dataset in self._tables.items():
             lf = pl.scan_pyarrow_dataset(dataset)
             names = set(dataset.schema.names)
             for col, lo, hi in self._BOUND_PARAMS:
@@ -221,4 +278,13 @@ class EngineContext:
                         & (pl.col(col) <= params[hi])
                     )
             ctx.register(flat, lf)
-        return ctx.execute(sql, eager=True)
+        return ctx.execute(sql, eager=True).to_pandas()
+
+
+_IMPLS = {
+    "datafusion": _DataFusionNative,
+    "datafusion-arrow": _DataFusionArrow,
+    "duckdb": _DuckDB,
+    "polars": _Polars,
+}
+_ENGINES = tuple(_IMPLS)
