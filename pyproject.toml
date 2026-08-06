@@ -125,3 +125,6 @@ cache-keys = [{file = "pyproject.toml"}, {file = "rust/Cargo.toml"}, {file = "**
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: needs network (anonymous GCS); excluded from the CI unit run",
+]
