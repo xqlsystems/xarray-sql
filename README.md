@@ -2,10 +2,13 @@
 
 _Query [Xarray](https://xarray.dev/) with SQL_
 
+![PyPI Version](https://img.shields.io/pypi/v/xarray-sql?color=green)
 [![ci](https://github.com/xqlsystems/xarray-sql/actions/workflows/ci.yml/badge.svg)](https://github.com/xqlsystems/xarray-sql/actions/workflows/ci.yml)
 [![lint](https://github.com/xqlsystems/xarray-sql/actions/workflows/lint.yml/badge.svg)](https://github.com/xqlsystems/xarray-sql/actions/workflows/lint.yml)
 [![ci-build](https://github.com/xqlsystems/xarray-sql/actions/workflows/ci-build.yml/badge.svg)](https://github.com/xqlsystems/xarray-sql/actions/workflows/ci-build.yml)
 [![ci-rust](https://github.com/xqlsystems/xarray-sql/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/xqlsystems/xarray-sql/actions/workflows/ci-rust.yml)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/xarray-sql?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/xarray-sql)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/xarray-sql?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads%2Fmonth)](https://pepy.tech/projects/xarray-sql)
 
 ```shell
 pip install xarray-sql
@@ -232,8 +235,10 @@ against an xarray/array reference** to floating-point tolerance:
   reproduces the published result that GraphCast beats Pangu at every lead.
 * **Raster × vector zonal stats** — a range `JOIN` of the ERA5 grid against a
   table of regions.
-* **Reprojection and regridding** — a scalar PROJ UDF (validated against Earth
-  Engine's own geodesy via [Xee](https://github.com/google/Xee)) and a
+* **Reprojection and regridding** — a `reproject(x, y, src_crs, dst_crs)`
+  scalar PROJ UDF, shipped as the optional geo extension
+  (`pip install xarray-sql[geo]`, validated against Earth Engine's own
+  geodesy via [Xee](https://github.com/google/Xee)) and a
   sparse-weight-table `JOIN` (regridding real SRTM terrain).
 
 Every case matches its array reference. The headline finding: these operations

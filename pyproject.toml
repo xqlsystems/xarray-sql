@@ -45,9 +45,12 @@ polars = [
   # in 1.33. PolarsHandle degrades gracefully below both floors.
   "polars>=1.33",
 ]
+geo = [
+  "pyproj",
+]
 test = [
   "cftime",
-  "xarray_sql[duckdb,polars]",
+  "xarray-sql[duckdb,polars,geo]",
   "pytest",
   "xarray[io]",
   "gcsfs",

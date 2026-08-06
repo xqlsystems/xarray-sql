@@ -145,6 +145,14 @@ class TestPartitionBounds:
         assert tag == "int64"
         assert lo < hi
 
+    def test_out_of_int64_range_returns_none(self):
+        # Year-1 gregorian dates exceed the int64 nanosecond range, so no
+        # pruning bound can be reported; the caller skips the dimension.
+        values = xr.date_range(
+            "0001-01-01", periods=3, freq="100YS", use_cftime=True
+        ).values
+        assert cft.partition_bounds(values) is None
+
 
 # -- Integration with _parse_schema ----------------------------------------
 
