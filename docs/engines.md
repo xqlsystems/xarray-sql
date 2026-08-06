@@ -257,4 +257,3 @@ recognizes the connection. Engines that consume the pyarrow dataset
 protocol (DuckDB, Polars) get projection pushdown and chunk pruning for
 free; an engine that only accepts Arrow streams can register
 `XarrayArrowStream(ds)` instead, trading pushdown away.
-

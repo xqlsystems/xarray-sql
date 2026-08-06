@@ -593,4 +593,3 @@ scale. The point of this suite is not to crown a winner but to show that the lin
 between the two is exactly where the operation is dense versus where it is
 relational, and that for a surprising share of geoscience, the operation is
 relational.
-
