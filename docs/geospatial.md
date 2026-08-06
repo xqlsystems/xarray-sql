@@ -408,54 +408,51 @@ machine — across three `e2-standard-8` runs it has measured ≈10.7 s, ≈12 s
 ### The suite across engines and machine sizes
 
 The table above measures the DataFusion-native path. The same cases also run
-under DataFusion's pyarrow-dataset path (`datafusion-arrow`), DuckDB, and
-Polars through the suite's engine layer
+through the suite's engine layer
 ([`_engines.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/_engines.py), selected per process
-with `GEOBENCH_ENGINE`), so we ran the portable cases across those engines
-on an `e2-standard-8` in `us-central1`, in-region with the data, under the
-same protocol: **fresh process per repetition, no warmup, five cold reps**,
-and every engine's answer asserted against the xarray reference before its
-timing counts
+with `GEOBENCH_ENGINE`) as four engines: `datafusion` (the native table
+provider — the harness builds the compiled module from the shipped crate on
+each VM), `datafusion-arrow` (the pure-Python pyarrow-dataset path, through
+`SessionContext.register_dataset(xql.arrow_dataset(ds))`), DuckDB, and
+Polars. We ran the portable cases across all four on an `e2-standard-8` in
+`us-central1`, in-region with the data, under the same protocol: **fresh
+process per repetition, no warmup, five cold reps**, and every engine's
+answer asserted against the xarray reference before its timing counts
 ([`engine_suite.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/engine_suite.py) drives it).
 
-Scope, stated plainly. These runs exercise the **pyarrow-dataset backend** for
-every engine — the DataFusion column is the `datafusion-arrow` engine, which
-reads through `SessionContext.register_dataset(xql.arrow_dataset(ds))` rather
-than the native `XarrayContext` the headline table used (these runs predate
-the suite provisioning the compiled native module on its VMs, so only the
-pure-Python path could execute there; the flavor that ran is recorded per
-cell in the raw results). So
-the DataFusion column below is *not* the same code path as the table above —
-on the ERA5 group-by cases the pyarrow path runs ~1.5–2× behind its native
-sibling, and DuckDB is the fastest consumer of the shared scan. Polars
-executes the identical SQL via `polars.SQLContext`, with the query's window
-bounds also applied as native scan-level expressions (its SQL `TIMESTAMP`
-literals compile to `strptime` casts that never reach the pyarrow scanner as
-filters); its SQL dialect cannot express case 06's range `JOIN` (a `BETWEEN`
-join constraint), recorded as unsupported rather than worked around. Cases 07
-and 09 build DataFusion scalar UDFs (n/a on the other engines), case 08 is
-Earth-Engine-gated, and 07–09 skip on these VMs (no Earth Engine auth) — the
-skip reasons ride along in the results.
+Scope, stated plainly. The `datafusion` column is the same code path as the
+headline table, re-measured on this VM and day, so the two DataFusion columns
+compare the native table provider and the pyarrow-dataset path on identical
+hardware; DuckDB and Polars consume the same pyarrow pushdown datasets.
+Polars executes the identical SQL via `polars.SQLContext`, with the query's
+window bounds also applied as native scan-level expressions (its SQL
+`TIMESTAMP` literals compile to `strptime` casts that never reach the pyarrow
+scanner as filters); its SQL dialect cannot express case 06's range `JOIN` (a
+`BETWEEN` join constraint), recorded as unsupported rather than worked
+around. Cases 07 and 09 build DataFusion scalar UDFs (n/a on the other
+engines), case 08 is Earth-Engine-gated, and 07–09 skip on these VMs (no
+Earth Engine auth) — the skip reasons ride along in the results.
 
-The same grid was also measured on `e2-standard-16` and `e2-standard-32`,
-with no practical difference: every case is dominated by a single-stream cold
-cloud read plus a mostly single-threaded row pipeline, so extra vCPUs buy
-nothing, and the spread across sizes is shared-core `e2` and network
-variance, not engine behavior. The full per-size tables live in the
-`xarray-sql-notes` repository (`engine-matrix-results.md`).
+The same grid was also measured on `e2-standard-16` and `e2-standard-32` in
+the same run, with no practical difference: every case is dominated by a
+single-stream cold cloud read plus a mostly single-threaded row pipeline, so
+extra vCPUs buy nothing, and the spread across sizes is shared-core `e2` and
+network variance, not engine behavior (the 16-vCPU VM measured *slower* than
+the 8-vCPU one on most cells in this run). The full per-size tables live in
+the `xarray-sql-notes` repository (`engine-matrix-results.md`).
 
-Software: CPython 3.12.8, duckdb 1.5.4, polars 1.42.1, datafusion 54.0.0,
+Software: CPython 3.12.8, duckdb 1.5.5, polars 1.42.1, datafusion 54.0.0,
 pyarrow 25.0.0, xarray 2026.7.0, Linux (glibc 2.41). Medians of 5 cold reps;
 peak is the Python-allocator peak per process.
 
-| Case | DataFusion (pyarrow path) | DuckDB | Polars | xarray reference |
-|---|--:|--:|--:|--:|
-| 01 · NDVI | 3.840 s (109 MB) | 4.248 s (106 MB) | 4.672 s (100 MB) | 0.263 s (42 MB) |
-| 02 · Climatology | 7.505 s (1135 MB) | 4.043 s (627 MB) | 4.360 s (637 MB) | 2.448 s (44 MB) |
-| 03 · Zonal mean | 3.229 s (403 MB) | 2.758 s (403 MB) | 3.351 s (413 MB) | 0.890 s (250 MB) |
-| 04 · Anomaly | 12.857 s (3003 MB) | 6.094 s (627 MB) | 11.472 s (862 MB) | 5.103 s (80 MB) |
-| 05 · Forecast skill | 1.854 s (172 MB) | 1.722 s (170 MB) | 2.295 s (182 MB) | 0.213 s (2 MB) |
-| 06 · Zonal stats | 5.311 s (513 MB) | 4.706 s (503 MB) | unsupported (range `JOIN`) | 1.624 s (1262 MB) |
+| Case | DataFusion (native) | DataFusion (pyarrow) | DuckDB | Polars | xarray reference |
+|---|--:|--:|--:|--:|--:|
+| 01 · NDVI | 4.308 s (114 MB) | 4.380 s (97 MB) | 5.325 s (106 MB) | 5.725 s (106 MB) | 0.444 s (42 MB) |
+| 02 · Climatology | 7.235 s (1116 MB) | 8.746 s (1142 MB) | 4.622 s (627 MB) | 4.936 s (637 MB) | 2.367 s (44 MB) |
+| 03 · Zonal mean | 4.763 s (406 MB) | 3.614 s (403 MB) | 2.958 s (403 MB) | 3.705 s (413 MB) | 0.829 s (250 MB) |
+| 04 · Anomaly | 10.416 s (1117 MB) | 16.262 s (3003 MB) | 9.817 s (627 MB) | 13.837 s (936 MB) | 4.410 s (76 MB) |
+| 05 · Forecast skill | 1.791 s (170 MB) | 1.814 s (175 MB) | 1.797 s (170 MB) | 2.405 s (184 MB) | 0.247 s (2 MB) |
+| 06 · Zonal stats | 2.390 s (515 MB) | 6.131 s (513 MB) | 9.112 s (503 MB) | unsupported (range `JOIN`) | 1.813 s (1262 MB) |
 
 Cases 07–09 could not run on these VMs (no Earth Engine auth), so their rows
 come from the headline run instead: the original `e2-standard-8` GCE VM with
@@ -468,20 +465,24 @@ scalar UDFs, n/a on the other engines):
 | 08 · Regridding (weight-table `JOIN`) | 0.875 s (11.9 MB) | 0.850 s (13.3 MB) |
 | 09 · Warp (reproject UDF → regrid `JOIN`) | 0.281 s (0.8 MB) | 0.817 s (11.2 MB) |
 
-The engine story is consistent. **DuckDB is the
-fastest SQL consumer of the shared pushdown scan on every ARCO-ERA5 case** —
-on the group-by and join cases (02, 04, 06) it runs ~1.5–2× ahead of the
-DataFusion pyarrow path, and it is the only engine that keeps the anomaly
-self-`JOIN` (04) within ~1.2× of the array reference. Polars matches DuckDB
-on the plain group-bys (02, 03) but falls back toward DataFusion on the
-join-heavy 04. The spread between engines is much smaller on cases whose cost
-is the read itself (01, 05), which is the same lesson as the headline table:
-the paradigm and the I/O set the floor, the engine sets the constant. And a
-benchmark side-effect worth keeping: streaming case 05's full window through
-the pyarrow protocol surfaced a real library bug — `pa.array` returns a
-`ChunkedArray` for a large string dimension coordinate, which the pivot's
-fast path passed straight into `RecordBatch.from_arrays` — now fixed with a
-regression test.
+The engine story, in three observations. **Native vs pyarrow on the same
+engine:** the native table provider wins where rows are consumed in bulk —
+case 06's range `JOIN` (2.4 vs 6.1 s) and the anomaly self-`JOIN` 04 (10.4 vs
+16.3 s, at a third of the peak memory), ~1.2× on climatology 02 — while on
+the read-bound cases (01, 05) the two are at parity, and on the plain zonal
+mean 03 the pyarrow path is the faster one (3.6 vs 4.8 s). **Across
+engines**, DuckDB is the fastest consumer of the shared pushdown scan on the
+plain group-bys (02, 03) and narrowly beats native DataFusion on 04 (9.8 vs
+10.4 s), while native DataFusion leads the join-heavy 06 outright; Polars
+stays close to DuckDB on 02 and falls back on 04. The spread between engines is much smaller
+on cases whose cost is the read itself (01, 05), which is the same lesson as
+the headline table: the paradigm and the I/O set the floor, the engine sets
+the constant. And a benchmark side-effect worth keeping: streaming case 05's
+full window through the pyarrow protocol surfaced a real library bug —
+`pa.array` returns a `ChunkedArray` for a large string dimension coordinate,
+which the pivot's fast path passed straight into `RecordBatch.from_arrays`;
+fixed, and pinned by a regression test in `tests/test_df.py`
+(`test_iter_record_batches_large_string_dim_coord`).
 
 ## Analysis: how a relational operation spends its time
 
