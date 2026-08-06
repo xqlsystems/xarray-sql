@@ -8,6 +8,14 @@ native module), DataFusion over the pure-Python pyarrow dataset
 through ``GEOBENCH_ENGINE`` and the ``_engines`` facade — on one reused
 Coiled VM per machine size, driven in parallel across sizes.
 
+``datafusion`` cells need the compiled native module; the first such
+cell on a VM provisions it (see :func:`_ensure_native`) and records the
+outcome under ``native`` in its result, so a failed build surfaces as
+that cell's error rather than a VM startup failure. The driver's own
+build is copied in when it imports on that platform; otherwise rustup
+(minimal profile) is installed and the shipped crate is built via the
+project's maturin build backend, once per source digest.
+
 The measurement protocol is exactly ``run_perf.sh``'s: every repetition
 is a **fresh process** with no warm-up (``GEOBENCH_PROFILE=1
 GEOBENCH_WARMUP=0 GEOBENCH_REPS=1``), so the SQL side and the xarray
@@ -104,6 +112,91 @@ def _install_src(src_targz: bytes | None) -> tuple[str, str]:
     return root, os.path.join(root, "benchmarks", "geospatial")
 
 
+def _run_logged(cmd, **kwargs) -> None:
+    """subprocess.run(check=True) that surfaces stderr on failure."""
+    proc = subprocess.run(cmd, capture_output=True, text=True, **kwargs)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"{cmd if isinstance(cmd, str) else ' '.join(cmd)} failed:\n"
+            f"{proc.stderr[-800:]}"
+        )
+
+
+def _ensure_native(src_root: str) -> str:
+    """Make ``xarray_sql._native`` importable from ``src_root``.
+
+    Tries, in order: the module already present in the tree; the one
+    installed in this interpreter's environment (copied in, when built
+    for this platform); a from-source build of the shipped crate —
+    rustup (minimal profile) plus ``pip wheel``, which drives the
+    project's maturin build backend — installed over the pure-Python
+    copy. The built module lands in ``src_root``, which is keyed by
+    source digest, so a warm VM builds at most once per source state.
+
+    Returns a status string for the run log.
+    """
+    import glob
+    import importlib.util
+    import shutil
+
+    # cwd well inside the tree, so `-c` resolves xarray_sql only through
+    # PYTHONPATH=src_root — the same view the case subprocesses get.
+    geo_dir = os.path.join(src_root, "benchmarks", "geospatial")
+    env = dict(os.environ, PYTHONPATH=src_root)
+
+    def _importable() -> bool:
+        return (
+            subprocess.run(
+                [sys.executable, "-c", "import xarray_sql._native"],
+                env=env,
+                cwd=geo_dir,
+                capture_output=True,
+            ).returncode
+            == 0
+        )
+
+    if _importable():
+        return "importable"
+
+    try:
+        spec = importlib.util.find_spec("xarray_sql._native")
+    except ImportError:
+        spec = None
+    if spec is not None and spec.origin:
+        shutil.copy2(
+            spec.origin,
+            os.path.join(src_root, "xarray_sql", os.path.basename(spec.origin)),
+        )
+        if _importable():
+            return "copied from driver environment"
+
+    t0 = time.monotonic()
+    build_env = dict(env)
+    cargo_bin = os.path.expanduser("~/.cargo/bin")
+    build_env["PATH"] = cargo_bin + os.pathsep + build_env.get("PATH", "")
+    if shutil.which("cargo", path=build_env["PATH"]) is None:
+        _run_logged(
+            "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs "
+            "| sh -s -- -y --profile minimal --default-toolchain stable",
+            shell=True,
+            env=build_env,
+        )
+    wheel_dir = os.path.join(src_root, "wheelhouse")
+    _run_logged(
+        [sys.executable, "-m", "pip", "wheel", "--no-deps",
+         "-w", wheel_dir, src_root],
+        env=build_env,
+    )
+    wheel = sorted(glob.glob(os.path.join(wheel_dir, "xarray_sql-*.whl")))[-1]
+    _run_logged(
+        [sys.executable, "-m", "pip", "install", "--no-deps", "--upgrade",
+         "--target", src_root, wheel],
+    )
+    if not _importable():
+        raise RuntimeError(f"built {wheel} but xarray_sql._native still fails")
+    return f"built from source in {time.monotonic() - t0:.0f}s"
+
+
 def run_case_cell(
     case: str,
     engine: str,
@@ -115,6 +208,12 @@ def run_case_cell(
     result = {"case": case, "engine": engine, "status": "ok", "reps": []}
     try:
         src_root, geo_dir = _install_src(src_targz)
+        if engine == "datafusion":
+            try:
+                result["native"] = _ensure_native(src_root)
+            except Exception:
+                result["native"] = "provisioning failed"
+                raise
         env = dict(
             os.environ,
             GEOBENCH_ENGINE=engine,
@@ -241,15 +340,50 @@ def log(vm: str, msg: str) -> None:
 
 
 def _pack_src() -> bytes:
-    """gzip tar of xarray_sql + benchmarks/geospatial (pure Python)."""
+    """gzip tar of xarray_sql, benchmarks/geospatial, and the Rust crate.
+
+    Byte-identical for identical file contents (gzip and tar metadata
+    normalized): _install_src keys its extraction root — and therefore
+    _ensure_native's build cache on a warm VM — on the digest of these
+    bytes.
+    """
+    import gzip
+
     repo = Path(__file__).resolve().parents[2]
+
+    def _normalize(info: tarfile.TarInfo) -> tarfile.TarInfo:
+        info.mtime = 0
+        info.mode = 0o644
+        info.uid = info.gid = 0
+        info.uname = info.gname = ""
+        return info
+
+    paths: list[Path] = []
+    for rel in ["xarray_sql", "benchmarks/geospatial"]:
+        paths += [
+            p
+            for p in sorted((repo / rel).rglob("*.py"))
+            if "__pycache__" not in p.parts
+        ]
+    # The crate sources, so `datafusion` cells can build the native
+    # module where it is not already importable (see _ensure_native).
+    for rel in ["src", "Cargo.toml", "Cargo.lock", "pyproject.toml",
+                "README.md"]:
+        target = repo / rel
+        paths += (
+            [p for p in sorted(target.rglob("*")) if p.is_file()]
+            if target.is_dir()
+            else [target]
+        )
     buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
-        for rel in ["xarray_sql", "benchmarks/geospatial"]:
-            for path in sorted((repo / rel).rglob("*.py")):
-                if "__pycache__" in path.parts:
-                    continue
-                tf.add(path, arcname=str(path.relative_to(repo)))
+    with gzip.GzipFile(fileobj=buf, mode="wb", mtime=0) as gz:
+        with tarfile.open(fileobj=gz, mode="w") as tf:
+            for path in paths:
+                tf.add(
+                    path,
+                    arcname=str(path.relative_to(repo)),
+                    filter=_normalize,
+                )
     return buf.getvalue()
 
 
@@ -315,6 +449,8 @@ def _drive_vm(vm, cells, args, src, results, jsonl_lock):
                 }
             rec["cell_wall_s"] = round(time.monotonic() - t0, 1)
         rec["vm"] = vm
+        if rec.get("native", "importable") != "importable":
+            log(vm, f"{tag}: native module {rec['native']}")
         results.append(rec)
         with jsonl_lock, open(args.jsonl, "a") as fh:
             fh.write(json.dumps(rec) + "\n")

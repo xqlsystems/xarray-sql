@@ -421,11 +421,10 @@ timing counts
 Scope, stated plainly. These runs exercise the **pyarrow-dataset backend** for
 every engine — the DataFusion column is the `datafusion-arrow` engine, which
 reads through `SessionContext.register_dataset(xql.arrow_dataset(ds))` rather
-than the native `XarrayContext` the headline table used (the benchmark VMs
-install the pure-Python source, without the compiled native module;
-`GEOBENCH_ENGINE=datafusion` requires that module and fails rather than
-falling back, and the flavor that executed is recorded per cell in the raw
-results). So
+than the native `XarrayContext` the headline table used (these runs predate
+the suite provisioning the compiled native module on its VMs, so only the
+pure-Python path could execute there; the flavor that ran is recorded per
+cell in the raw results). So
 the DataFusion column below is *not* the same code path as the table above —
 on the ERA5 group-by cases the pyarrow path runs ~1.5–2× behind its native
 sibling, and DuckDB is the fastest consumer of the shared scan. Polars
