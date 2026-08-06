@@ -1,10 +1,12 @@
 """The geospatial suite across engines and VM sizes, via Coiled Functions.
 
 Runs the nine geospatial cases (``01_ndvi`` … ``09_warp``) under every
-SQL engine the suite supports — DataFusion (the original path), DuckDB,
-and Polars, selected per process through ``GEOBENCH_ENGINE`` and the
-``_engines`` facade — on one reused Coiled VM per machine size, driven
-in parallel across sizes.
+SQL engine the suite supports — DataFusion over the native table
+provider (``datafusion``, the original path; requires the compiled
+native module), DataFusion over the pure-Python pyarrow dataset
+(``datafusion-arrow``), DuckDB, and Polars, selected per process
+through ``GEOBENCH_ENGINE`` and the ``_engines`` facade — on one reused
+Coiled VM per machine size, driven in parallel across sizes.
 
 The measurement protocol is exactly ``run_perf.sh``'s: every repetition
 is a **fresh process** with no warm-up (``GEOBENCH_PROFILE=1
@@ -15,7 +17,8 @@ timing to count. The xarray-reference timings are engine-independent;
 the tables report the reference column from the DataFusion runs.
 
 Coverage notes, recorded rather than hidden: cases 07 and 09 build
-DataFusion scalar UDFs, so DuckDB/Polars are marked n/a; case 08 reads
+DataFusion scalar UDFs on ``xql.XarrayContext`` directly, so every
+engine except ``datafusion`` is marked n/a; case 08 reads
 through Earth Engine and is left on the original context (EE-gated);
 cases 07–09 skip cleanly wherever Earth Engine auth is unavailable
 (e.g. on the benchmark VMs) with the reason recorded.
@@ -61,10 +64,11 @@ CASES = [
     "08_regrid_weights",
     "09_warp",
 ]
-ENGINES = ["datafusion", "duckdb", "polars"]
-# Cases whose SQL builds DataFusion scalar UDFs (07, and the UDF half of
-# 09): not expressible on the other engines. Case 08 is portable SQL but
-# Earth-Engine-gated, so it stays on the original context.
+ENGINES = ["datafusion", "datafusion-arrow", "duckdb", "polars"]
+# Cases whose SQL builds DataFusion scalar UDFs on XarrayContext directly
+# (07, and the UDF half of 09): they run only under ``datafusion``. Case
+# 08 is portable SQL but Earth-Engine-gated, so it stays on the original
+# context.
 NOT_PORTABLE = {
     "07_reproject_udf": "n/a (DataFusion scalar UDF)",
     "09_warp": "n/a (DataFusion scalar UDF)",

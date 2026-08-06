@@ -4,24 +4,27 @@
 so the same case scripts (same SQL, same datasets, same correctness
 assertions) can be measured across engines:
 
-* ``datafusion`` (default) — ``xql.XarrayContext``, the suite's original
-  path, when the native module is importable; otherwise a plain
-  ``datafusion.SessionContext`` over ``xql.arrow_dataset`` (pure Python).
-  Which one ran is recorded in :attr:`EngineContext.flavor`.
+* ``datafusion`` (default) — ``xql.XarrayContext`` over the native
+  DataFusion table provider, the suite's original path. Requires the
+  compiled ``xarray_sql._native`` module; raises at startup when it is
+  missing instead of falling back.
+* ``datafusion-arrow`` — a plain ``datafusion.SessionContext`` scanning
+  ``xql.arrow_dataset`` (pure Python).
 * ``duckdb`` — DuckDB over the same pyarrow pushdown datasets.
 * ``polars`` — ``polars.SQLContext`` over ``scan_pyarrow_dataset`` frames.
 
 Every case builds one :class:`EngineContext`, registers datasets exactly
 as it always registered them on ``XarrayContext``, and calls
-:meth:`EngineContext.sql_to_dataset`. On the DataFusion-native path this
+:meth:`EngineContext.sql_to_dataset`. On the ``datafusion`` path this
 is byte-for-byte the original behavior (``from_dataset`` + ``sql`` +
 ``XarrayDataFrame.to_dataset``); the other engines register one pyarrow
 dataset per dimension group under flattened table names
 (``era5.surface`` → ``era5_surface`` — rewritten in the SQL text) and the
 result rows are round-tripped to an ``xr.Dataset`` through pandas.
 
-The DataFusion-only UDF cases (07 and the UDF half of 09) do not use
-this layer; the suite runner records them as n/a for other engines.
+The DataFusion-only UDF cases (07 and the UDF half of 09) build
+``xql.XarrayContext`` directly rather than through this layer; the suite
+runner records them as n/a for every engine except ``datafusion``.
 """
 
 from __future__ import annotations
@@ -35,7 +38,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-_ENGINES = ("datafusion", "duckdb", "polars")
+_ENGINES = ("datafusion", "datafusion-arrow", "duckdb", "polars")
 
 
 def engine_name() -> str:
@@ -44,17 +47,6 @@ def engine_name() -> str:
     if engine not in _ENGINES:
         raise ValueError(f"GEOBENCH_ENGINE={engine!r}; expected {_ENGINES}")
     return engine
-
-
-def _native_available() -> bool:
-    if os.environ.get("GEOBENCH_NO_NATIVE"):  # test hook: force fallback
-        return False
-    try:
-        import xarray_sql._native  # noqa: F401
-
-        return True
-    except Exception:  # noqa: BLE001 — pure-Python source tree
-        return False
 
 
 def _group_tables(name, ds, table_names):
@@ -113,17 +105,25 @@ class EngineContext:
         self._native = False
         self._renames: dict[str, str] = {}
         if self.engine == "datafusion":
-            if _native_available():
-                import xarray_sql as xql
+            try:
+                import xarray_sql._native  # noqa: F401
+            except ImportError as exc:
+                raise RuntimeError(
+                    "GEOBENCH_ENGINE=datafusion requires the compiled "
+                    "xarray_sql._native module (`maturin develop`); use "
+                    "GEOBENCH_ENGINE=datafusion-arrow for the pure-Python "
+                    "pyarrow-dataset path."
+                ) from exc
+            import xarray_sql as xql
 
-                self.flavor = "datafusion (XarrayContext, native)"
-                self._native = True
-                self._ctx = xql.XarrayContext()
-            else:
-                from datafusion import SessionContext
+            self.flavor = "datafusion (XarrayContext, native)"
+            self._native = True
+            self._ctx = xql.XarrayContext()
+        elif self.engine == "datafusion-arrow":
+            from datafusion import SessionContext
 
-                self.flavor = "datafusion (pyarrow dataset, no native)"
-                self._ctx = SessionContext()
+            self.flavor = "datafusion-arrow (pyarrow dataset, pure Python)"
+            self._ctx = SessionContext()
         elif self.engine == "duckdb":
             import duckdb
 
@@ -182,7 +182,7 @@ class EngineContext:
     ) -> xr.Dataset:
         """Run ``sql`` and round-trip the result to an ``xr.Dataset``."""
         sql = self._rewrite(sql, param_values)
-        if self.engine == "datafusion":
+        if self.engine in ("datafusion", "datafusion-arrow"):
             df = (
                 self._ctx.sql(sql, param_values=param_values)
                 if param_values

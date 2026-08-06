@@ -408,9 +408,10 @@ machine — across three `e2-standard-8` runs it has measured ≈10.7 s, ≈12 s
 ### The suite across engines and machine sizes
 
 The table above measures the DataFusion-native path. The same cases also run
-under DuckDB and Polars through the suite's engine layer
+under DataFusion's pyarrow-dataset path (`datafusion-arrow`), DuckDB, and
+Polars through the suite's engine layer
 ([`_engines.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/_engines.py), selected per process
-with `GEOBENCH_ENGINE`), so we ran the portable cases across all three engines
+with `GEOBENCH_ENGINE`), so we ran the portable cases across those engines
 on an `e2-standard-8` in `us-central1`, in-region with the data, under the
 same protocol: **fresh process per repetition, no warmup, five cold reps**,
 and every engine's answer asserted against the xarray reference before its
@@ -418,10 +419,13 @@ timing counts
 ([`engine_suite.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/engine_suite.py) drives it).
 
 Scope, stated plainly. These runs exercise the **pyarrow-dataset backend** for
-every engine — including DataFusion, which here reads through
-`SessionContext.register_dataset(xql.arrow_dataset(ds))` rather than the
-native `XarrayContext` the headline table used (the VMs run the pure-Python
-tree; the flavor that executed is recorded per cell in the raw results). So
+every engine — the DataFusion column is the `datafusion-arrow` engine, which
+reads through `SessionContext.register_dataset(xql.arrow_dataset(ds))` rather
+than the native `XarrayContext` the headline table used (the benchmark VMs
+install the pure-Python source, without the compiled native module;
+`GEOBENCH_ENGINE=datafusion` requires that module and fails rather than
+falling back, and the flavor that executed is recorded per cell in the raw
+results). So
 the DataFusion column below is *not* the same code path as the table above —
 on the ERA5 group-by cases the pyarrow path runs ~1.5–2× behind its native
 sibling, and DuckDB is the fastest consumer of the shared scan. Polars
