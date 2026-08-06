@@ -1,6 +1,6 @@
-"""Benchmark: DuckDB adapter v1 (stream) vs v2 (pushdown) vs ceilings.
+"""Benchmark: DuckDB re-scannable stream vs pushdown dataset vs ceilings.
 
-Usage: .venv-duckdb/bin/python bench_v2.py
+Usage: python benchmarks/duckdb_pushdown.py  (needs duckdb installed)
 """
 
 import time
@@ -62,13 +62,14 @@ def bench(table, label, n=3):
         print(f"  {qname:28s} {min(times):8.3f}s   -> {r[0][0]:.6g}")
 
 
-# v1: re-scannable stream (registered via the stream wrapper explicitly)
-con.register("t_v1", XarrayArrowStream(ds))
-bench("t_v1", "v1 stream (no pushdown)")
+# re-scannable stream, registered via the stream wrapper explicitly:
+# DuckDB scans every row, no filter/projection pushdown
+con.register("t_stream", XarrayArrowStream(ds))
+bench("t_stream", "stream (no pushdown)")
 
-# v2: default register() — pushdown path (once implemented)
-xql.register(con, "t_v2", ds)
-bench("t_v2", "v2 register() [pushdown]")
+# default register(): the pushdown pyarrow-dataset path
+xql.register(con, "t_pushdown", ds)
+bench("t_pushdown", "register() [pushdown]")
 
 # ceiling: materialized pa.Table via pyarrow.dataset
 table = xql.read_xarray(ds).read_all()
