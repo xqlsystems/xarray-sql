@@ -156,9 +156,11 @@ class DuckDBHandle:
     """Handle over a ``duckdb.DuckDBPyRelation``.
 
     Relations are lazy relational algebra: ``filter``/``project`` derive
-    new relations and every materialization re-executes, which is
-    exactly the re-executable contract. Predicates are built with
-    DuckDB's typed expression API, never rendered SQL text.
+    new relations and every materialization runs the query again, so a
+    single relation can serve any number of per-chunk fetches, each
+    narrowed to its own window — the *re-executable* property the
+    module docstring requires of every handle. Predicates are built
+    with DuckDB's typed expression API, never rendered SQL text.
 
     Every engine call runs on one dedicated thread owned by the handle.
     A relation is bound to one connection, and a query over a table
