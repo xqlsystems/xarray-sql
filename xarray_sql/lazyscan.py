@@ -7,14 +7,14 @@ handle onto the query, not a one-shot stream of its rows. Each handle
 here adapts one engine's native lazy surface to the three operations the
 reconstruction needs:
 
-* :meth:`~LazyResultHandle.schema` — result column names/types, without
+* [schema][xarray_sql.lazyscan.LazyResultHandle.schema] — result column names/types, without
   executing the query;
-* :meth:`~LazyResultHandle.distinct` — one column's distinct values
+* [distinct][xarray_sql.lazyscan.LazyResultHandle.distinct] — one column's distinct values
   (coordinate discovery; the caller sorts);
-* :meth:`~LazyResultHandle.fetch` — the result narrowed by per-dimension
+* [fetch][xarray_sql.lazyscan.LazyResultHandle.fetch] — the result narrowed by per-dimension
   windows and projected to the requested columns, as Arrow batches.
 
-Windows are passed as :data:`DimSpec` values instead of rendered SQL so
+Windows are passed as [DimSpec][xarray_sql.lazyscan.DimSpec] values instead of rendered SQL so
 each engine can express them with its own *typed* expression API —
 strings would re-open every literal-formatting pitfall (timestamps,
 floats, quoting) per dialect.
@@ -22,7 +22,7 @@ floats, quoting) per dialect.
 Handles compose with the registration seam: when the wrapped query
 scans a Dataset registered through xarray-sql's pushdown machinery, the
 per-chunk range filter flows back through the engine into
-:class:`~xarray_sql.backends.pyarrow.XarrayPushdownDataset`, so each
+[XarrayPushdownDataset][xarray_sql.backends.pyarrow.XarrayPushdownDataset], so each
 output chunk's access reads only the source chunks it maps onto.
 """
 
@@ -312,7 +312,7 @@ class PolarsHandle:
     def stream(self, columns: list[str]) -> Iterator[pa.RecordBatch]:
         """Execute once, yielding Arrow batches incrementally.
 
-        Unlike :meth:`fetch`, whose ``collect`` materializes the whole
+        Unlike [fetch][xarray_sql.lazyscan.PolarsHandle.fetch], whose ``collect`` materializes the whole
         result inside the engine before any batch surfaces, this yields
         batches as the streaming engine produces them, so a byte budget
         can fire before the result is fully in memory. Requires

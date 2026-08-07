@@ -1,22 +1,21 @@
 """DuckDB engine adapter.
 
 Registers a lazy ``xarray.Dataset`` on a ``duckdb.DuckDBPyConnection``
-as an :class:`~xarray_sql.backends.pyarrow.XarrayPushdownDataset`:
+as an [XarrayPushdownDataset][xarray_sql.backends.pyarrow.XarrayPushdownDataset]:
 DuckDB classifies it with a real ``isinstance`` check against
 ``pyarrow.dataset.Dataset`` and calls ``scanner(columns=[...],
 filter=<pyarrow.compute.Expression>)`` once per query, giving
 projection pushdown, coordinate-range chunk pruning, and prefetched
-parallel production (see :mod:`xarray_sql.backends.pyarrow`).
+parallel production (see [xarray_sql.backends.pyarrow][]).
 
 This adapter never imports the ``duckdb`` package at runtime — detection
 is by connection type, and registration is a method call on the
 connection — so DuckDB stays a purely optional dependency
 (``pip install xarray-sql[duckdb]``).
 
-Zarr-native scanning inside DuckDB is what the `duckdb-zarr
-<https://github.com/xqlsystems/duckdb-zarr>`_ extension provides; this
+Zarr-native scanning inside DuckDB is what the [duckdb-zarr](https://github.com/xqlsystems/duckdb-zarr) extension provides; this
 adapter instead covers everything xarray can open (NetCDF, GRIB, Xee, CF
-decoding, in-memory) and pairs with :func:`xarray_sql.to_dataset` for
+decoding, in-memory) and pairs with [xarray_sql.to_dataset][] for
 the labeled round-trip.
 """
 
@@ -64,7 +63,7 @@ class DuckDBAdapter:
         ``<name>_<dim1>_<dim2>_...`` (DuckDB registration has no schema
         namespace to mirror the DataFusion adapter's ``name.group``
         layout). Extra keyword arguments (``batch_size``, ``prefetch``)
-        are forwarded to :class:`XarrayPushdownDataset`.
+        are forwarded to [XarrayPushdownDataset][xarray_sql.backends.pyarrow.XarrayPushdownDataset].
         """
         groups = group_vars_by_dims(ds)
         if len(groups) <= 1:

@@ -1,13 +1,13 @@
 """Reconstruct xarray Datasets from SQL query results.
 
 The inverse of the forward Dataset-to-table pivot done by
-:func:`xarray_sql.df.pivot`. Internally defines an :class:`XarrayDataFrame`
+[xarray_sql.df.pivot][]. Internally defines an [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame]
 wrapper around the DataFusion ``DataFrame`` returned by
-:meth:`XarrayContext.sql`, with a :meth:`XarrayDataFrame.to_dataset`
+[XarrayContext.sql][xarray_sql.sql.XarrayContext.sql], with a [XarrayDataFrame.to_dataset][xarray_sql.ds.XarrayDataFrame.to_dataset]
 method that round-trips a query result back to ``xr.Dataset``.
 
 Reconstruction is controlled by the ``chunks`` argument to
-:meth:`XarrayDataFrame.to_dataset` -- the xarray idiom for tuning how a
+[XarrayDataFrame.to_dataset][xarray_sql.ds.XarrayDataFrame.to_dataset] -- the xarray idiom for tuning how a
 result is partitioned -- rather than by reflecting on the query plan:
 
 * **Eager** (``chunks=None``, or the default ``"inherit"`` when the
@@ -17,7 +17,7 @@ result is partitioned -- rather than by reflecting on the query plan:
   (aggregations), whose results are small, and it never re-executes.
 * **Lazy / chunked** (``chunks`` is a mapping, ``"auto"``, or
   ``"inherit"`` over a multi-chunk source dimension): data variables are
-  backed by :class:`SQLBackendArray` wrapped in
+  backed by [SQLBackendArray][xarray_sql.ds.SQLBackendArray] wrapped in
   ``xarray.core.indexing.LazilyIndexedArray`` and chunked via xarray's
   configured chunk manager (dask, cubed, ...). Each chunk maps onto the
   source partitions and reads its coordinate range on access by
@@ -259,17 +259,17 @@ class SQLBackendArray(xr.backends.BackendArray):
     """Read-only lazy N-D array view over a re-executable SQL result.
 
     Bridges xarray's lazy-indexing interface
-    (:class:`xarray.backends.BackendArray`) to an engine query result,
+    (``xarray.backends.BackendArray``) to an engine query result,
     so an xarray ``Dataset`` can present a SQL query as if it were a
     materialized N-D array without actually loading any data until the
     caller asks for it. This is the workhorse that lets
-    :meth:`XarrayDataFrame.to_dataset` (and the engine-agnostic
+    [XarrayDataFrame.to_dataset][xarray_sql.ds.XarrayDataFrame.to_dataset] (and the engine-agnostic
     ``xql.to_dataset(chunks=...)``) return a Dataset cheaply.
 
     On each ``__getitem__`` call, the requested xarray indexer is
     translated into per-dimension coordinate windows and a column
     projection, executed through a
-    :class:`~xarray_sql.lazyscan.LazyResultHandle` (DataFusion, DuckDB,
+    [LazyResultHandle][xarray_sql.lazyscan.LazyResultHandle] (DataFusion, DuckDB,
     or Polars — each renders the windows with its own typed expression
     API). The resulting Arrow ``RecordBatch`` es are scattered into a
     preallocated numpy buffer, so only the requested data is
@@ -299,7 +299,7 @@ class SQLBackendArray(xr.backends.BackendArray):
             symptom of a filtered query whose coord discovery missed a
             value.
 
-    Constructed by :func:`_build_lazy_scan`; users should not instantiate
+    Constructed by ``_build_lazy_scan``; users should not instantiate
     this class directly.
     """
 
@@ -351,7 +351,7 @@ class SQLBackendArray(xr.backends.BackendArray):
         """Materialize the indexed region described by *key* via the engine.
 
         ``key`` is a tuple of ``int``/``slice``/1-D integer-array, one per
-        dim, in :attr:`_dimension_columns` order.
+        dim, in ``_dimension_columns`` order.
         """
         requested: dict[str, np.ndarray] = {}
         # Per-dim windows for the engine. Dims whose indexer covers the
@@ -655,13 +655,13 @@ def _build_lazy_scan(
     field_types: dict[str, Any],
     coord_arrays: dict[str, np.ndarray] | None = None,
 ) -> xr.Dataset:
-    """Build a lazy Dataset whose data vars are :class:`SQLBackendArray`.
+    """Build a lazy Dataset whose data vars are [SQLBackendArray][xarray_sql.ds.SQLBackendArray].
 
     Used when output chunking is requested: each data variable stays lazy and,
     once wrapped by ``Dataset.chunk``, every chunk reads its coordinate range
     via a pushdown filter on first access. Coordinates come either from the
     caller (the scanned table's registered Dataset for unfiltered DataFusion
-    scans -- see :func:`_maybe_template_coords` -- or an explicitly trusted
+    scans -- see ``_maybe_template_coords`` -- or an explicitly trusted
     template) or from per-dim distinct queries through the handle; over a
     registered pushdown table the engine projects to that single coordinate
     column, so discovery reads coordinate values only (no data-variable I/O).
@@ -767,14 +767,14 @@ def _result_to_xarray(
 ) -> xr.Dataset:
     """Reconstruct an ``xr.Dataset`` from a SQL result.
 
-    ``chunks`` (already resolved by :meth:`XarrayDataFrame._resolve_chunks`)
+    ``chunks`` (already resolved by ``XarrayDataFrame._resolve_chunks``)
     selects the execution strategy:
 
     * ``None`` -> eager: execute once and materialize a dense Dataset
-      (:func:`_materialize`). Correct for any query and the right default for
+      (``_materialize``). Correct for any query and the right default for
       reductions, whose results are small.
-    * a mapping (or ``"auto"``) -> lazy/chunked: build :class:`SQLBackendArray`
-      data variables (:func:`_build_lazy_scan`) and wrap them with
+    * a mapping (or ``"auto"``) -> lazy/chunked: build [SQLBackendArray][xarray_sql.ds.SQLBackendArray]
+      data variables (``_build_lazy_scan``) and wrap them with
       ``Dataset.chunk`` so each chunk reads its coordinate range via filter
       pushdown. The chunk grid maps onto the source partitions. Chunking goes
       through xarray's configured chunk manager (dask, cubed, ...), so no
@@ -861,17 +861,17 @@ def _finish_dataset(
 class XarrayDataFrame:
     """Wrapper around a DataFusion ``DataFrame`` with xarray-aware helpers.
 
-    Returned by :meth:`xarray_sql.XarrayContext.sql`. Forwards every
+    Returned by [xarray_sql.XarrayContext.sql][]. Forwards every
     attribute it does not define itself to the wrapped DataFrame, so
     ``.collect()``, ``.schema()``, ``.show()``, ``.count()`` all work
     unchanged.
 
     Carries a private snapshot of the context's registered Datasets so
-    :meth:`to_dataset` can default ``dims`` and recover metadata
+    ``to_dataset`` can default ``dims`` and recover metadata
     dropped by the forward pivot.
 
     Users should not construct this class directly; let
-    :meth:`XarrayContext.sql` produce it.
+    [XarrayContext.sql][xarray_sql.sql.XarrayContext.sql] produce it.
     """
 
     def __init__(
@@ -883,13 +883,13 @@ class XarrayDataFrame:
 
         Args:
             inner: The underlying ``datafusion.DataFrame`` returned by
-                :meth:`XarrayContext.sql`.
+                [XarrayContext.sql][xarray_sql.sql.XarrayContext.sql].
             templates: Snapshot of the registered Datasets on the producing
                 context, keyed by the SQL identifier each was registered
-                under. Used by :meth:`to_dataset` to recover metadata that
+                under. Used by ``to_dataset`` to recover metadata that
                 the forward pivot strips. ``None`` means no metadata
                 recovery is possible from registrations alone; callers may
-                still pass ``template=`` to :meth:`to_dataset` explicitly.
+                still pass ``template=`` to ``to_dataset`` explicitly.
         """
         object.__setattr__(self, "_inner", inner)
         object.__setattr__(self, "_templates", dict(templates or {}))
@@ -993,7 +993,7 @@ class XarrayDataFrame:
         (a single full chunk is not "chunked"), so reductions that drop the
         chunked dimension resolve to ``None`` (eager) automatically. Mappings
         pass through unchanged; ``"auto"`` passes through here and is snapped to
-        source partition boundaries later (see :func:`_auto_chunks`).
+        source partition boundaries later (see ``_auto_chunks``).
         """
         if chunks is None:
             return None
@@ -1038,7 +1038,7 @@ class XarrayDataFrame:
         become the dimensions, so aggregations that drop dims (e.g.
         ``GROUP BY time`` over a ``(time, lat, lon)`` grid) round-trip on the
         surviving dim(s). Uses the data variable's dim order (via
-        :func:`_ds_var_dims`) so the original axis order is preserved.
+        ``_ds_var_dims``) so the original axis order is preserved.
         """
         result_cols = set(self._result_columns())
 

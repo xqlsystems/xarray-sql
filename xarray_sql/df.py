@@ -311,20 +311,24 @@ def dataset_to_record_batch(
     return pa.RecordBatch.from_arrays(arrays, schema=schema)
 
 
-#: Default number of rows per emitted Arrow RecordBatch.
-#: 64 K rows balances DataFusion pipeline depth against per-batch overhead.
 DEFAULT_BATCH_SIZE: int = 65_536
+"""Default number of rows per emitted Arrow RecordBatch.
 
-#: Row cap for the whole-partition coordinate fast path in
-#: iter_record_batches. Below this, coordinate columns are materialised
-#: for the full partition with repeat/tile (sequential writes, ~3x
-#: faster than per-batch index arithmetic) and batches are zero-copy
-#: slices; the cost is holding every coordinate column of the partition
-#: in memory at once (rows x 8 bytes x n_dims). Above it — e.g.
-#: single-time-step reanalysis partitions with tens of millions of
-#: rows — the per-batch path keeps peak memory at O(batch_size) per
-#: coordinate instead.
+64 K rows balances DataFusion pipeline depth against per-batch overhead.
+"""
+
 _FULL_PIVOT_MAX_ROWS: int = 8_388_608
+"""Row cap for the whole-partition coordinate fast path in
+iter_record_batches.
+
+Below this, coordinate columns are materialised for the full partition
+with repeat/tile (sequential writes, ~3x faster than per-batch index
+arithmetic) and batches are zero-copy slices; the cost is holding every
+coordinate column of the partition in memory at once (rows x 8 bytes x
+n_dims). Above it — e.g. single-time-step reanalysis partitions with
+tens of millions of rows — the per-batch path keeps peak memory at
+O(batch_size) per coordinate instead.
+"""
 
 
 def _as_single_array(values, type: pa.DataType, *, from_pandas: bool = False):
@@ -488,7 +492,7 @@ def _parse_schema(ds: xr.Dataset) -> pa.Schema:
 
     Only *dimension coordinates* become dimension columns, so a dimension
     without a coordinate would be dropped. Callers must run the Dataset through
-    :func:`_ensure_default_indexes` first (the readers do) so every dimension
+    ``_ensure_default_indexes`` first (the readers do) so every dimension
     has a coordinate and appears as a column.
 
     Uses the xarray index type to detect cftime coordinates without

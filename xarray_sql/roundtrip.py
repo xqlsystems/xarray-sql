@@ -14,9 +14,9 @@ window by window, by re-executing the engine's query narrowed to each
 chunk's coordinate range. That requires the result to be
 *re-executable* — a Polars LazyFrame (or eager DataFrame) or a
 DataFusion DataFrame — not a one-shot Arrow stream; see
-:mod:`xarray_sql.lazyscan`. DuckDB relations are re-executable but
+[xarray_sql.lazyscan][]. DuckDB relations are re-executable but
 refuse the chunked path (a thread-safety limitation noted on
-:class:`~xarray_sql.lazyscan.DuckDBHandle`); pair them with
+[DuckDBHandle][xarray_sql.lazyscan.DuckDBHandle]); pair them with
 ``spill=True`` instead.
 """
 
@@ -98,9 +98,9 @@ def _result_to_batches(
 ) -> tuple[pa.Schema, list[pa.RecordBatch]]:
     """Normalize an engine result into ``(schema, record batches)``.
 
-    Accepts everything :func:`_open_stream` recognizes, then objects
+    Accepts everything ``_open_stream`` recognizes, then objects
     with a ``to_arrow_table()`` method (DataFusion DataFrames and the
-    :class:`~xarray_sql.ds.XarrayDataFrame` wrapper), then re-executable
+    [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame] wrapper), then re-executable
     results without a stream protocol (a Polars LazyFrame), executed
     once through their lazy handle.
     """
@@ -169,7 +169,7 @@ def to_dataset(
     """Convert an engine's Arrow result into a labeled ``xr.Dataset``.
 
     The engine-agnostic counterpart of
-    :meth:`XarrayDataFrame.to_dataset`: SQL in, array out, for engines
+    [XarrayDataFrame.to_dataset][xarray_sql.ds.XarrayDataFrame.to_dataset]: SQL in, array out, for engines
     xarray-sql does not wrap in a session of its own.
 
     Example (DuckDB)::

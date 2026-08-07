@@ -42,8 +42,8 @@ Design notes:
   would return ``inf``); NULL CRS arguments yield NaN as well.
 
 Requires ``pyproj`` (``pip install xarray-sql[geo]``). When pyproj is
-installed, :class:`xarray_sql.XarrayContext` registers ``reproject()``
-automatically; :func:`register` is the explicit hook for plain
+installed, [xarray_sql.XarrayContext][] registers ``reproject()``
+automatically; [register][xarray_sql.proj.register] is the explicit hook for plain
 DataFusion ``SessionContext`` objects or custom UDF names.
 """
 
@@ -61,10 +61,10 @@ from datafusion import udf
 
 __all__ = ["register"]
 
-#: Arrow type returned by ``reproject()``: destination coordinates in
-#: ``always_xy`` order — ``x`` is easting/longitude, ``y`` is
-#: northing/latitude.
 RETURN_TYPE = pa.struct([("x", pa.float64()), ("y", pa.float64())])
+"""Arrow type returned by ``reproject()``: destination coordinates in
+``always_xy`` order — ``x`` is easting/longitude, ``y`` is
+northing/latitude."""
 
 
 # ---------------------------------------------------------------------------

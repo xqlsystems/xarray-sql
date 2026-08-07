@@ -4,13 +4,13 @@ xarray-sql translates data, not queries, across two seams — the two
 boundaries between xarray and a query engine that neither side builds
 for itself: *register* (a lazy ``xarray.Dataset`` becomes a table on
 the engine's own connection; this package) and *round-trip* (an Arrow
-result becomes a labeled Dataset again; :func:`xarray_sql.to_dataset`).
+result becomes a labeled Dataset again; [xarray_sql.to_dataset][]).
 SQL dialects, geometry, H3, and optimizers belong to each engine and
 its extension ecosystem.
 
 Adapters register themselves on import via
-:func:`~xarray_sql.backends.base.register_adapter`;
-:func:`~xarray_sql.backends.base.register` dispatches on the connection
+[register_adapter][xarray_sql.backends.base.register_adapter];
+[register][xarray_sql.backends.base.register] dispatches on the connection
 type.
 """
 

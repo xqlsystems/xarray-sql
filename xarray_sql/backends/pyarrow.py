@@ -3,15 +3,15 @@
 Two ways to hand a lazy ``xarray.Dataset`` to an Arrow-speaking query
 engine:
 
-* :class:`XarrayPushdownDataset` — a real ``pyarrow.dataset.Dataset``
+* [XarrayPushdownDataset][xarray_sql.backends.pyarrow.XarrayPushdownDataset] — a real ``pyarrow.dataset.Dataset``
   subclass (the pattern Lance uses for ``LanceDataset``). Consumers of
   the pyarrow dataset protocol — DuckDB via ``con.register``, Polars via
   ``pl.scan_pyarrow_dataset``, or pyarrow itself — call
-  :meth:`~XarrayPushdownDataset.scanner` with the columns a query needs
+  [scanner][xarray_sql.backends.pyarrow.XarrayPushdownDataset.scanner] with the columns a query needs
   and the predicate it pushed down, so the scan loads only the needed
   data variables from only the chunks whose coordinate ranges can
-  satisfy the predicate. Construct one with :func:`arrow_dataset`.
-* :class:`XarrayArrowStream` — a re-scannable Arrow C-stream
+  satisfy the predicate. Construct one with [arrow_dataset][xarray_sql.backends.pyarrow.arrow_dataset].
+* [XarrayArrowStream][xarray_sql.backends.pyarrow.XarrayArrowStream] — a re-scannable Arrow C-stream
   (PyCapsule) view. No source-level pushdown, but works with any
   PyCapsule consumer; the dependency-light fallback.
 
@@ -223,7 +223,7 @@ class XarrayArrowStream:
 
     Arrow PyCapsule consumers (DuckDB among them) call
     ``__arrow_c_stream__`` once per scan. Each call constructs a fresh
-    :class:`~xarray_sql.reader.XarrayRecordBatchReader` over the same
+    [XarrayRecordBatchReader][xarray_sql.reader.XarrayRecordBatchReader] over the same
     lazy Dataset, so — unlike registering a ``pyarrow.RecordBatchReader``
     directly, which is exhausted after one query — the same registered
     table supports any number of queries, and data is only read while a
@@ -231,7 +231,7 @@ class XarrayArrowStream:
 
     The PyCapsule scan path gets no source-level pushdown (the producer
     never sees the query's columns or filters), so
-    :class:`XarrayPushdownDataset` is the default registration object;
+    [XarrayPushdownDataset][xarray_sql.backends.pyarrow.XarrayPushdownDataset] is the default registration object;
     this class remains as the dependency-light fallback.
     """
 
@@ -273,7 +273,7 @@ class XarrayPushdownDataset(pads.Dataset):
     """A pushdown-capable ``pyarrow.dataset.Dataset`` view of a Dataset.
 
     Consumers that speak the pyarrow dataset protocol (DuckDB, Polars,
-    ...) call :meth:`scanner` with the columns a query needs and the
+    ...) call [scanner][xarray_sql.backends.pyarrow.XarrayPushdownDataset.scanner] with the columns a query needs and the
     predicate it pushed down; the scan then loads only the needed data
     variables from only the chunks whose coordinate ranges can satisfy
     the predicate.
@@ -741,7 +741,7 @@ class XarrayPushdownDataset(pads.Dataset):
         """Per-dimension chunk indices that can satisfy ``filter``.
 
         Satisfiability is delegated to Arrow's guarantee simplification
-        (see :class:`_DimShadow`) — no expression decoding here, and
+        (see ``_DimShadow``) — no expression decoding here, and
         predicates on columns a shadow knows nothing about are
         conservatively kept. Dimensions without a shadow, or where every
         chunk survives, are absent from the result.
@@ -1022,7 +1022,7 @@ class _XarrayFragment:
     """One chunk of the source grid, presented as a dataset fragment.
 
     Fragment consumers (DataFusion's ``DatasetExec`` plans one partition
-    per fragment; Dask maps over them) call :meth:`scanner` with the
+    per fragment; Dask maps over them) call [scanner][xarray_sql.backends.pyarrow.XarrayPushdownDataset.scanner] with the
     columns and predicate for this piece; the pushed filter is applied
     row-exactly, same as the parent dataset's scanner.
     """
@@ -1116,7 +1116,7 @@ def arrow_dataset(
             block size, so size accordingly (e.g. ``8_000_000``).
         geometry: ``(x_dim, y_dim)`` coordinate dims to derive a
             ``geometry`` point column from (see
-            :mod:`xarray_sql.geometry`). With the default ``"wkb"``
+            [xarray_sql.geometry][]). With the default ``"wkb"``
             encoding, DuckDB (spatial loaded) sees a native ``GEOMETRY``
             column, so ``ST_Within(geometry, ...)`` works directly.
         geometry_encoding: ``"wkb"`` (default; DuckDB-consumable) or
@@ -1128,7 +1128,7 @@ def arrow_dataset(
             ``None`` to omit, or an authority code / PROJJSON string.
 
     Returns:
-        An :class:`XarrayPushdownDataset`.
+        An [XarrayPushdownDataset][xarray_sql.backends.pyarrow.XarrayPushdownDataset].
     """
     return XarrayPushdownDataset(
         ds,

@@ -169,7 +169,7 @@ class XarrayContext(SessionContext):
                     break  # One UDF per context is enough.
 
     def sql(self, query: str, *args, **kwargs) -> XarrayDataFrame:
-        """Run a SQL query, returning an :class:`XarrayDataFrame` wrapper.
+        """Run a SQL query, returning an [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame] wrapper.
 
         Identical to ``datafusion.SessionContext.sql`` except the returned
         object wraps the DataFusion DataFrame. The wrapper exposes
@@ -184,7 +184,7 @@ class XarrayContext(SessionContext):
             **kwargs: Forwarded to ``SessionContext.sql``.
 
         Returns:
-            An :class:`XarrayDataFrame` wrapping the DataFusion DataFrame.
+            An [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame] wrapping the DataFusion DataFrame.
         """
         inner = super().sql(query, *args, **kwargs)
         return XarrayDataFrame(inner, templates=self._registered_datasets)

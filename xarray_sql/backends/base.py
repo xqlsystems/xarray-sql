@@ -1,4 +1,4 @@
-"""Engine-adapter dispatch for :func:`xarray_sql.register`.
+"""Engine-adapter dispatch for [xarray_sql.register][].
 
 An *engine adapter* implements the register seam: given an engine's native
 connection object and a lazy ``xarray.Dataset``, register the Dataset as
@@ -96,7 +96,7 @@ def register(
 
     Args:
         con: An engine connection: a ``datafusion.SessionContext`` (or
-            :class:`xarray_sql.XarrayContext`) or a
+            [xarray_sql.XarrayContext][]) or a
             ``duckdb.DuckDBPyConnection``.
         name: The table name to register the Dataset under. Datasets
             whose variables have differing dimensions are split into one

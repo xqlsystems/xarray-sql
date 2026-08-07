@@ -29,7 +29,6 @@ import xarray as xr
 # Calendar classification
 # ---------------------------------------------------------------------------
 
-#: Calendars close enough to proleptic Gregorian for ``pa.timestamp('us')``.
 GREGORIAN_LIKE_CALENDARS: frozenset[str] = frozenset(
     {
         "standard",
@@ -41,10 +40,13 @@ GREGORIAN_LIKE_CALENDARS: frozenset[str] = frozenset(
         "366_day",
     }
 )
+"""Calendars close enough to proleptic Gregorian for ``pa.timestamp('us')``."""
 
-#: Default CF-convention units when no encoding is available on the coordinate.
-#: Microseconds give sub-second precision and fit int64 for ±292 k years.
 DEFAULT_UNITS: str = "microseconds since 1970-01-01T00:00:00"
+"""Default CF-convention units when no encoding is available on the coordinate.
+
+Microseconds give sub-second precision and fit int64 for ±292 k years.
+"""
 
 
 def is_gregorian_like(calendar: str) -> bool:
@@ -111,7 +113,7 @@ def encoding(ds: xr.Dataset, coord_name: str) -> tuple[str, str]:
     """Return ``(units, calendar)`` for a cftime coordinate.
 
     Reads xarray ``.encoding`` metadata (from the originating NetCDF file)
-    first, falling back to :data:`DEFAULT_UNITS`.
+    first, falling back to [DEFAULT_UNITS][xarray_sql.cftime.DEFAULT_UNITS].
     """
     cal = calendar(ds, coord_name) or "standard"
     enc = ds.coords[coord_name].encoding

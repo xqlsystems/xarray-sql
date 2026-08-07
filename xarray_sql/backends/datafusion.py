@@ -4,7 +4,7 @@ DataFusion is xarray-sql's default engine and the richest adapter: the
 Rust ``LazyArrowStreamTable`` table provider gives partition pruning on
 dimension predicates, projection pushdown, and exact per-partition
 statistics for the optimizer. This module only routes the generic
-:func:`xarray_sql.register` seam onto that existing machinery.
+[xarray_sql.register][] seam onto that existing machinery.
 """
 
 from __future__ import annotations
