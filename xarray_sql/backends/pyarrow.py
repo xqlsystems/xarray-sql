@@ -638,6 +638,8 @@ class XarrayPushdownDataset(pads.Dataset):
         return pc.scalar(True)
 
     def filter(self, expression: pc.Expression):
+        # A lazily-composed filter view is implementable; tracked in
+        # https://github.com/xqlsystems/xarray-sql/issues/239.
         raise NotImplementedError(
             "Use scanner(filter=...) or the engine's WHERE clause."
         )
