@@ -142,11 +142,14 @@ def _install_src(src_targz: bytes | None) -> tuple[str, str]:
 
     digest = hashlib.md5(src_targz or b"local").hexdigest()[:10]
     root = f"/tmp/xql_geo_src_{digest}"
-    marker = os.path.join(root, "benchmarks", "geospatial", "_engines.py")
+    # Written only after extractall returns, so an interrupted
+    # extraction is retried instead of reused as a corrupt tree.
+    marker = os.path.join(root, ".extraction-complete")
     if src_targz is not None and not os.path.exists(marker):
         os.makedirs(root, exist_ok=True)
         with tarfile.open(fileobj=io.BytesIO(src_targz), mode="r:gz") as tf:
             tf.extractall(root)  # noqa: S202 — our own tarball
+        open(marker, "w").close()
     return root, os.path.join(root, "benchmarks", "geospatial")
 
 
@@ -303,7 +306,9 @@ def run_case_cell(
                     break
                 wall = round(time.perf_counter() - t0, 3)
                 out = proc.stdout
-                if "SKIPPED" in out:
+                # Exit status outranks the skip marker: a case that
+                # prints SKIPPED and then crashes is an error, not a skip.
+                if proc.returncode == 0 and "SKIPPED" in out:
                     reason = next(
                         (
                             line.split("SKIPPED:", 1)[1].strip()
@@ -679,6 +684,14 @@ def main() -> None:
     ]
     if incomplete:
         log("done", f"incomplete run: no results from {', '.join(incomplete)}")
+        sys.exit(1)
+    failed = [
+        f"{r['vm']}/{r['case']}/{r['engine']}"
+        for r in results
+        if r.get("status") in ("error", "timeout")
+    ]
+    if failed:
+        log("done", f"failed cells: {', '.join(failed)}")
         sys.exit(1)
 
 
