@@ -816,6 +816,8 @@ class XarrayPushdownDataset(pads.Dataset):
         def bucket_guarantee(
             d: Any, indices: np.ndarray
         ) -> pc.Expression | None:
+            """Conjunctive [min, max] guarantee over one dimension's index
+            bucket, or None when unprovable (NaN spans, non-numeric dims)."""
             if not usable[d]:
                 return None
             lo, hi, bad = self._chunk_spans(str(d))
@@ -827,12 +829,25 @@ class XarrayPushdownDataset(pads.Dataset):
             ) & (pc.field(str(d)) <= pa.scalar(hi[indices].max(), field_type))
 
         def rows_of(cell: dict) -> int:
+            """Rows spanned by ``cell``: the product of its chunks' lengths
+            per dimension, times the rows of dimensions outside the grid."""
             rows = outer
             for d in dims:
                 rows *= int(lens[d][np.asarray(cell[d])].sum())
             return rows
 
         def classify(cell: dict, depth: int) -> None:
+            """Prove, prune, or split one cell of the surviving chunk grid.
+
+            A cell is a hyper-rectangle of chunk indices per dimension.
+            Its indices are bucketed into at most
+            ``_STRICT_LEVEL_BUDGET`` products; Arrow's guarantee
+            simplification then decides each bucket-product wholesale:
+            proven (every row satisfies ``filter``, counted into
+            ``proven`` without reading), pruned (provably empty,
+            dropped), or mixed (recurse). Undecidable single-chunk
+            cells land in ``boundary`` for exact scanning.
+            """
             nonlocal proven
             ks = {d: len(cell[d]) for d in dims}
             while int(np.prod(list(ks.values()))) > _STRICT_LEVEL_BUDGET:
