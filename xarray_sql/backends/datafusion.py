@@ -9,7 +9,7 @@ statistics for the optimizer. This module only routes the generic
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypeGuard
 
 import xarray as xr
 from datafusion import SessionContext
@@ -25,7 +25,7 @@ class DataFusionAdapter:
     """Registers Datasets on ``datafusion.SessionContext`` connections."""
 
     @staticmethod
-    def matches(con: Any) -> bool:
+    def matches(con: object) -> TypeGuard[SessionContext]:
         return isinstance(con, SessionContext)
 
     @staticmethod

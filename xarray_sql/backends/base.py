@@ -14,45 +14,49 @@ is by type inspection), so optional engines stay optional.
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, TypeGuard, TypeVar
 
 import xarray as xr
 
 from ..df import Chunks
 
+ConT = TypeVar("ConT")
+"""An engine's native connection type (e.g. ``duckdb.DuckDBPyConnection``)."""
 
-@runtime_checkable
-class EngineAdapter(Protocol):
+
+class EngineAdapter(Protocol[ConT]):
     """One engine's implementation of the register seam."""
 
     @staticmethod
-    def matches(con: Any) -> bool:
+    def matches(con: object) -> TypeGuard[ConT]:
         """Whether *con* is a connection this adapter can register into."""
         ...
 
     @staticmethod
     def register(
-        con: Any,
+        con: ConT,
         name: str,
         ds: xr.Dataset,
         *,
         chunks: Chunks = None,
         **kwargs: Any,
-    ) -> Any:
+    ) -> ConT:
         """Register *ds* as table *name* on *con*; returns *con*."""
         ...
 
 
-_ADAPTERS: list[type[EngineAdapter]] = []
+_ADAPTERS: list[type[EngineAdapter[Any]]] = []
+
+_A = TypeVar("_A", bound=type[EngineAdapter[Any]])
 
 
-def register_adapter(cls: type) -> type:
+def register_adapter(cls: _A) -> _A:
     """Class decorator adding an adapter to the dispatch list."""
     _ADAPTERS.append(cls)
     return cls
 
 
-def get_adapter(con: Any) -> type[EngineAdapter]:
+def get_adapter(con: Any) -> type[EngineAdapter[Any]]:
     """Return the first adapter whose ``matches(con)`` is true."""
     for adapter in _ADAPTERS:
         if adapter.matches(con):

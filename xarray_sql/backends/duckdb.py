@@ -8,9 +8,9 @@ filter=<pyarrow.compute.Expression>)`` once per query, giving
 projection pushdown, coordinate-range chunk pruning, and prefetched
 parallel production (see :mod:`xarray_sql.backends.pyarrow`).
 
-This adapter never imports the ``duckdb`` package — detection is by
-connection type, and registration is a method call on the connection —
-so DuckDB stays a purely optional dependency
+This adapter never imports the ``duckdb`` package at runtime — detection
+is by connection type, and registration is a method call on the
+connection — so DuckDB stays a purely optional dependency
 (``pip install xarray-sql[duckdb]``).
 
 Zarr-native scanning inside DuckDB is what the `duckdb-zarr
@@ -22,7 +22,7 @@ the labeled round-trip.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 import xarray as xr
 
@@ -30,6 +30,9 @@ from ..df import Chunks
 from ..sql import _group_vars_by_dims
 from .base import register_adapter
 from .pyarrow import XarrayArrowStream, XarrayPushdownDataset
+
+if TYPE_CHECKING:
+    import duckdb
 
 __all__ = ["DuckDBAdapter", "XarrayArrowStream", "XarrayPushdownDataset"]
 
@@ -39,7 +42,7 @@ class DuckDBAdapter:
     """Registers Datasets on ``duckdb.DuckDBPyConnection`` connections."""
 
     @staticmethod
-    def matches(con: Any) -> bool:
+    def matches(con: object) -> TypeGuard[duckdb.DuckDBPyConnection]:
         # The connection class lives in ``duckdb`` or, in newer releases,
         # the ``_duckdb`` C-extension module.
         root = type(con).__module__.split(".")[0]
@@ -47,13 +50,13 @@ class DuckDBAdapter:
 
     @staticmethod
     def register(
-        con: Any,
+        con: duckdb.DuckDBPyConnection,
         name: str,
         ds: xr.Dataset,
         *,
         chunks: Chunks = None,
         **kwargs: Any,
-    ) -> Any:
+    ) -> duckdb.DuckDBPyConnection:
         """Register ``ds`` on a DuckDB connection.
 
         Datasets whose variables all share the same dimensions become a
