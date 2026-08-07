@@ -14,7 +14,7 @@ is by type inspection), so optional engines stay optional.
 
 from __future__ import annotations
 
-from typing import Any, Protocol, TypeGuard, TypeVar
+from typing import Any, Protocol, TypeGuard, TypeVar, cast
 
 import xarray as xr
 
@@ -56,7 +56,7 @@ def register_adapter(cls: _A) -> _A:
     return cls
 
 
-def get_adapter(con: Any) -> type[EngineAdapter[Any]]:
+def get_adapter(con: object) -> type[EngineAdapter[Any]]:
     """Return the first adapter whose ``matches(con)`` is true."""
     for adapter in _ADAPTERS:
         if adapter.matches(con):
@@ -69,13 +69,13 @@ def get_adapter(con: Any) -> type[EngineAdapter[Any]]:
 
 
 def register(
-    con: Any,
+    con: ConT,
     name: str,
     ds: xr.Dataset,
     *,
     chunks: Chunks = None,
     **kwargs: Any,
-) -> Any:
+) -> ConT:
     """Register a lazy xarray Dataset as a table on an engine connection.
 
     The engine is inferred from the connection type. Data is not read at
@@ -112,4 +112,7 @@ def register(
     Returns:
         The connection, to allow chaining.
     """
-    return get_adapter(con).register(con, name, ds, chunks=chunks, **kwargs)
+    # The connection type is erased by the runtime dispatch; every adapter
+    # returns the connection it was given.
+    adapter: Any = get_adapter(con)
+    return cast(ConT, adapter.register(con, name, ds, chunks=chunks, **kwargs))
