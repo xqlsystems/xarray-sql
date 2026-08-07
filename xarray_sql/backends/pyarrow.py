@@ -371,6 +371,9 @@ class XarrayPushdownDataset(pads.Dataset):
         # and concurrent.futures' global shutdown lock interleave with
         # the engine's callback needing the GIL. Scans that stop early
         # cancel their queued loads instead of tearing the pool down.
+        # Like any thread state, the pool does not survive fork(); use
+        # from forked workers (e.g. PyTorch DataLoader) is tracked in
+        # https://github.com/xqlsystems/xarray-sql/issues/145.
         self._pool: ThreadPoolExecutor | None = None
         if self._prefetch > 1:
             self._pool = ThreadPoolExecutor(max_workers=self._prefetch)
