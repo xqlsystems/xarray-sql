@@ -1,11 +1,12 @@
 """Engine adapters — the *register* seam of xarray-sql.
 
-xarray-sql translates data, not queries: it registers lazy
-``xarray.Dataset`` objects as tables on a query engine's own connection
-(seam 1, this package) and turns Arrow results back into labeled
-Datasets (seam 2, :func:`xarray_sql.to_dataset`). SQL dialects,
-geometry, H3, and optimizers belong to each engine and its extension
-ecosystem.
+xarray-sql translates data, not queries, across two seams — the two
+boundaries between xarray and a query engine that neither side builds
+for itself: *register* (a lazy ``xarray.Dataset`` becomes a table on
+the engine's own connection; this package) and *round-trip* (an Arrow
+result becomes a labeled Dataset again; :func:`xarray_sql.to_dataset`).
+SQL dialects, geometry, H3, and optimizers belong to each engine and
+its extension ecosystem.
 
 Adapters register themselves on import via
 :func:`~xarray_sql.backends.base.register_adapter`;

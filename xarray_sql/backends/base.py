@@ -1,6 +1,6 @@
 """Engine-adapter dispatch for :func:`xarray_sql.register`.
 
-An *engine adapter* implements one seam: given an engine's native
+An *engine adapter* implements the register seam: given an engine's native
 connection object and a lazy ``xarray.Dataset``, register the Dataset as
 a queryable table on that connection. The Arrow C-stream protocol is the
 common wire between xarray and every engine; adapters differ only in how
