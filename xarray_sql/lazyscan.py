@@ -31,7 +31,7 @@ from __future__ import annotations
 import weakref
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 
 import numpy as np
 import pandas as pd
@@ -39,10 +39,15 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from datafusion import col, literal
 
-DimSpec = tuple[str, Any, Any]
+DimSpec = tuple[Literal["range", "values"], Any, Any]
 """One dimension's window: ``("range", lo, hi)`` (inclusive bounds; the
 requested coordinate positions are contiguous) or ``("values", array,
-None)`` (explicit value list, for stepped/fancy indexers)."""
+None)`` (explicit value list, for stepped/fancy indexers).
+
+The payload stays ``Any``: the values are coordinate scalars handed to
+the engine's typed expression API, which does the comparing — Python
+never orders them, and a concrete union over coordinate dtypes
+(timestamps, cftime, numerics, strings) would stay incomplete."""
 
 
 def _collect_streaming(lf: Any) -> Any:
