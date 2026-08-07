@@ -26,8 +26,7 @@ from typing import TYPE_CHECKING, Any, TypeGuard
 
 import xarray as xr
 
-from ..df import Chunks
-from ..sql import _group_vars_by_dims
+from ..df import Chunks, group_vars_by_dims
 from .base import register_adapter
 from .pyarrow import XarrayArrowStream, XarrayPushdownDataset
 
@@ -67,7 +66,7 @@ class DuckDBAdapter:
         layout). Extra keyword arguments (``batch_size``, ``prefetch``)
         are forwarded to :class:`XarrayPushdownDataset`.
         """
-        groups = _group_vars_by_dims(ds)
+        groups = group_vars_by_dims(ds)
         if len(groups) <= 1:
             con.register(name, XarrayPushdownDataset(ds, chunks, **kwargs))
             return con

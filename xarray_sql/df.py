@@ -1,4 +1,5 @@
 import itertools
+from collections import defaultdict
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping
 from typing import Any
 
@@ -129,6 +130,23 @@ def block_slices(ds: xr.Dataset, chunks: Chunks = None) -> Iterator[Block]:
 def explode(ds: xr.Dataset, chunks: Chunks = None) -> Iterator[xr.Dataset]:
     """Explodes a dataset into its chunks."""
     yield from (ds.isel(b) for b in block_slices(ds, chunks=chunks))
+
+
+def group_vars_by_dims(ds: xr.Dataset) -> dict[tuple[str, ...], list[str]]:
+    """Group a Dataset's data variables by their exact dimension tuple.
+
+    Variables that share dimensions can share a table; each distinct
+    dimension tuple becomes its own table when a mixed-dimension Dataset
+    is registered::
+
+        ("time", "lat", "lon"):          ["temperature_2m", "wind_speed"],
+        ("time", "lat", "lon", "level"): ["pressure", "humidity"]
+    """
+    groups = defaultdict(list)
+    for var_name, var in ds.data_vars.items():
+        dims = var.dims
+        groups[dims].append(var_name)
+    return groups
 
 
 def _block_len(block: Block) -> int:
