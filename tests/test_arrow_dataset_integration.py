@@ -207,9 +207,9 @@ def _grid_cells(case, source, use_bbox=True) -> int:
     return cells
 
 
-def _day_window(case, day=0) -> tuple[pd.Timestamp, pd.Timestamp]:
+def _day_window(case, day=0, days=1) -> tuple[pd.Timestamp, pd.Timestamp]:
     start = pd.Timestamp(case.window_start) + pd.Timedelta(days=day)
-    return start, start + pd.Timedelta(days=1)
+    return start, start + pd.Timedelta(days=days)
 
 
 def _day_chunks(case: StoreCase) -> int:
@@ -253,16 +253,25 @@ def test_projection_reads_only_the_referenced_variable(scan, case, source):
 
 
 def test_dataset_is_rescannable_across_queries(scan, case, source):
-    # One wrapper, two disjoint-day queries: the second scan must see
-    # fresh state, not a consumed stream or stale pruning from the first.
+    # One wrapper, two queries of different shapes: the second scan must
+    # see fresh state, not a consumed stream or stale pruning from the
+    # first. The second window is multi-day and global, which also pins
+    # pruning for windows wider than one day (7 days of hourly chunks:
+    # 168 reads on arco-era5).
     dataset, reads, _ = _tracked(case, source)
-    cells = _grid_cells(case, source, use_bbox=False)
-    for day in range(2):
-        reads.clear()
-        t0, t1 = _day_window(case, day)
-        n, _ = scan(case, dataset, t0, t1, {})
-        assert n == case.steps_per_day * cells
-        assert len(reads) == _day_chunks(case)
+    t0, t1 = _day_window(case)
+    n, _ = scan(case, dataset, t0, t1, case.bbox)
+    assert n == case.steps_per_day * _grid_cells(case, source)
+    assert len(reads) == _day_chunks(case)
+
+    reads.clear()
+    days = 7
+    t0, t1 = _day_window(case, days=days)
+    n, _ = scan(case, dataset, t0, t1, {})
+    assert n == days * case.steps_per_day * _grid_cells(
+        case, source, use_bbox=False
+    )
+    assert len(reads) == days * _day_chunks(case)
 
 
 def test_coalescing_merges_consecutive_reads(scan, case, source):
