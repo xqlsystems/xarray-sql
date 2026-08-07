@@ -647,6 +647,10 @@ class XarrayPushdownDataset(pads.Dataset):
     def replace_schema(self, schema: pa.Schema):
         raise NotImplementedError
 
+    # Guarded delegation for sort_by/join/join_asof (engine-level SQL
+    # joins already work through scanner()) is tracked in
+    # https://github.com/xqlsystems/xarray-sql/issues/240.
+
     def sort_by(self, sorting, **kwargs):
         raise NotImplementedError
 
