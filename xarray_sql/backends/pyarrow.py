@@ -448,14 +448,14 @@ class XarrayPushdownDataset(pads.Dataset):
         scan_schema = pa.schema([self._schema.field(n) for n in scan_names])
         size = batch_size or self._batch_size
         if self._geometry and GEOMETRY_COLUMN in scan_names:
-            batches = self._with_geometry(scan_schema, blocks, size)
+            batches = self._batches_with_geometry(scan_schema, blocks, size)
         else:
             batches = self._batch_generator(scan_schema, blocks, size)
         return pads.Scanner.from_batches(
             batches, schema=scan_schema, columns=proj, filter=filter
         )
 
-    def _with_geometry(
+    def _batches_with_geometry(
         self,
         scan_schema: pa.Schema,
         blocks: Iterator[Block] | list[Block],
