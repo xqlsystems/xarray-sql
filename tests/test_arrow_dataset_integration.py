@@ -254,10 +254,8 @@ def test_projection_reads_only_the_referenced_variable(scan, case, source):
 
 def test_dataset_is_rescannable_across_queries(scan, case, source):
     # One wrapper, two queries of different shapes: the second scan must
-    # see fresh state, not a consumed stream or stale pruning from the
-    # first. The second window is multi-day and global, which also pins
-    # pruning for windows wider than one day (7 days of hourly chunks:
-    # 168 reads on arco-era5).
+    # see fresh state, not a consumed stream or stale pruning (a bbox
+    # left over) from the first.
     dataset, reads, _ = _tracked(case, source)
     t0, t1 = _day_window(case)
     n, _ = scan(case, dataset, t0, t1, case.bbox)
@@ -265,13 +263,10 @@ def test_dataset_is_rescannable_across_queries(scan, case, source):
     assert len(reads) == _day_chunks(case)
 
     reads.clear()
-    days = 7
-    t0, t1 = _day_window(case, days=days)
+    t0, t1 = _day_window(case, day=1)
     n, _ = scan(case, dataset, t0, t1, {})
-    assert n == days * case.steps_per_day * _grid_cells(
-        case, source, use_bbox=False
-    )
-    assert len(reads) == days * _day_chunks(case)
+    assert n == case.steps_per_day * _grid_cells(case, source, use_bbox=False)
+    assert len(reads) == _day_chunks(case)
 
 
 def test_coalescing_merges_consecutive_reads(scan, case, source):
@@ -324,6 +319,28 @@ def test_concurrent_queries_stay_exact(scan, case, source):
 
 
 # -- Dataset-level fast paths (no engine in the loop) ---------------------------
+
+
+def test_multiday_global_window_prunes_to_its_chunks(case, source):
+    # Windows wider than one day prune exactly (7 days of hourly chunks:
+    # 168 reads on arco-era5). A property of the dataset's own scanner,
+    # so it runs once here instead of once per engine; batches are
+    # streamed and dropped to keep the 100M-row scan out of memory.
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    dataset, reads, _ = _tracked(case, source)
+    days = 7
+    t0, t1 = _day_window(case, days=days)
+    predicate = (pc.field("time") >= pa.scalar(t0, type=pa.timestamp("ns"))) & (
+        pc.field("time") < pa.scalar(t1, type=pa.timestamp("ns"))
+    )
+    scanner = dataset.scanner(columns=[case.variable], filter=predicate)
+    rows = sum(batch.num_rows for batch in scanner.to_batches())
+    assert len(reads) == days * _day_chunks(case), "wide window mispruned"
+    assert rows == days * case.steps_per_day * _grid_cells(
+        case, source, use_bbox=False
+    )
 
 
 def test_count_rows_fast_path_reads_nothing(case, source):
