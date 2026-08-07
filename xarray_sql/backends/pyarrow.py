@@ -490,6 +490,107 @@ class XarrayPushdownDataset(pads.Dataset):
             ]
             yield pa.RecordBatch.from_arrays(arrays, schema=scan_schema)
 
+    def _batch_generator(
+        self,
+        scan_schema: pa.Schema,
+        blocks: Iterator[Block] | list[Block],
+        batch_size: int,
+    ) -> Iterator[pa.RecordBatch]:
+        names = list(scan_schema.names)
+        data_vars = [n for n in names if n in self._ds.data_vars]
+        # Select only the needed variables before slicing so unrequested
+        # variables are never loaded (dimension coords come via coords).
+        base = (
+            self._ds[data_vars]
+            if data_vars
+            else self._ds.drop_vars(list(self._ds.data_vars))
+        )
+
+        def load(block: Block) -> list[pa.RecordBatch]:
+            if self._iteration_callback is not None:
+                self._iteration_callback(block, names)
+            if not names:
+                # Zero-column projection: row counts are chunk
+                # arithmetic; no coordinate or variable data is read.
+                out = []
+                rows = self._block_rows(block)
+                while rows > 0:
+                    n = min(rows, batch_size)
+                    out.append(
+                        pa.table({"_": np.empty(n, np.int8)})
+                        .select([])
+                        .to_batches()[0]
+                    )
+                    rows -= n
+                return out
+            return list(
+                iter_record_batches(base.isel(block), scan_schema, batch_size)
+            )
+
+        # Estimated pivoted bytes per row: gates admission when a
+        # byte budget is set, so peak memory tracks bytes in flight
+        # rather than block count (blocks vary in size under
+        # coalesce_rows).
+        row_width = 0
+        for field in scan_schema:
+            try:
+                row_width += np.dtype(field.type.to_pandas_dtype()).itemsize
+            except (TypeError, NotImplementedError):
+                row_width += 8
+
+        def generate() -> Iterator[pa.RecordBatch]:
+            block_iter = iter(blocks)
+            first = next(block_iter, None)
+            if first is None:
+                return
+            second = next(block_iter, None)
+            if self._pool is None or second is None:
+                # Single-block scans (a lazy round-trip window that maps
+                # onto one source chunk) skip the pool entirely.
+                yield from load(first)
+                if second is not None:
+                    yield from load(second)
+                    for block in block_iter:
+                        yield from load(block)
+                return
+            pool = self._pool
+            budget = self._prefetch_bytes
+            pending: deque = deque()
+            inflight = 0
+
+            def submit(block: Block) -> None:
+                nonlocal inflight
+                estimate = self._block_rows(block) * row_width
+                pending.append((pool.submit(load, block), estimate))
+                inflight += estimate
+
+            def drain_one() -> Iterator[pa.RecordBatch]:
+                nonlocal inflight
+                future, estimate = pending.popleft()
+                inflight -= estimate
+                yield from future.result()
+
+            try:
+                submit(first)
+                submit(second)
+                for block in block_iter:
+                    submit(block)
+                    while len(pending) > 1 and (
+                        len(pending) >= self._prefetch
+                        or (budget is not None and inflight > budget)
+                    ):
+                        yield from drain_one()
+                while pending:
+                    yield from drain_one()
+            finally:
+                # Consumer may stop early (e.g. LIMIT): drop queued work
+                # without waiting for in-flight loads. The pool itself is
+                # shared across scans and stays up.
+                for future, _ in pending:
+                    future.cancel()
+
+        return generate()
+
     def get_fragments(
         self, filter: pc.Expression | None = None
     ) -> list["_XarrayFragment"]:
@@ -894,107 +995,6 @@ class XarrayPushdownDataset(pads.Dataset):
                 run_rows += rows
             if run:
                 yield flush(prefix, run)
-
-    def _batch_generator(
-        self,
-        scan_schema: pa.Schema,
-        blocks: Iterator[Block] | list[Block],
-        batch_size: int,
-    ) -> Iterator[pa.RecordBatch]:
-        names = list(scan_schema.names)
-        data_vars = [n for n in names if n in self._ds.data_vars]
-        # Select only the needed variables before slicing so unrequested
-        # variables are never loaded (dimension coords come via coords).
-        base = (
-            self._ds[data_vars]
-            if data_vars
-            else self._ds.drop_vars(list(self._ds.data_vars))
-        )
-
-        def load(block: Block) -> list[pa.RecordBatch]:
-            if self._iteration_callback is not None:
-                self._iteration_callback(block, names)
-            if not names:
-                # Zero-column projection: row counts are chunk
-                # arithmetic; no coordinate or variable data is read.
-                out = []
-                rows = self._block_rows(block)
-                while rows > 0:
-                    n = min(rows, batch_size)
-                    out.append(
-                        pa.table({"_": np.empty(n, np.int8)})
-                        .select([])
-                        .to_batches()[0]
-                    )
-                    rows -= n
-                return out
-            return list(
-                iter_record_batches(base.isel(block), scan_schema, batch_size)
-            )
-
-        # Estimated pivoted bytes per row: gates admission when a
-        # byte budget is set, so peak memory tracks bytes in flight
-        # rather than block count (blocks vary in size under
-        # coalesce_rows).
-        row_width = 0
-        for field in scan_schema:
-            try:
-                row_width += np.dtype(field.type.to_pandas_dtype()).itemsize
-            except (TypeError, NotImplementedError):
-                row_width += 8
-
-        def generate() -> Iterator[pa.RecordBatch]:
-            block_iter = iter(blocks)
-            first = next(block_iter, None)
-            if first is None:
-                return
-            second = next(block_iter, None)
-            if self._pool is None or second is None:
-                # Single-block scans (a lazy round-trip window that maps
-                # onto one source chunk) skip the pool entirely.
-                yield from load(first)
-                if second is not None:
-                    yield from load(second)
-                    for block in block_iter:
-                        yield from load(block)
-                return
-            pool = self._pool
-            budget = self._prefetch_bytes
-            pending: deque = deque()
-            inflight = 0
-
-            def submit(block: Block) -> None:
-                nonlocal inflight
-                estimate = self._block_rows(block) * row_width
-                pending.append((pool.submit(load, block), estimate))
-                inflight += estimate
-
-            def drain_one() -> Iterator[pa.RecordBatch]:
-                nonlocal inflight
-                future, estimate = pending.popleft()
-                inflight -= estimate
-                yield from future.result()
-
-            try:
-                submit(first)
-                submit(second)
-                for block in block_iter:
-                    submit(block)
-                    while len(pending) > 1 and (
-                        len(pending) >= self._prefetch
-                        or (budget is not None and inflight > budget)
-                    ):
-                        yield from drain_one()
-                while pending:
-                    yield from drain_one()
-            finally:
-                # Consumer may stop early (e.g. LIMIT): drop queued work
-                # without waiting for in-flight loads. The pool itself is
-                # shared across scans and stays up.
-                for future, _ in pending:
-                    future.cancel()
-
-        return generate()
 
 
 class _XarrayFragment:
