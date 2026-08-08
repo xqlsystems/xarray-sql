@@ -1,4 +1,5 @@
 import itertools
+from collections import defaultdict
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping
 from typing import Any
 
@@ -129,6 +130,23 @@ def block_slices(ds: xr.Dataset, chunks: Chunks = None) -> Iterator[Block]:
 def explode(ds: xr.Dataset, chunks: Chunks = None) -> Iterator[xr.Dataset]:
     """Explodes a dataset into its chunks."""
     yield from (ds.isel(b) for b in block_slices(ds, chunks=chunks))
+
+
+def group_vars_by_dims(ds: xr.Dataset) -> dict[tuple[str, ...], list[str]]:
+    """Group a Dataset's data variables by their exact dimension tuple.
+
+    Variables that share dimensions can share a table; each distinct
+    dimension tuple becomes its own table when a mixed-dimension Dataset
+    is registered::
+
+        ("time", "lat", "lon"):          ["temperature_2m", "wind_speed"],
+        ("time", "lat", "lon", "level"): ["pressure", "humidity"]
+    """
+    groups = defaultdict(list)
+    for var_name, var in ds.data_vars.items():
+        dims = var.dims
+        groups[dims].append(var_name)
+    return groups
 
 
 def _block_len(block: Block) -> int:
@@ -293,9 +311,39 @@ def dataset_to_record_batch(
     return pa.RecordBatch.from_arrays(arrays, schema=schema)
 
 
-#: Default number of rows per emitted Arrow RecordBatch.
-#: 64 K rows balances DataFusion pipeline depth against per-batch overhead.
 DEFAULT_BATCH_SIZE: int = 65_536
+"""Default number of rows per emitted Arrow RecordBatch.
+
+64 K rows balances DataFusion pipeline depth against per-batch overhead.
+"""
+
+_FULL_PIVOT_MAX_ROWS: int = 8_388_608
+"""Row cap for the whole-partition coordinate fast path in
+iter_record_batches.
+
+Below this, coordinate columns are materialised for the full partition
+with repeat/tile (sequential writes, ~3x faster than per-batch index
+arithmetic) and batches are zero-copy slices; the cost is holding every
+coordinate column of the partition in memory at once (rows x 8 bytes x
+n_dims). Above it — e.g. single-time-step reanalysis partitions with
+tens of millions of rows — the per-batch path keeps peak memory at
+O(batch_size) per coordinate instead.
+"""
+
+
+def _as_single_array(values, type: pa.DataType, *, from_pandas: bool = False):
+    """``pa.array`` that always returns a contiguous ``pa.Array``.
+
+    ``pa.array`` may return a ``ChunkedArray`` instead of an ``Array`` for
+    large inputs (observed for numpy fixed-width unicode columns of a few
+    million rows — e.g. a string dimension coordinate tiled across a full
+    partition). ``RecordBatch.from_arrays`` rejects chunked input, so
+    flatten it back to one contiguous array.
+    """
+    arr = pa.array(values, type=type, from_pandas=from_pandas)
+    if isinstance(arr, pa.ChunkedArray):
+        arr = arr.combine_chunks()
+    return arr
 
 
 def iter_record_batches(
@@ -338,6 +386,8 @@ def iter_record_batches(
 
     # Preload small 1-D coordinate arrays (negligible memory).
     # Convert cftime objects to numeric values matching the schema type.
+    # Projected scans may omit dimension columns from the schema; those
+    # dims still shape the iteration but never emit a column.
     coord_values = {}
     schema_names = set(schema.names)
     for name in dim_names:
@@ -368,6 +418,36 @@ def iter_record_batches(
             else:
                 data_arrays[field.name] = raw.ravel()
 
+    if 0 < total_rows <= _FULL_PIVOT_MAX_ROWS:
+        # Fast path: build each coordinate column once for the whole
+        # partition. In C order, dim k's flat column is its coord values
+        # each repeated prod(shape[k+1:]) times, with that pattern tiled
+        # prod(shape[:k]) times — two sequential-write kernels, much
+        # faster than per-batch division/modulo plus gather. Batches are
+        # then zero-copy slices of the full-partition Arrow arrays.
+        full_arrays = []
+        for field in schema:
+            name = field.name
+            if name in ds.coords and name in ds.dims:
+                k = dim_names.index(name)
+                outer = int(np.prod(shape[:k]))
+                col = np.repeat(coord_values[name], strides[k])
+                if outer > 1:
+                    col = np.tile(col, outer)
+                full_arrays.append(_as_single_array(col, field.type))
+            else:
+                full_arrays.append(
+                    _as_single_array(
+                        data_arrays[name], field.type, from_pandas=True
+                    )
+                )
+        for row_start in range(0, total_rows, batch_size):
+            yield pa.RecordBatch.from_arrays(
+                [a.slice(row_start, batch_size) for a in full_arrays],
+                schema=schema,
+            )
+        return
+
     for row_start in range(0, total_rows, batch_size):
         row_end = min(row_start + batch_size, total_rows)
         row_idx = np.arange(row_start, row_end)
@@ -379,13 +459,13 @@ def iter_record_batches(
                 k = dim_names.index(name)
                 coord_idx = (row_idx // strides[k]) % shape[k]
                 arrays.append(
-                    pa.array(coord_values[name][coord_idx], type=field.type)
+                    _as_single_array(coord_values[name][coord_idx], field.type)
                 )
             else:
                 arrays.append(
-                    pa.array(
+                    _as_single_array(
                         data_arrays[name][row_start:row_end],
-                        type=field.type,
+                        field.type,
                         from_pandas=True,
                     )
                 )
@@ -412,7 +492,7 @@ def _parse_schema(ds: xr.Dataset) -> pa.Schema:
 
     Only *dimension coordinates* become dimension columns, so a dimension
     without a coordinate would be dropped. Callers must run the Dataset through
-    :func:`_ensure_default_indexes` first (the readers do) so every dimension
+    ``_ensure_default_indexes`` first (the readers do) so every dimension
     has a coordinate and appears as a column.
 
     Uses the xarray index type to detect cftime coordinates without

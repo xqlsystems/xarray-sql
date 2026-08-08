@@ -40,8 +40,7 @@ import datetime
 
 import xarray as xr
 
-import xarray_sql as xql
-
+from _engines import EngineContext
 from _harness import (
     CaseSkipped,
     assert_grid_close,
@@ -74,7 +73,8 @@ def main() -> None:
     except Exception as exc:  # noqa: BLE001 — any failure → skip, not crash
         raise CaseSkipped(f"ARCO-ERA5 unavailable ({exc})") from exc
 
-    ctx = xql.XarrayContext()
+    ctx = EngineContext()
+    print(f"  engine: {ctx.flavor}")
     with timed("register full ERA5 (lazy)"):
         ctx.from_dataset(
             "era5",
@@ -113,8 +113,10 @@ def main() -> None:
 
     # The anomaly is a gridded field; round-trip it to (time, lat, lon).
     for _ in measured("SQL anomaly (climatology CTE self-join, lazy read)"):
-        got = ctx.sql(sql, param_values=_PARAMS).to_dataset(
-            dims=["time", "latitude", "longitude"]
+        got = ctx.sql_to_dataset(
+            sql,
+            dims=["time", "latitude", "longitude"],
+            param_values=_PARAMS,
         )
 
     # Array reference: grouped broadcast-subtract, in pure xarray (lazy window).

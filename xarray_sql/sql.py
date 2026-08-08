@@ -1,11 +1,10 @@
 import xarray as xr
 from datafusion import SessionContext
 from datafusion.catalog import Schema
-from collections import defaultdict
 from types import ModuleType
 
 from . import cftime as cft
-from .df import Chunks
+from .df import Chunks, group_vars_by_dims
 from .ds import XarrayDataFrame
 from .reader import read_xarray_table
 
@@ -100,7 +99,7 @@ class XarrayContext(SessionContext):
         Returns:
             self, to allow chaining.
         """
-        groups = _group_vars_by_dims(input_table)
+        groups = group_vars_by_dims(input_table)
 
         # Materialise dim coordinates once and share across every sub-table.
         # For Zarr-backed parents (e.g. ARCO-ERA5 on GCS) this saves one
@@ -170,7 +169,7 @@ class XarrayContext(SessionContext):
                     break  # One UDF per context is enough.
 
     def sql(self, query: str, *args, **kwargs) -> XarrayDataFrame:
-        """Run a SQL query, returning an :class:`XarrayDataFrame` wrapper.
+        """Run a SQL query, returning an [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame] wrapper.
 
         Identical to ``datafusion.SessionContext.sql`` except the returned
         object wraps the DataFusion DataFrame. The wrapper exposes
@@ -185,20 +184,7 @@ class XarrayContext(SessionContext):
             **kwargs: Forwarded to ``SessionContext.sql``.
 
         Returns:
-            An :class:`XarrayDataFrame` wrapping the DataFusion DataFrame.
+            An [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame] wrapping the DataFusion DataFrame.
         """
         inner = super().sql(query, *args, **kwargs)
         return XarrayDataFrame(inner, templates=self._registered_datasets)
-
-
-def _group_vars_by_dims(ds: xr.Dataset) -> dict[tuple[str, ...], list[str]]:
-    """Group variables in the dataset based on shared dims.
-
-    ("time", "lat", "lon"):          ["temperature_2m", "wind_speed"],
-    ("time", "lat", "lon", "level"): ["pressure", "humidity"]
-    """
-    groups = defaultdict(list)
-    for var_name, var in ds.data_vars.items():
-        dims = var.dims
-        groups[dims].append(var_name)
-    return groups

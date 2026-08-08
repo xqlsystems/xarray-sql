@@ -142,6 +142,17 @@ ctx.sql('SELECT * FROM goes.scalar').to_pandas().shape            # -> (1, 89)
 Override the default name like any other group with `table_names={(): 'metadata'}`.
 
 A runnable version of the ERA5 example lives at
-[`perf_tests/era5_temp_profile.py`](../perf_tests/era5_temp_profile.py).
+[`perf_tests/era5_temp_profile.py`](https://github.com/xqlsystems/xarray-sql/blob/main/perf_tests/era5_temp_profile.py).
 
 [arco-era5]: https://github.com/google-research/arco-era5
+
+
+## The same tables on DuckDB and Polars
+
+Every example above registers through an `XarrayContext`, but the tables are
+not DataFusion-specific: `xql.register(con, name, ds)` attaches the same lazy,
+pushdown-scanned table to a DuckDB connection, and
+`pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))` serves Polars — same
+splitting rules for mixed-dimension Datasets, same round-trip through
+`xql.to_dataset(result, template=ds)`. See [Engines](engines.md) for the
+support matrix and per-engine details.

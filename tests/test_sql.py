@@ -6,7 +6,6 @@ import pytest
 import xarray as xr
 
 from xarray_sql import XarrayContext
-from xarray_sql.sql import _group_vars_by_dims
 
 
 def test_sanity(air_dataset_small):
@@ -323,58 +322,6 @@ class TestCftimeNonGregorian:
             ctx.sql(
                 "SELECT COUNT(*) FROM rasm WHERE time >= cftime('1980-01-01')"
             ).collect()
-
-
-class TestGroupVarsByDims:
-    """Unit tests for the private _group_vars_by_dims helper."""
-
-    def test_single_dim_group(self):
-        ds = xr.Dataset(
-            {
-                "a": (["x", "y"], np.zeros((2, 3))),
-                "b": (["x", "y"], np.ones((2, 3))),
-            }
-        )
-        groups = _group_vars_by_dims(ds)
-        assert groups == {("x", "y"): ["a", "b"]}
-
-    def test_multiple_dim_groups(self):
-        ds = xr.Dataset(
-            {
-                "surface": (["time", "lat", "lon"], np.zeros((2, 3, 4))),
-                "upper": (
-                    ["time", "lat", "lon", "level"],
-                    np.zeros((2, 3, 4, 5)),
-                ),
-            }
-        )
-        groups = _group_vars_by_dims(ds)
-        assert set(groups.keys()) == {
-            ("time", "lat", "lon"),
-            ("time", "lat", "lon", "level"),
-        }
-        assert groups[("time", "lat", "lon")] == ["surface"]
-        assert groups[("time", "lat", "lon", "level")] == ["upper"]
-
-    def test_empty_dataset(self):
-        assert _group_vars_by_dims(xr.Dataset()) == {}
-
-    def test_includes_scalar_group(self):
-        """Scalar (0-dim) variables group under the empty dims tuple."""
-        ds = xr.Dataset(
-            {"band": (["y", "x"], np.zeros((2, 3))), "projection": ((), 0)}
-        )
-        groups = _group_vars_by_dims(ds)
-        assert groups == {("y", "x"): ["band"], (): ["projection"]}
-
-    def test_ignores_coords(self):
-        """Coordinate variables shouldn't be returned as groups."""
-        ds = xr.Dataset(
-            {"v": (["x"], np.arange(3))},
-            coords={"x": np.arange(3), "label": ("x", ["a", "b", "c"])},
-        )
-        groups = _group_vars_by_dims(ds)
-        assert groups == {("x",): ["v"]}
 
 
 class TestFromDatasetMultiDims:

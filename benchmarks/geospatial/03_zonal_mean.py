@@ -36,8 +36,7 @@ import datetime
 
 import xarray as xr
 
-import xarray_sql as xql
-
+from _engines import EngineContext
 from _harness import (
     CaseSkipped,
     assert_grid_close,
@@ -75,7 +74,8 @@ def main() -> None:
 
     # ERA5 mixes surface (time, lat, lon) and atmospheric (… level …) variables,
     # so register it as two tables under an ``era5`` schema.
-    ctx = xql.XarrayContext()
+    ctx = EngineContext()
+    print(f"  engine: {ctx.flavor}")
     with timed("register full ERA5"):
         ctx.from_dataset(
             "era5",
@@ -101,9 +101,11 @@ def main() -> None:
 
     # Round-trip the profile back to an xarray Dataset keyed by latitude.
     for _ in measured("SQL zonal mean (reads one day)"):
-        got = ctx.sql(
-            sql, param_values={"start": _START, "end": _END}
-        ).to_dataset(dims=["latitude"])
+        got = ctx.sql_to_dataset(
+            sql,
+            dims=["latitude"],
+            param_values={"start": _START, "end": _END},
+        )
 
     # Array reference: reduce the same day over the two un-grouped axes.
     for _ in measured("xarray reference"):

@@ -16,6 +16,7 @@ from xarray_sql.df import (
     explode,
     from_map,
     from_map_batched,
+    group_vars_by_dims,
     iter_record_batches,
     partition_metadata,
     pivot,
@@ -429,20 +430,22 @@ def test_read_xarray_loads_one_chunk_at_a_time(large_ds):
             peaks.append(cur_peak)
 
         for size in sizes:
-            # Observed range: 1.59–1.83× on macOS, up to ~2.7× on Linux
-            # (glibc + Arrow allocate more intermediate buffers).
-            # iter_record_batches holds data-variable arrays (≈1× chunk) while
-            # yielding sub-batches, plus the current Arrow batch (≈0.65× chunk).
+            # iter_record_batches' whole-partition fast path holds the
+            # data-variable arrays (≈1× chunk) plus repeat/tile-expanded
+            # coordinate columns (n_dims × 8 bytes × rows, ≈1.5× chunk
+            # for this 3-dim float64 dataset) for the partition being
+            # streamed; batches themselves are zero-copy slices.
             assert chunk_size * 1.3 < size, f"size {size} unexpectedly low"
-            assert chunk_size * 3.5 > size, f"size {size} unexpectedly high"
+            assert chunk_size * 4.0 > size, f"size {size} unexpectedly high"
 
         for peak in peaks:
-            # Observed range: 1.84–3.28× on macOS, up to ~4.15× on Linux
-            # (glibc + Arrow hold more intermediate buffers at peak).
-            # Peak includes data arrays + Arrow batch + temporary coordinate index
-            # arrays; the first batch of each chunk is highest (Dask compute overhead).
+            # Peak adds transient buffers on top of the steady state:
+            # np.repeat/np.tile intermediates for the coordinate columns
+            # and Arrow's from_pandas null scan; the first batch of each
+            # chunk is highest (Dask compute overhead). Observed ~5.04×
+            # on macOS.
             assert chunk_size * 1.5 < peak, f"peak {peak} unexpectedly low"
-            assert chunk_size * 5.0 > peak, f"peak {peak} unexpectedly high"
+            assert chunk_size * 6.5 > peak, f"peak {peak} unexpectedly high"
 
         assert max(peaks) < large_ds.nbytes
     finally:
@@ -558,6 +561,27 @@ def test_compute_chunks_tuples_sum_to_dim_size():
     result = compute_chunks(ds, {"a": 3, "b": 4, "c": 5})
     for dim, tup in result.items():
         assert sum(tup) == ds.sizes[dim]
+
+
+def test_iter_record_batches_large_string_dim_coord():
+    """A string dim coord big enough that pa.array returns a ChunkedArray.
+
+    Pivoting tiles a string dimension coordinate across every row of the
+    partition; for a few million rows pyarrow's numpy-unicode conversion
+    returns a ChunkedArray, which RecordBatch.from_arrays rejects.
+    Regression: found by the forecast-skill benchmark (a 2-model x 3.3M-row
+    window) streaming through the pyarrow dataset protocol into DuckDB.
+    """
+    n_x = 1_700_000  # 2 * n_x rows: comfortably past the chunking threshold
+    ds = xr.Dataset(
+        {"value": (("model", "x"), np.zeros((2, n_x), dtype="float32"))},
+        coords={"model": ["pangu", "graphcast"], "x": np.arange(n_x)},
+    )
+    schema = _parse_schema(ds)
+    got_rows = 0
+    for batch in iter_record_batches(ds, schema, batch_size=DEFAULT_BATCH_SIZE):
+        got_rows += batch.num_rows
+    assert got_rows == 2 * n_x
 
 
 # -- Object-dtype and out-of-ns-range coordinate support --------------------
@@ -693,3 +717,53 @@ def test_partition_metadata_in_range_datetime_still_pruned():
     for m in meta:
         _, _, tag = m["time"]
         assert tag == "timestamp_ns"
+
+
+class TestGroupVarsByDims:
+    def test_single_dim_group(self):
+        ds = xr.Dataset(
+            {
+                "a": (["x", "y"], np.zeros((2, 3))),
+                "b": (["x", "y"], np.ones((2, 3))),
+            }
+        )
+        groups = group_vars_by_dims(ds)
+        assert groups == {("x", "y"): ["a", "b"]}
+
+    def test_multiple_dim_groups(self):
+        ds = xr.Dataset(
+            {
+                "surface": (["time", "lat", "lon"], np.zeros((2, 3, 4))),
+                "upper": (
+                    ["time", "lat", "lon", "level"],
+                    np.zeros((2, 3, 4, 5)),
+                ),
+            }
+        )
+        groups = group_vars_by_dims(ds)
+        assert set(groups.keys()) == {
+            ("time", "lat", "lon"),
+            ("time", "lat", "lon", "level"),
+        }
+        assert groups[("time", "lat", "lon")] == ["surface"]
+        assert groups[("time", "lat", "lon", "level")] == ["upper"]
+
+    def test_empty_dataset(self):
+        assert group_vars_by_dims(xr.Dataset()) == {}
+
+    def test_includes_scalar_group(self):
+        """Scalar (0-dim) variables group under the empty dims tuple."""
+        ds = xr.Dataset(
+            {"band": (["y", "x"], np.zeros((2, 3))), "projection": ((), 0)}
+        )
+        groups = group_vars_by_dims(ds)
+        assert groups == {("y", "x"): ["band"], (): ["projection"]}
+
+    def test_ignores_coords(self):
+        """Coordinate variables shouldn't be returned as groups."""
+        ds = xr.Dataset(
+            {"v": (["x"], np.arange(3))},
+            coords={"x": np.arange(3), "label": ("x", ["a", "b", "c"])},
+        )
+        groups = group_vars_by_dims(ds)
+        assert groups == {("x",): ["v"]}

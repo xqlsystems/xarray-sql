@@ -2,7 +2,7 @@
 
 ## Where to start?
 
-Please check out the [issues tab](https://github.com/alxmrs/xarray-sql/issues).
+Please check out the [issues tab](https://github.com/xqlsystems/xarray-sql/issues).
 Let's have a discussion over there before proceeding with any changes. Great
 minds think alike -- someone may have already created an issue related to your
 inquiry. If there's a bug, please let us know.
