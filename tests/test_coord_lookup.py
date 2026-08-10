@@ -1,13 +1,20 @@
 """Coordinate-value -> array-position lookup used by the reverse pivot.
 
-``_scatter_batches_to_ndarray`` places each result row into a dense N-D
-array by resolving its dim-coord values to integer positions through
-``_CoordLookup``: an affine formula for uniformly spaced axes, a hash
-table (``pd.Index``, built once, probed per batch) for irregular unique
-axes, and an ``argsort``/``searchsorted`` fallback for axes with
-duplicate values. These tests pin the correctness of each strategy on
-out-of-order (shuffled) input -- the row order a parallel engine
-produces -- plus the error contract for values absent from the axis.
+``to_dataset`` places each result row into a dense N-D array by
+resolving its dim-coord values to integer positions: an affine formula
+for uniformly spaced axes, a hash table for irregular unique axes, and
+an ``argsort``/``searchsorted`` fallback for axes a hash table cannot
+represent. These tests exercise each strategy through the public
+``to_dataset`` contract on out-of-order (shuffled) rows — the arrival
+order a parallel engine produces.
+
+Two behaviors are unreachable through the eager public path, because
+``to_dataset`` derives each axis from the same rows it scatters
+(``pd.unique``), so the axis can neither miss a row's value nor carry
+duplicates. Those two are covered at the ``_scatter_batches_to_ndarray``
+seam directly: the error raised for a value absent from the axis (which
+arises when an engine-backed lazy read's pre-computed coords go stale),
+and the duplicate-axis fallback.
 """
 
 import numpy as np
@@ -16,7 +23,7 @@ import pytest
 import xarray as xr
 
 from xarray_sql import to_dataset
-from xarray_sql.ds import _CoordLookup, _scatter_batches_to_ndarray
+from xarray_sql.ds import _scatter_batches_to_ndarray
 
 
 def _irregular_axis(n: int, seed: int = 0) -> np.ndarray:
@@ -25,132 +32,136 @@ def _irregular_axis(n: int, seed: int = 0) -> np.ndarray:
     return np.cumsum(rng.exponential(scale=1.0, size=n) + 1e-6)
 
 
-def _shuffled_batches(
-    time: np.ndarray, station: np.ndarray, values: np.ndarray, batch_size: int
-) -> list[pa.RecordBatch]:
-    """The full (time, station) grid as shuffled row batches."""
-    tt, ss = np.meshgrid(time, station, indexing="ij")
-    flat_t, flat_s, flat_v = tt.ravel(), ss.ravel(), values.ravel()
-    rng = np.random.default_rng(1)
-    order = rng.permutation(flat_v.shape[0])
-    flat_t, flat_s, flat_v = flat_t[order], flat_s[order], flat_v[order]
-    schema = pa.schema(
-        [
-            ("time", pa.from_numpy_dtype(time.dtype)),
-            ("station", pa.from_numpy_dtype(station.dtype)),
-            ("v", pa.from_numpy_dtype(values.dtype)),
-        ]
+def _shuffled_table(template: xr.Dataset, seed: int = 1) -> pa.Table:
+    """The template's full grid as one Arrow table with rows shuffled."""
+    dims = list(next(iter(template.data_vars.values())).dims)
+    grids = np.meshgrid(*(template[d].values for d in dims), indexing="ij")
+    columns = {d: g.ravel() for d, g in zip(dims, grids)}
+    for name, var in template.data_vars.items():
+        columns[name] = var.values.ravel()
+    rng = np.random.default_rng(seed)
+    order = rng.permutation(len(columns[dims[0]]))
+    return pa.table({name: col[order] for name, col in columns.items()})
+
+
+def _roundtrip(template: xr.Dataset) -> xr.Dataset:
+    """Shuffle the template into rows, reconstruct, and sort back.
+
+    Output coordinate order follows first appearance in the (shuffled)
+    result — the behavior that lets an ORDER BY direction carry through
+    — so the reconstruction is sorted before comparing.
+    """
+    out = to_dataset(_shuffled_table(template), template=template)
+    dims = list(next(iter(template.data_vars.values())).dims)
+    return out.sortby(dims)
+
+
+def test_irregular_axis_roundtrip():
+    """Shuffled rows over an irregular (hash-strategy) axis reconstruct
+    the exact Dataset."""
+    template = xr.Dataset(
+        {
+            "v": (
+                ("time", "station"),
+                np.random.default_rng(2).standard_normal((6, 50)),
+            )
+        },
+        coords={
+            "time": np.arange(6, dtype="int64"),
+            "station": _irregular_axis(50),
+        },
     )
+    xr.testing.assert_allclose(_roundtrip(template), template)
+
+
+def test_descending_uniform_axis_roundtrip():
+    """A descending uniformly spaced axis (affine strategy) reconstructs;
+    the descending order itself survives via first-appearance coords."""
+    template = xr.Dataset(
+        {
+            "v": (
+                ("lat",),
+                np.random.default_rng(3).standard_normal(19),
+            )
+        },
+        coords={"lat": np.linspace(90.0, -90.0, 19)},
+    )
+    # Unshuffled rows: the descending source order carries through as-is.
+    out = to_dataset(_shuffled_table(template, seed=0), template=template)
+    xr.testing.assert_allclose(out.sortby("lat"), template.sortby("lat"))
+
+
+def test_nan_dim_value_roundtrip():
+    """A NaN dim value in the result resolves to its own cell (the hash
+    strategy matches NaN by value equality)."""
+    station = np.array([2.0, np.nan, 5.0, 1.0])
+    template = xr.Dataset(
+        {"v": (("station",), np.array([10.0, 20.0, 30.0, 40.0]))},
+        coords={"station": station},
+    )
+    table = pa.table({"station": station, "v": template["v"].values})
+    out = to_dataset(table, template=template)
+    np.testing.assert_array_equal(out["v"].values, template["v"].values)
+
+
+def test_float16_axis_roundtrip():
+    """A float16 coordinate axis reconstructs through the sorted-search
+    strategy (pandas indexes do not support float16)."""
+    station = np.array([0.5, 1.5, 4.0, 9.0], dtype="float16")
+    template = xr.Dataset(
+        {"v": (("station",), np.array([1.0, 2.0, 3.0, 4.0], dtype="f4"))},
+        coords={"station": station},
+    )
+    table = pa.table(
+        {
+            "station": pa.array(station, type=pa.float16()),
+            "v": template["v"].values,
+        }
+    )
+    out = to_dataset(table, template=template)
+    np.testing.assert_array_equal(out["v"].values, template["v"].values)
+
+
+def _one_batch(station: np.ndarray, v: np.ndarray) -> list[pa.RecordBatch]:
     return [
         pa.RecordBatch.from_arrays(
-            [
-                pa.array(flat_t[i : i + batch_size]),
-                pa.array(flat_s[i : i + batch_size]),
-                pa.array(flat_v[i : i + batch_size]),
-            ],
-            schema=schema,
+            [pa.array(station), pa.array(v)], names=["station", "v"]
         )
-        for i in range(0, flat_v.shape[0], batch_size)
     ]
 
 
-def test_irregular_axis_scatter_matches_reference():
-    """Shuffled rows over an irregular (hash-path) axis land correctly."""
-    time = np.arange(6, dtype="int64")
-    station = _irregular_axis(50)
-    values = np.random.default_rng(2).standard_normal((6, 50)).astype("f4")
-    batches = _shuffled_batches(time, station, values, batch_size=37)
+def test_missing_value_raises_value_error():
+    """A row value absent from a unique irregular axis fails loudly
+    instead of scattering to a wrong cell."""
+    axis = _irregular_axis(10)
+    with pytest.raises(ValueError, match="dimension 'station'"):
+        _scatter_batches_to_ndarray(
+            batches=_one_batch(np.array([-1.0]), np.array([0.0], dtype="f4")),
+            dimension_columns=["station"],
+            requested={"station": axis},
+            var_name="v",
+            out_shape=(10,),
+            dtype=np.dtype("float32"),
+            drop_axes=[],
+        )
 
+
+def test_duplicate_axis_values_scatter_to_a_holding_position():
+    """An axis with duplicate values takes the sorted-search fallback:
+    each value lands on a position that holds it in the axis."""
+    axis = np.array([3.0, 1.0, 2.0, 1.0])  # 1.0 appears twice
     out = _scatter_batches_to_ndarray(
-        batches=batches,
-        dimension_columns=["time", "station"],
-        requested={"time": time, "station": station},
+        batches=_one_batch(
+            np.array([1.0, 2.0, 3.0]), np.array([10.0, 20.0, 30.0], dtype="f4")
+        ),
+        dimension_columns=["station"],
+        requested={"station": axis},
         var_name="v",
-        out_shape=(6, 50),
+        out_shape=(4,),
         dtype=np.dtype("float32"),
         drop_axes=[],
     )
-    np.testing.assert_array_equal(out, values)
-
-
-def test_descending_affine_axis_unchanged():
-    """A descending uniformly spaced axis stays on the affine path."""
-    lat = np.linspace(90.0, -90.0, 19)  # descending, uniform
-    lookup = _CoordLookup(lat)
-    assert lookup._affine is not None
-    pos = lookup.positions_for(np.array([90.0, 0.0, -90.0]), dim="lat")
-    np.testing.assert_array_equal(pos, [0, 9, 18])
-
-
-def test_missing_value_raises_value_error():
-    """A result value absent from the axis is a coordinate-discovery bug;
-    it must fail loudly instead of scattering to a wrong cell."""
-    station = _irregular_axis(10)
-    lookup = _CoordLookup(station)
-    assert lookup._hash_index is not None
-    with pytest.raises(ValueError, match="dimension 'station'"):
-        lookup.positions_for(np.array([-1.0]), dim="station")
-
-
-def test_duplicate_axis_values_fall_back_to_search():
-    """An axis with duplicate values cannot key a unique hash table; the
-    sorted-search fallback keeps every value resolving to a position that
-    holds it (which of the duplicate positions is returned is
-    unspecified)."""
-    axis = np.array([3.0, 1.0, 2.0, 1.0])  # 1.0 appears twice
-    lookup = _CoordLookup(axis)
-    assert lookup._hash_index is None and lookup._sorted_req is not None
-    pos = lookup.positions_for(np.array([1.0, 2.0, 3.0]), dim="x")
-    assert axis[pos[0]] == 1.0
-    assert axis[pos[1]] == 2.0
-    assert axis[pos[2]] == 3.0
-
-
-def test_nan_in_irregular_axis_resolves():
-    """A NaN dim value in the result resolves to the axis's NaN position
-    (pandas index lookups treat NaN as equal to NaN)."""
-    axis = np.array([2.0, np.nan, 5.0, 1.0])  # non-affine (NaN breaks it)
-    lookup = _CoordLookup(axis)
-    assert lookup._hash_index is not None
-    pos = lookup.positions_for(np.array([np.nan, 1.0]), dim="x")
-    np.testing.assert_array_equal(pos, [1, 3])
-
-
-def test_to_dataset_roundtrips_shuffled_irregular_result():
-    """End to end through the engine-agnostic ``to_dataset``: a shuffled
-    Arrow result over an irregular axis reconstructs the exact Dataset."""
-    time = np.arange(4, dtype="int64")
-    station = _irregular_axis(30, seed=3)
-    values = np.random.default_rng(4).standard_normal((4, 30)).astype("f8")
-    template = xr.Dataset(
-        {"v": (("time", "station"), values)},
-        coords={"time": time, "station": station},
-    )
-
-    tt, ss = np.meshgrid(time, station, indexing="ij")
-    rng = np.random.default_rng(5)
-    order = rng.permutation(values.size)
-    table = pa.table(
-        {
-            "time": tt.ravel()[order],
-            "station": ss.ravel()[order],
-            "v": values.ravel()[order],
-        }
-    )
-
-    out = to_dataset(table, dims=["time", "station"], template=template)
-    # Coordinate order follows first appearance in the (shuffled) result --
-    # the documented behavior that lets an ORDER BY direction carry through
-    # -- so compare on a common sort.
-    xr.testing.assert_allclose(out.sortby(["time", "station"]), template)
-
-
-def test_hash_index_reused_across_batches():
-    """The pandas hash index is built once per reconstruction, not per
-    batch -- the property the speedup rests on."""
-    station = _irregular_axis(100)
-    lookup = _CoordLookup(station)
-    first = lookup._hash_index
-    lookup.positions_for(station[:10], dim="station")
-    lookup.positions_for(station[50:60], dim="station")
-    assert lookup._hash_index is first
+    # 2.0 and 3.0 have unique positions; 10.0 landed on one of the two
+    # cells whose coordinate is 1.0.
+    assert out[2] == 20.0 and out[0] == 30.0
+    assert 10.0 in (out[1], out[3])

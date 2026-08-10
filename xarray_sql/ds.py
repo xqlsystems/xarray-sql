@@ -198,14 +198,14 @@ class _CoordLookup:
       batches. The table holds roughly twice the transient memory of
       the sorted copy the search strategy needs; affine axes build
       neither.
-    * **Sorted search** — axes with duplicate values, where a unique-key
-      hash table cannot represent the value-to-position mapping:
+    * **Sorted search** — axes the hash strategy cannot represent:
+      duplicate values (a unique-key table has no single position per
+      value) or dtypes ``pd.Index`` does not support (e.g. float16):
       ``np.argsort`` once, then ``np.searchsorted`` per batch (O(log n)
-      per row). Duplicate dim values only reach this code from a
-      pathological result (``to_dataset`` raises on duplicate dim tuples
-      earlier on the main paths), but the fallback keeps the mapping
-      well-defined: each value resolves to one of the positions holding
-      it (which one is unspecified).
+      per row). With duplicates, each value resolves to one of the
+      positions holding it (which one is unspecified), and rows
+      targeting the same cell overwrite in batch order — the scatter's
+      last-write-wins semantics.
 
     Only the hash strategy can detect a probe value absent from the
     axis; ``positions_for`` then raises ``ValueError`` — a symptom of a
@@ -222,8 +222,15 @@ class _CoordLookup:
         self._sorted_idx: np.ndarray | None = None
         self._sorted_req: np.ndarray | None = None
         if self._affine is None:
-            index = pd.Index(requested)
-            if index.is_unique:
+            index: pd.Index | None
+            try:
+                index = pd.Index(requested)
+            except (NotImplementedError, TypeError):
+                # Dtypes pandas cannot index (e.g. float16) take the
+                # sorted-search strategy, which only needs numpy
+                # comparisons.
+                index = None
+            if index is not None and index.is_unique:
                 self._hash_index = index
             else:
                 self._sorted_idx = np.argsort(requested)
