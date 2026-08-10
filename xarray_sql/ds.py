@@ -172,10 +172,83 @@ def _affine_axis(requested: np.ndarray) -> tuple[float, float] | None:
     predicted = numeric[0] + step * np.arange(len(numeric))
     # Written as a <= comparison so a NaN anywhere in the axis (e.g. a
     # NULL dim value in the result) fails the check and falls back to
-    # the searchsorted path, which handles it positionally.
+    # the non-affine lookup, whose hash strategy matches NaN by value
+    # equality (pandas index lookups treat NaN as equal to NaN).
     if not (np.abs(numeric - predicted) <= 0.25 * abs(step)).all():
         return None
     return float(numeric[0]), float(step)
+
+
+class _CoordLookup:
+    """Maps one dimension's coordinate values to their array positions.
+
+    Built once per dimension per reconstruction, then probed with every
+    batch's coordinate column. Three strategies, fastest applicable wins:
+
+    * **Affine** — the axis is uniformly spaced (the norm for rasters and
+      regular time steps, ascending or descending): the position is
+      ``rint((value - origin) / step)``, a fused vector op with no per-row
+      lookup at all.
+    * **Hash** — irregular axes (station networks, arbitrary point sets)
+      with unique values: a ``pd.Index`` built once; ``get_indexer``
+      probes its persistent hash table per batch, O(1) amortized per
+      row instead of a per-row binary search. Building the table once
+      here, outside the batch loop, is what makes this fast, and it is
+      only correct to reuse because the axis does not change between
+      batches. The table holds roughly twice the transient memory of
+      the sorted copy the search strategy needs; affine axes build
+      neither.
+    * **Sorted search** — axes with duplicate values, where a unique-key
+      hash table cannot represent the value-to-position mapping:
+      ``np.argsort`` once, then ``np.searchsorted`` per batch (O(log n)
+      per row). Duplicate dim values only reach this code from a
+      pathological result (``to_dataset`` raises on duplicate dim tuples
+      earlier on the main paths), but the fallback keeps the mapping
+      well-defined: each value resolves to one of the positions holding
+      it (which one is unspecified).
+
+    Only the hash strategy can detect a probe value absent from the
+    axis; ``positions_for`` then raises ``ValueError`` — a symptom of a
+    filtered query whose coordinate discovery missed a value, which
+    would otherwise scatter to a wrong cell. The affine strategy rounds
+    such a value to the nearest grid position and the sorted strategy
+    resolves it to a neighbor, both preserving their historical
+    semantics.
+    """
+
+    def __init__(self, requested: np.ndarray) -> None:
+        self._affine: tuple[float, float] | None = _affine_axis(requested)
+        self._hash_index: pd.Index | None = None
+        self._sorted_idx: np.ndarray | None = None
+        self._sorted_req: np.ndarray | None = None
+        if self._affine is None:
+            index = pd.Index(requested)
+            if index.is_unique:
+                self._hash_index = index
+            else:
+                self._sorted_idx = np.argsort(requested)
+                self._sorted_req = requested[self._sorted_idx]
+
+    def positions_for(self, vals: np.ndarray, dim: str) -> np.ndarray:
+        """Positions of ``vals`` within the axis, in axis order."""
+        if self._affine is not None:
+            origin, step = self._affine
+            pos = np.rint((_axis_numeric(vals) - origin) / step).astype(np.intp)
+            return cast(np.ndarray, pos)
+        if self._hash_index is not None:
+            pos = np.asarray(self._hash_index.get_indexer(vals))
+            if (pos < 0).any():
+                missing = vals[pos < 0]
+                raise ValueError(
+                    f"result contains {len(missing)} value(s) for dimension "
+                    f"{dim!r} not present in its coordinate array "
+                    f"(first: {missing[0]!r}); the query result does not "
+                    "match the reconstruction's coordinates."
+                )
+            return cast(np.ndarray, pos)
+        assert self._sorted_req is not None and self._sorted_idx is not None
+        pos_in_sorted = np.searchsorted(self._sorted_req, vals)
+        return cast(np.ndarray, self._sorted_idx[pos_in_sorted])
 
 
 def _scatter_batches_to_ndarray(
@@ -192,9 +265,9 @@ def _scatter_batches_to_ndarray(
     SQL query results arrive as flat rows; xarray expects N-D arrays.
     This bridges the two: each row carries the dim-coord values that
     identify its cell in the output cube plus the value to write there.
-    We look up the row's N-D position by binary-searching its coord
-    values within the caller's requested coord arrays
-    (``np.searchsorted``), then scatter-write the value at that index.
+    We look up each row's N-D position within the caller's requested
+    coord arrays (see ``_CoordLookup``), then scatter-write the value
+    at that index.
 
     Missing combinations (sparse results from filtered queries) stay as
     ``NaN`` for floating-point outputs by pre-filling the buffer; integer
@@ -209,21 +282,7 @@ def _scatter_batches_to_ndarray(
         else np.empty(out_shape, dtype=dtype)
     )
 
-    # ``requested[d]`` may be in any order (callers can iselect arbitrary
-    # positions, and template coords like air_temperature.lat are descending).
-    # ``np.searchsorted`` requires ascending input, so we sort each requested
-    # array once, search there, and remap back to the original positions.
-    # Uniformly spaced axes (the norm for rasters and regular time steps,
-    # ascending or descending) skip the search entirely: the position is
-    # ``rint((value - origin) / step)``, a fused vector op several times
-    # faster than a per-row binary search.
-    affine = {d: _affine_axis(requested[d]) for d in dimension_columns}
-    sorted_idx = {
-        d: np.argsort(requested[d])
-        for d in dimension_columns
-        if affine[d] is None
-    }
-    sorted_req = {d: requested[d][sorted_idx[d]] for d in sorted_idx}
+    lookups = {d: _CoordLookup(requested[d]) for d in dimension_columns}
 
     for batch in batches:
         if batch.num_rows == 0:
@@ -235,16 +294,7 @@ def _scatter_batches_to_ndarray(
         for d in dimension_columns:
             col_arr = batch.column(schema_names.index(d))
             vals = col_arr.to_numpy(zero_copy_only=False)
-            pair = affine[d]
-            if pair is not None:
-                origin, step = pair
-                pos = np.rint((_axis_numeric(vals) - origin) / step).astype(
-                    np.intp
-                )
-                positions.append(pos)
-            else:
-                pos_in_sorted = np.searchsorted(sorted_req[d], vals)
-                positions.append(sorted_idx[d][pos_in_sorted])
+            positions.append(lookups[d].positions_for(vals, dim=d))
         value_arr = batch.column(schema_names.index(var_name)).to_numpy(
             zero_copy_only=False
         )
@@ -293,11 +343,11 @@ class SQLBackendArray(xr.backends.BackendArray):
             filter/project/execute chain if a predicate refers to a
             missing column, the dtype of a literal is incompatible, or
             the execution itself fails.
-        AssertionError: from ``np.searchsorted`` mis-alignment, which
-            indicates the result contains coordinate values not present
-            in the wrapper's pre-computed coord arrays -- usually a
-            symptom of a filtered query whose coord discovery missed a
-            value.
+        ValueError: from the coordinate lookup (``_CoordLookup``) when
+            the result contains values for an irregular unique axis
+            that are not present in the wrapper's pre-computed coord
+            arrays -- usually a symptom of a filtered query whose coord
+            discovery missed a value.
 
     Constructed by ``_build_lazy_scan``; users should not instantiate
     this class directly.
@@ -462,8 +512,8 @@ def _c_order_grid(
     dimension column is its coordinates repeated/tiled in C order — the
     shape any unfiltered or bbox-windowed scan produces. When it holds,
     data variables are dense row-major arrays already and can be
-    reshaped instead of scatter-written (one memcpy versus a
-    ``searchsorted`` per dimension per row).
+    reshaped instead of scatter-written (one memcpy versus a per-row
+    position lookup and write; see ``_CoordLookup``).
     """
     shape = tuple(len(coord_arrays[d]) for d in dimension_columns)
     if total_rows != int(np.prod(shape)) or total_rows == 0:
