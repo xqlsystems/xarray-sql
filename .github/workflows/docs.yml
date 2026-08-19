@@ -38,8 +38,8 @@ jobs:
     # evaluated per incoming run, so a shared group would let an arriving
     # pre-release cancel a running stable build
     concurrency:
-      group: docs-build-${{ github.event_name == 'push' && 'dev' || ((github.event_name == 'release' && (github.event.release.prerelease || contains(github.event.release.tag_name, '-'))) || (github.event_name == 'workflow_dispatch' && inputs.version == 'rc')) && 'rc' || github.event_name == 'release' && 'stable' || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'release' && (github.event.release.prerelease || contains(github.event.release.tag_name, '-'))) || (github.event_name == 'workflow_dispatch' && inputs.version == 'rc') }}
+      group: docs-build-${{ github.event_name == 'push' && 'dev' || ((github.event_name == 'release' && (github.event.release.prerelease || (contains(github.event.release.tag_name, '-') && !contains(github.event.release.tag_name, '+')))) || (github.event_name == 'workflow_dispatch' && inputs.version == 'rc')) && 'rc' || github.event_name == 'release' && 'stable' || github.run_id }}
+      cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'release' && (github.event.release.prerelease || (contains(github.event.release.tag_name, '-') && !contains(github.event.release.tag_name, '+')))) || (github.event_name == 'workflow_dispatch' && inputs.version == 'rc') }}
 
     steps:
       # Dispatch builds a tag via the ref input; dispatching from a tag
@@ -99,8 +99,9 @@ jobs:
               exit 1
             fi
             # The tag's own pre-release suffix counts even when the GitHub
-            # pre-release checkbox was forgotten
-            if [[ "$RELEASE_PRERELEASE" == "true" || "$RELEASE_TAG" == *-* ]]; then
+            # pre-release checkbox was forgotten: a '-' right after the
+            # patch number, not a hyphen inside '+' build metadata
+            if [[ "$RELEASE_PRERELEASE" == "true" || "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+- ]]; then
               # Pre-releases go to a rolling 'rc' version so they can never
               # overwrite the stable X.Y that 'latest' may already point to
               version="rc"
