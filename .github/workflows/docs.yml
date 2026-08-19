@@ -135,12 +135,23 @@ jobs:
           # A maintenance release for an older line (e.g. v0.3.4 after
           # v0.4.0) must not move 'latest' backward; re-checked against
           # fresh gh-pages state on every attempt since release builds are
-          # not serialized. Dispatches honor the explicit input
+          # not serialized. Dispatches honor the explicit input.
+          # Returns 0 = may move, 1 = older line, 2 = could not verify —
+          # fail closed, except for a confirmed-absent gh-pages (bootstrap)
           may_move_latest() {
             [[ "$GUARD_LATEST" == "true" ]] || return 0
-            git fetch --quiet origin gh-pages 2>/dev/null || return 0
+            if ! git fetch --quiet origin gh-pages 2>/dev/null; then
+              rc=0
+              git ls-remote --exit-code origin refs/heads/gh-pages >/dev/null 2>&1 || rc=$?
+              [[ "$rc" -eq 2 ]] && return 0
+              echo "Cannot verify the current latest target; failing this attempt" >&2
+              return 2
+            fi
             current="$(git show FETCH_HEAD:versions.json 2>/dev/null \
-              | jq -r '.[] | select(.aliases | index("latest")) | .version' || true)"
+              | jq -r '.[] | select(.aliases | index("latest")) | .version')" || {
+              echo "Cannot read versions.json from gh-pages; failing this attempt" >&2
+              return 2
+            }
             if [[ -n "$current" ]] && \
                [[ "$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -1)" != "$VERSION" ]]; then
               echo "Line ${VERSION} is older than current latest (${current}); not moving the alias" >&2
@@ -148,12 +159,18 @@ jobs:
             fi
           }
           deploy() {
-            if [[ "$LATEST" == "true" ]] && may_move_latest; then
-              mike deploy --push --update-aliases --title "$TITLE" "$VERSION" latest &&
-                mike set-default --push latest
-            else
+            if [[ "$LATEST" != "true" ]]; then
               mike deploy --push --title "$TITLE" "$VERSION"
+              return
             fi
+            rc=0
+            may_move_latest || rc=$?
+            case "$rc" in
+              0) mike deploy --push --update-aliases --title "$TITLE" "$VERSION" latest &&
+                   mike set-default --push latest ;;
+              1) mike deploy --push --title "$TITLE" "$VERSION" ;;
+              *) return 2 ;;
+            esac
           }
           # Concurrent runs race on the gh-pages push; each attempt re-fetches
           # the branch, so retrying resolves the race
