@@ -83,6 +83,15 @@ jobs:
               # v0.4.0 -> 0.4
               version="$(echo "${RELEASE_TAG#v}" | cut -d. -f1,2)"
               latest="true"
+              # A maintenance release for an older line (e.g. v0.3.4 after
+              # v0.4.0) must not move 'latest' backward
+              current="$(git show origin/gh-pages:versions.json 2>/dev/null \
+                | jq -r '.[] | select(.aliases | index("latest")) | .version' || true)"
+              if [[ -n "$current" ]] && \
+                 [[ "$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -1)" != "$version" ]]; then
+                echo "Line ${version} is older than current latest (${current}); not moving the alias" >&2
+                latest="false"
+              fi
             fi
           else
             version="dev"
