@@ -38,8 +38,8 @@ jobs:
     # overwrite the newer content. Stable releases and manual dispatches
     # get unique groups and always run
     concurrency:
-      group: docs-build-${{ github.event_name == 'push' && 'dev' || github.event_name == 'release' && github.event.release.prerelease && 'rc' || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'release' && github.event.release.prerelease) }}
+      group: docs-build-${{ github.event_name == 'push' && 'dev' || ((github.event_name == 'release' && github.event.release.prerelease) || (github.event_name == 'workflow_dispatch' && inputs.version == 'rc')) && 'rc' || github.run_id }}
+      cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'release' && github.event.release.prerelease) || (github.event_name == 'workflow_dispatch' && inputs.version == 'rc') }}
 
     steps:
       # Dispatch runs on main (older tags predate the manual trigger) and
@@ -65,6 +65,7 @@ jobs:
           RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_LATEST: ${{ inputs.latest }}
+          INPUT_REF: ${{ inputs.ref }}
         run: |
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             # Only MAJOR.MINOR or the rolling 'rc' target; in particular
@@ -79,6 +80,10 @@ jobs:
             fi
             version="$INPUT_VERSION"
             latest="$INPUT_LATEST"
+            # An rc rebuild keeps its tag-derived title instead of 'rc'
+            if [[ "$INPUT_VERSION" == "rc" && -n "$INPUT_REF" ]]; then
+              title="${INPUT_REF#v}"
+            fi
           elif [[ "$EVENT_NAME" == "release" ]]; then
             if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+].*)?$ ]]; then
               echo "Tag '$RELEASE_TAG' is not vMAJOR.MINOR.PATCH; refusing to deploy docs" >&2
