@@ -91,9 +91,9 @@ Publishing a release also deploys the documentation, versioned with
 
 - A stable release deploys its docs under `XX.YY/` and moves the `latest`
   alias (the version the site root redirects to) to it.
-- A pre-release (e.g. `vXX.YY.0-rc.1`) deploys under `XX.YY/` but leaves
-  `latest` untouched, so the public default stays on the latest stable
-  release.
+- A pre-release (e.g. `vXX.YY.0-rc.1`) deploys under a rolling `rc/` version
+  (titled with the full tag) and leaves `latest` untouched, so the public
+  default stays on the latest stable release.
 - Every push to `main` refreshes the `dev` version.
 
 Docs for any version can be (re)deployed manually from the

@@ -65,11 +65,15 @@ jobs:
               echo "Tag '$RELEASE_TAG' is not vMAJOR.MINOR.PATCH; refusing to deploy docs" >&2
               exit 1
             fi
-            # v0.4.0-rc.1 -> 0.4; pre-releases never move the 'latest' alias
-            version="$(echo "${RELEASE_TAG#v}" | cut -d. -f1,2)"
             if [[ "$RELEASE_PRERELEASE" == "true" ]]; then
+              # Pre-releases go to a rolling 'rc' version so they can never
+              # overwrite the stable X.Y that 'latest' may already point to
+              version="rc"
+              title="${RELEASE_TAG#v}"
               latest="false"
             else
+              # v0.4.0 -> 0.4
+              version="$(echo "${RELEASE_TAG#v}" | cut -d. -f1,2)"
               latest="true"
             fi
           else
@@ -77,11 +81,13 @@ jobs:
             latest="false"
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "title=${title:-${version}}" >> "$GITHUB_OUTPUT"
           echo "latest=${latest}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy documentation version
         env:
           VERSION: ${{ steps.docs.outputs.version }}
+          TITLE: ${{ steps.docs.outputs.title }}
           LATEST: ${{ steps.docs.outputs.latest }}
         run: |
           # The zensical fork of mike is GitHub-only (no PyPI releases), so
@@ -101,10 +107,10 @@ jobs:
             "$@"
           }
           if [[ "$LATEST" == "true" ]]; then
-            retry mike deploy --push --update-aliases "$VERSION" latest
+            retry mike deploy --push --update-aliases --title "$TITLE" "$VERSION" latest
             retry mike set-default --push latest
           else
-            retry mike deploy --push "$VERSION"
+            retry mike deploy --push --title "$TITLE" "$VERSION"
           fi
 
   deploy:
