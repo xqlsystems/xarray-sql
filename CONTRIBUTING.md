@@ -98,8 +98,10 @@ Publishing a release also deploys the documentation, versioned with
 
 Docs for any version can be (re)deployed manually from the
 [docs workflow](https://github.com/xqlsystems/xarray-sql/actions/workflows/docs.yml)
-via "Run workflow": pick the git tag as the ref, set the docs version (e.g.
-`0.3`), and tick "latest" only if the site root should point there.
+via "Run workflow": run it on `main` (dispatch uses the workflow definition
+at the selected ref, and tags predating it have no manual trigger), put the
+git tag to build from in the "ref" input, set the docs version (e.g. `0.3`),
+and tick "latest" only if the site root should point there.
 
 When undoing a bad release (see below), note that deleting the release and
 tag does not undo its docs deployment. Re-run the docs workflow from the last

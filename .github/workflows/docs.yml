@@ -9,8 +9,13 @@ on:
       - published
   workflow_dispatch:
     inputs:
+      ref:
+        description: "Git ref (tag) to build the docs from; empty builds the ref the workflow runs on"
+        required: false
+        type: string
+        default: ""
       version:
-        description: "Docs version to deploy (e.g. 0.3), built from the selected ref"
+        description: "Docs version to deploy (e.g. 0.3)"
         required: true
         type: string
       latest:
@@ -30,9 +35,12 @@ jobs:
       contents: write
 
     steps:
+      # Dispatch runs on main (older tags predate the manual trigger) and
+      # select the tag to build via the ref input instead
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          ref: ${{ inputs.ref }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
