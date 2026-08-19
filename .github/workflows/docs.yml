@@ -52,9 +52,19 @@ jobs:
           INPUT_LATEST: ${{ inputs.latest }}
         run: |
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            # Reject anything that isn't MAJOR.MINOR, in particular the
+            # reserved 'latest' and 'dev' identifiers
+            if [[ ! "$INPUT_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
+              echo "Invalid docs version '$INPUT_VERSION'; expected MAJOR.MINOR (e.g. 0.3)" >&2
+              exit 1
+            fi
             version="$INPUT_VERSION"
             latest="$INPUT_LATEST"
           elif [[ "$EVENT_NAME" == "release" ]]; then
+            if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+].*)?$ ]]; then
+              echo "Tag '$RELEASE_TAG' is not vMAJOR.MINOR.PATCH; refusing to deploy docs" >&2
+              exit 1
+            fi
             # v0.4.0-rc.1 -> 0.4; pre-releases never move the 'latest' alias
             version="$(echo "${RELEASE_TAG#v}" | cut -d. -f1,2)"
             if [[ "$RELEASE_PRERELEASE" == "true" ]]; then
