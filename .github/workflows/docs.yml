@@ -84,8 +84,10 @@ jobs:
           VERSION: ${{ steps.docs.outputs.version }}
           LATEST: ${{ steps.docs.outputs.latest }}
         run: |
+          # The zensical fork of mike is GitHub-only (no PyPI releases), so
+          # pin it to a commit; this job holds contents: write
           mike() {
-            uvx --from git+https://github.com/squidfunk/mike.git \
+            uvx --from "git+https://github.com/squidfunk/mike.git@2d4ad799442f4592db8ad53b179bfb33db8c69ac" \
               --with "mkdocstrings[python]" mike "$@"
           }
           # Concurrent runs race on the gh-pages push; mike re-fetches the
