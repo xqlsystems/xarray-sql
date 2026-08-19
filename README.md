@@ -77,7 +77,7 @@ rel = con.sql('SELECT time, AVG("air") AS air FROM air GROUP BY time ORDER BY ti
 xql.to_dataset(rel, template=ds)   # any engine's Arrow result round-trips
 ```
 
-See [Engines](https://xqlsystems.github.io/xarray-sql/engines/) for the support matrix, DuckDB/Polars details,
+See [Engines](https://xqlsystems.github.io/xarray-sql/latest/engines/) for the support matrix, DuckDB/Polars details,
 and the lazy chunked round-trip.
 
 ## A bigger example: ARCO-ERA5
@@ -245,7 +245,7 @@ Every case matches its array reference. The headline finding: these operations
 are not really "array" operations at all — they are `GROUP BY`, `JOIN`, window
 functions, and `CASE` in disguise, and a query engine runs them at scale. See
 [`benchmarks/geospatial/`](https://github.com/xqlsystems/xarray-sql/tree/main/benchmarks/geospatial/) and the write-up,
-[Geospatial operations are relational operations](https://xqlsystems.github.io/xarray-sql/geospatial/).
+[Geospatial operations are relational operations](https://xqlsystems.github.io/xarray-sql/latest/geospatial/).
 
 ## Why does this work?
 
@@ -260,10 +260,10 @@ anything that speaks Arrow).
 ## What are the current limitations?
 
 The sharp edges we know about — per engine and fundamental — are cataloged in
-[Known issues & limitations](https://xqlsystems.github.io/xarray-sql/limitations/). Currently, we're looking for
+[Known issues & limitations](https://xqlsystems.github.io/xarray-sql/latest/limitations/). Currently, we're looking for
 early users – "tire kickers", if you will. We'd love your input to shape the direction of this
 project! Please, give this a try and [file issues](https://github.com/xqlsystems/xarray-sql/issues) as
-you see fit. Check out our [contributing guide](https://xqlsystems.github.io/xarray-sql/contributing/), too 😉.
+you see fit. Check out our [contributing guide](https://xqlsystems.github.io/xarray-sql/latest/contributing/), too 😉.
 
 ## What would a deeper integration look like?
 
