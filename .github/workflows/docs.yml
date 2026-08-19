@@ -33,19 +33,17 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    # Rolling versions (dev from main pushes, rc from pre-releases) are
-    # newest-wins: an overlapping older build must not finish last and
-    # overwrite the newer content. Stable releases queue in publish order
-    # so releases of the same line cannot deploy out of order; they never
-    # cancel and stay separate from rc so an incoming pre-release cannot
-    # cancel a running stable build. Manual non-rc dispatches run freely
+    # Rolling targets (dev, rc) are newest-wins; stable releases queue in
+    # publish order. The groups must stay separate: cancel-in-progress is
+    # evaluated per incoming run, so a shared group would let an arriving
+    # pre-release cancel a running stable build
     concurrency:
       group: docs-build-${{ github.event_name == 'push' && 'dev' || ((github.event_name == 'release' && github.event.release.prerelease) || (github.event_name == 'workflow_dispatch' && inputs.version == 'rc')) && 'rc' || github.event_name == 'release' && 'stable' || github.run_id }}
       cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'release' && github.event.release.prerelease) || (github.event_name == 'workflow_dispatch' && inputs.version == 'rc') }}
 
     steps:
-      # Dispatch runs on main (older tags predate the manual trigger) and
-      # select the tag to build via the ref input instead
+      # Dispatch builds a tag via the ref input; dispatching from a tag
+      # would use that tag's workflow definition, which lacks this trigger
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -124,10 +122,9 @@ jobs:
               --with "mkdocstrings[python]" mike "$@"
           }
           # A maintenance release for an older line (e.g. v0.3.4 after
-          # v0.4.0) must not move 'latest' backward. Checked against freshly
-          # fetched gh-pages state on every push attempt, since builds for
-          # overlapping releases are not serialized; manual dispatches honor
-          # the explicit input instead
+          # v0.4.0) must not move 'latest' backward; re-checked against
+          # fresh gh-pages state on every attempt since release builds are
+          # not serialized. Dispatches honor the explicit input
           may_move_latest() {
             [[ "$GUARD_LATEST" == "true" ]] || return 0
             git fetch --quiet origin gh-pages 2>/dev/null || return 0
