@@ -1,0 +1,2065 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Query Xarray with SQL">
+      
+      
+        <meta name="author" content="Alexander Merose">
+      
+      
+        <link rel="canonical" href="https://xqlsystems.github.io/xarray-sql/dev/geospatial/">
+      
+      
+        <link rel="prev" href="../engines/">
+      
+      
+        <link rel="next" href="../performance/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.56">
+    
+    
+      
+        <title>Geospatial operations are relational operations - xarray-sql</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.20815dad.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../assets/stylesheets/modern/palette.dfe2e883.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="blue">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#geospatial-operations-are-relational-operations" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="./.." title="xarray-sql" class="md-header__button md-logo" aria-label="xarray-sql" data-md-component="logo">
+      
+  <img src="../assets/logo.svg" alt="xarray-sql">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            xarray-sql
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Geospatial operations are relational operations
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="blue"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="black"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/xqlsystems/xarray-sql" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    xqlsystems/xarray-sql
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="./.." title="xarray-sql" class="md-nav__button md-logo" aria-label="xarray-sql" data-md-component="logo">
+      
+  <img src="../assets/logo.svg" alt="xarray-sql">
+
+    </a>
+    xarray-sql
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/xqlsystems/xarray-sql" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    xqlsystems/xarray-sql
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Home
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Getting started
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Concepts
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Concepts
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../engines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Engines
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Guides
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Guides
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Geospatial in SQL
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Geospatial in SQL
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#where-this-list-comes-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Where this list comes from
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The mapping
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-a-pixel-wise-formula-is-a-column-expression" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        1. A pixel-wise formula is a column expression
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-a-climatology-is-a-group-by-over-the-cycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2. A climatology is a <code>GROUP BY</code> over the cycle
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-broadcasting-a-normal-back-onto-observations-is-a-join" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        3. Broadcasting a normal back onto observations is a <code>JOIN</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-forecast-evaluation-is-a-join-on-valid-time-aggregate" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        4. Forecast evaluation is a <code>JOIN</code> on valid time + aggregate
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-raster-vector-zonal-statistics-is-a-range-join" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        5. Raster × vector zonal statistics is a range <code>JOIN</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-the-hard-cases-where-a-udf-fits-and-where-it-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        6. The hard cases: where a UDF fits, and where it doesn't
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#geoarrow-point-geometry-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        GeoArrow point-geometry columns
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-array-paradigm-still-earns-its-keep" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Where the array paradigm still earns its keep
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-suite" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Running the suite
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#results" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Results
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Results">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-suite-across-engines-and-machine-sizes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The suite across engines and machine sizes
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#analysis-how-a-relational-operation-spends-its-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Analysis: how a relational operation spends its time
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conclusion" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Conclusion
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Performance
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Reference
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/xarray_sql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  API
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../limitations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Known issues
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Contributing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#where-this-list-comes-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Where this list comes from
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The mapping
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-a-pixel-wise-formula-is-a-column-expression" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        1. A pixel-wise formula is a column expression
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-a-climatology-is-a-group-by-over-the-cycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2. A climatology is a <code>GROUP BY</code> over the cycle
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-broadcasting-a-normal-back-onto-observations-is-a-join" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        3. Broadcasting a normal back onto observations is a <code>JOIN</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-forecast-evaluation-is-a-join-on-valid-time-aggregate" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        4. Forecast evaluation is a <code>JOIN</code> on valid time + aggregate
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-raster-vector-zonal-statistics-is-a-range-join" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        5. Raster × vector zonal statistics is a range <code>JOIN</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-the-hard-cases-where-a-udf-fits-and-where-it-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        6. The hard cases: where a UDF fits, and where it doesn't
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#geoarrow-point-geometry-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        GeoArrow point-geometry columns
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-array-paradigm-still-earns-its-keep" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Where the array paradigm still earns its keep
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-suite" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Running the suite
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#results" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Results
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Results">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-suite-across-engines-and-machine-sizes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The suite across engines and machine sizes
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#analysis-how-a-relational-operation-spends-its-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Analysis: how a relational operation spends its time
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conclusion" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Conclusion
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+    <a href="https://github.com/xqlsystems/xarray-sql/edit/main/docs/geospatial.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-pen" viewBox="0 0 24 24"><path d="M12.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v9.34"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10.378 12.622a1 1 0 0 1 3 3.003L8.36 20.637a2 2 0 0 1-.854.506l-2.867.837a.5.5 0 0 1-.62-.62l.836-2.869a2 2 0 0 1 .506-.853z"/></svg>
+    </a>
+  
+  
+    
+      
+    
+    <a href="https://github.com/xqlsystems/xarray-sql/raw/main/docs/geospatial.md" title="View source of this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code-2" viewBox="0 0 24 24"><path d="M4 12.15V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-3.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5M5 16l-3 3 3 3M9 22l3-3-3-3"/></svg>
+    </a>
+  
+
+
+<h1 id="geospatial-operations-are-relational-operations">Geospatial operations are relational operations<a class="headerlink" href="#geospatial-operations-are-relational-operations" title="Permanent link">&para;</a></h1>
+<p>A working hypothesis, and a slightly radical one: <strong>the core operations of
+geospatial and climate analysis — the ones we reach for an array library to
+perform — are, underneath, relational operations.</strong> Climatologies, anomalies,
+zonal means, spectral indices, forecast skill, even regridding: each maps onto
+ordinary SQL — <code>GROUP BY</code>, <code>JOIN</code>, window functions, <code>CASE</code>, and the occasional
+scalar UDF.</p>
+<p>The array paradigm (NumPy, Xarray, Dask) is a wonderful <em>interface</em> for these
+operations. But it is not the only one, and for a large and growing audience —
+the people fluent in SQL rather than in <code>apply_ufunc</code> and rechunking — it is not
+the most accessible one. <a href="../"><code>xarray-sql</code></a> lets you pose these
+questions in SQL and answers them with a real query engine (DataFusion here;
+<a href="../engines/">the same tables serve DuckDB and Polars</a>). The
+datasets are opened <em>lazily</em>, so a query against the whole archive reads only the
+variable and the slice it actually needs. And because a gridded result is still
+gridded data, every query here round-trips its answer straight back to an
+<code>xarray.Dataset</code> — SQL in, an array out, ready to plot or save.</p>
+<p>This page makes the argument case by case. Every claim below is backed by a
+runnable script in <a href="https://github.com/xqlsystems/xarray-sql/tree/main/benchmarks/geospatial/"><code>benchmarks/geospatial/</code></a> that
+poses the operation in SQL and <strong>asserts the answer matches an xarray/array
+reference</strong> to floating-point tolerance. The point is not that "SQL is faster";
+the point is that the SQL reads like the <em>definition</em> of the operation and
+computes the same numbers — at ERA5's real 0.25° global resolution.</p>
+<h2 id="where-this-list-comes-from">Where this list comes from<a class="headerlink" href="#where-this-list-comes-from" title="Permanent link">&para;</a></h2>
+<p>The operations here aren't a set we hand-picked to suit SQL. They're taken from
+<a href="https://github.com/coiled/benchmarks/discussions/1545"><strong>Large Scale Geospatial Benchmarks</strong></a>
+(coiled/benchmarks #1545), a discussion <a href="https://github.com/jrbourbeau">James Bourbeau</a>
+opened in 2024 asking the
+geospatial and climate community a pointed question: what are the <em>end-to-end
+workflows</em> the Xarray/Dask ecosystem needs to handle smoothly at the
+100-terabyte scale? The replies are a representative survey of what geoscience
+actually runs — and this suite works through nearly all of it:</p>
+<table>
+<thead>
+<tr>
+<th>#1545 workflow</th>
+<th>Covered by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Remote-sensing indices (NDVI/NDWI/NDSI over Sentinel-2 or Landsat)</td>
+<td>case 01</td>
+</tr>
+<tr>
+<td>Vectorized functions (<code>apply_ufunc</code>-style per-cell math)</td>
+<td>case 01</td>
+</tr>
+<tr>
+<td>Climatology (average weather for a time of year/day, per location)</td>
+<td>case 02</td>
+</tr>
+<tr>
+<td>Transformed Eulerian Mean (circulation diagnostics — zonal means and anomalies)</td>
+<td>cases 03, 04</td>
+</tr>
+<tr>
+<td>Forecast evaluation (scoring forecasts against ground truth)</td>
+<td>case 05</td>
+</tr>
+<tr>
+<td>Regridding and reprojection (resolution and CRS changes)</td>
+<td>cases 07, 08, 09</td>
+</tr>
+<tr>
+<td>Spatial joins (large polygon-to-polygon joins)</td>
+<td><em>not covered</em> — a vector-data problem; the closest analogue here is the raster × vector join in case 06</td>
+</tr>
+</tbody>
+</table>
+<p>So the claim isn't that a few cherry-picked operations happen to be relational.
+It's that an independent survey of the operations geoscience runs at scale, run
+through SQL one by one, turns out to be — almost entirely — queries.</p>
+<h2 id="the-mapping">The mapping<a class="headerlink" href="#the-mapping" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>The "array" framing</th>
+<th>The relational reality</th>
+<th>Script</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Spectral index (NDVI)</td>
+<td><code>apply_ufunc</code> over a raster</td>
+<td>column arithmetic</td>
+<td><a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/01_ndvi.py"><code>01_ndvi.py</code></a></td>
+</tr>
+<tr>
+<td>Climatology</td>
+<td>rechunk → grouped reduction</td>
+<td><code>GROUP BY lat, lon, hour-of-day</code></td>
+<td><a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/02_climatology.py"><code>02_climatology.py</code></a></td>
+</tr>
+<tr>
+<td>Zonal mean</td>
+<td>reduce over lon/time axes</td>
+<td><code>GROUP BY lat</code></td>
+<td><a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/03_zonal_mean.py"><code>03_zonal_mean.py</code></a></td>
+</tr>
+<tr>
+<td>Anomaly</td>
+<td>grouped broadcast-subtract</td>
+<td>climatology CTE self-<code>JOIN</code></td>
+<td><a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/04_anomaly.py"><code>04_anomaly.py</code></a></td>
+</tr>
+<tr>
+<td>Forecast skill (RMSE)</td>
+<td>align valid/init/lead, reduce</td>
+<td>forecast↔truth <code>JOIN</code> on <code>valid_time</code></td>
+<td><a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/05_forecast_skill.py"><code>05_forecast_skill.py</code></a></td>
+</tr>
+<tr>
+<td>Zonal stats over regions</td>
+<td>rasterize polygons + mask</td>
+<td>raster × vector range <code>JOIN</code></td>
+<td><a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/06_zonal_vector.py"><code>06_zonal_vector.py</code></a></td>
+</tr>
+<tr>
+<td>Reprojection</td>
+<td>per-pixel CRS transform</td>
+<td>scalar <strong>UDF</strong> (<code>ST_Transform</code>-style)</td>
+<td><a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/07_reproject_udf.py"><code>07_reproject_udf.py</code></a></td>
+</tr>
+<tr>
+<td>Regridding</td>
+<td>interpolation to a new grid</td>
+<td>sparse-weight table <code>JOIN</code></td>
+<td><a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/08_regrid_weights.py"><code>08_regrid_weights.py</code></a></td>
+</tr>
+<tr>
+<td>Warp (reproject + resample)</td>
+<td>CRS transform <em>and</em> interpolation</td>
+<td>reproject <strong>UDF</strong> → weight-table <code>JOIN</code></td>
+<td><a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/09_warp.py"><code>09_warp.py</code></a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="1-a-pixel-wise-formula-is-a-column-expression">1. A pixel-wise formula is a column expression<a class="headerlink" href="#1-a-pixel-wise-formula-is-a-column-expression" title="Permanent link">&para;</a></h2>
+<p>NDVI is <code>(NIR − Red) / (NIR + Red)</code>, per pixel. The array idiom broadcasts a
+ufunc over the raster. But "one output per pixel, computed from that pixel's
+bands" is the definition of a SQL projection:</p>
+<div class="language-sql highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="n">nir</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">red</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="n">nir</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">red</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">ndvi</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">FROM</span><span class="w"> </span><span class="n">scene</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">x</span>
+</span></code></pre></div>
+<p>Invalid pixels need no special handling: xarray decodes the band's <code>_FillValue</code>
+to <code>NaN</code> on open, and <code>NaN</code> propagates through the arithmetic on both sides, so
+the masking is free.</p>
+<p><a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/01_ndvi.py"><code>01_ndvi.py</code></a> runs this against a <strong>real
+Sentinel-2 L2A scene in Zarr</strong> — discovered with <code>pystac-client</code> and opened the
+canonical way with <code>xr.open_datatree</code> (ESA's EOPF sample service) — and matches
+xarray's <code>apply_ufunc</code>-style result over a million pixels.</p>
+<h2 id="2-a-climatology-is-a-group-by-over-the-cycle">2. A climatology is a <code>GROUP BY</code> over the cycle<a class="headerlink" href="#2-a-climatology-is-a-group-by-over-the-cycle" title="Permanent link">&para;</a></h2>
+<p>A climatology is the average value for each time-of-cycle at each location. In
+the array world this is the canonical painful workload — load native chunks,
+<em>rechunk</em> so all of time lands in one chunk, reduce, rechunk back. The
+rechunking serves the array layout, not the question. The question is:</p>
+<div class="language-sql highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">latitude</span><span class="p">,</span><span class="w"> </span><span class="n">longitude</span><span class="p">,</span><span class="w"> </span><span class="n">date_part</span><span class="p">(</span><span class="s1">'hour'</span><span class="p">,</span><span class="w"> </span><span class="k">time</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">hour</span><span class="p">,</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">       </span><span class="k">AVG</span><span class="p">(</span><span class="ss">"2m_temperature"</span><span class="p">)</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="k">FROM</span><span class="w"> </span><span class="n">era5</span><span class="w"> </span><span class="k">GROUP</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">latitude</span><span class="p">,</span><span class="w"> </span><span class="n">longitude</span><span class="p">,</span><span class="w"> </span><span class="n">date_part</span><span class="p">(</span><span class="s1">'hour'</span><span class="p">,</span><span class="w"> </span><span class="k">time</span><span class="p">)</span>
+</span></code></pre></div>
+<p>The grouping keys are the dimensions you keep; everything else is reduced. No
+layout to reason about. <a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/02_climatology.py"><code>02_climatology.py</code></a>
+computes the <strong>diurnal cycle</strong> of ERA5 2m-temperature over a region — averaging
+each cell by hour of day — and matches <code>da.groupby("time.hour").mean()</code> across
+~500k cells.</p>
+<p>A <strong>zonal mean</strong> (<a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/03_zonal_mean.py"><code>03_zonal_mean.py</code></a>)
+is the same idea with fewer keys: the axes you "reduce over" are simply the
+columns you don't <code>GROUP BY</code>.</p>
+<h2 id="3-broadcasting-a-normal-back-onto-observations-is-a-join">3. Broadcasting a normal back onto observations is a <code>JOIN</code><a class="headerlink" href="#3-broadcasting-a-normal-back-onto-observations-is-a-join" title="Permanent link">&para;</a></h2>
+<p>An anomaly subtracts each cell's climatological normal from every matching
+observation. Xarray expresses the realignment with grouped broadcasting
+(<code>ds.groupby("time.hour") - climatology</code>). That realignment — <em>attach each
+cell's normal to every timestep that shares its key</em> — is a JOIN on the
+grouping key:</p>
+<div class="language-sql highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">WITH</span><span class="w"> </span><span class="n">clim</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="p">(</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="k">SELECT</span><span class="w"> </span><span class="n">latitude</span><span class="p">,</span><span class="w"> </span><span class="n">longitude</span><span class="p">,</span><span class="w"> </span><span class="n">date_part</span><span class="p">(</span><span class="s1">'hour'</span><span class="p">,</span><span class="w"> </span><span class="k">time</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">hour</span><span class="p">,</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">         </span><span class="k">AVG</span><span class="p">(</span><span class="ss">"2m_temperature"</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">clim_t</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="k">FROM</span><span class="w"> </span><span class="n">era5</span><span class="w"> </span><span class="k">GROUP</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">latitude</span><span class="p">,</span><span class="w"> </span><span class="n">longitude</span><span class="p">,</span><span class="w"> </span><span class="n">date_part</span><span class="p">(</span><span class="s1">'hour'</span><span class="p">,</span><span class="w"> </span><span class="k">time</span><span class="p">)</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">)</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">time</span><span class="p">,</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="n">latitude</span><span class="p">,</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="n">longitude</span><span class="p">,</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">       </span><span class="n">a</span><span class="p">.</span><span class="ss">"2m_temperature"</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="k">c</span><span class="p">.</span><span class="n">clim_t</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">anomaly</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="k">FROM</span><span class="w"> </span><span class="n">era5</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="k">JOIN</span><span class="w"> </span><span class="n">clim</span><span class="w"> </span><span class="k">c</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">  </span><span class="k">ON</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="n">latitude</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">c</span><span class="p">.</span><span class="n">latitude</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="n">longitude</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">c</span><span class="p">.</span><span class="n">longitude</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">date_part</span><span class="p">(</span><span class="s1">'hour'</span><span class="p">,</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">time</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">c</span><span class="p">.</span><span class="n">hour</span>
+</span></code></pre></div>
+<p><a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/04_anomaly.py"><code>04_anomaly.py</code></a> computes the
+climatology once (the CTE) and joins it back to every observation.</p>
+<h2 id="4-forecast-evaluation-is-a-join-on-valid-time-aggregate">4. Forecast evaluation is a <code>JOIN</code> on valid time + aggregate<a class="headerlink" href="#4-forecast-evaluation-is-a-join-on-valid-time-aggregate" title="Permanent link">&para;</a></h2>
+<p>This is the real workload of <a href="https://weatherbench2.readthedocs.io/">WeatherBench 2</a>:
+scoring machine-learning weather models — <strong>Pangu-Weather</strong> and <strong>GraphCast</strong> —
+against ERA5 ground truth. A forecast is indexed by <em>initialization time</em> and
+<em>lead time</em> (<code>prediction_timedelta</code>); the truth is indexed by <em>valid time</em>.
+Evaluation aligns them by <code>valid_time = init + lead</code> and reduces the error to
+RMSE as a function of lead.</p>
+<p>That alignment is a relational JOIN, and <code>valid_time = init + lead</code> is just
+timestamp + duration arithmetic the engine does natively:</p>
+<div class="language-sql highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">model</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">prediction_timedelta</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">lead</span><span class="p">,</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">       </span><span class="n">SQRT</span><span class="p">(</span><span class="k">AVG</span><span class="p">(</span><span class="n">POWER</span><span class="p">(</span><span class="n">f</span><span class="p">.</span><span class="ss">"2m_temperature"</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">e</span><span class="p">.</span><span class="ss">"2m_temperature"</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">)))</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">rmse</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="k">FROM</span><span class="w"> </span><span class="n">forecasts</span><span class="w"> </span><span class="n">f</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">JOIN</span><span class="w"> </span><span class="n">era5</span><span class="w"> </span><span class="n">e</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="k">ON</span><span class="w">  </span><span class="n">e</span><span class="p">.</span><span class="k">time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="k">time</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">prediction_timedelta</span><span class="w">   </span><span class="c1">-- valid_time = init + lead</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="k">AND</span><span class="w"> </span><span class="n">e</span><span class="p">.</span><span class="n">latitude</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">latitude</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span><span class="k">AND</span><span class="w"> </span><span class="n">e</span><span class="p">.</span><span class="n">longitude</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">longitude</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="k">GROUP</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">model</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">prediction_timedelta</span>
+</span></code></pre></div>
+<p>Both models are stacked along a <code>model</code> dimension into one forecast table, so a
+single query scores them together, grouped by the <code>model</code> column. The entire
+evaluation — temporal alignment across three time axes, spatial matching, and the
+score — is one JOIN and one aggregate.
+<a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/05_forecast_skill.py"><code>05_forecast_skill.py</code></a> runs it
+for both models, matches an xarray reference, and reproduces the published result
+that GraphCast edges out Pangu at every lead — the classic "error grows with
+horizon" curve (≈0.3 K at 6 h rising to ≈2.5 K at 9 days).</p>
+<p>The result round-trips to a <code>pandas</code> table directly (<code>got.to_pandas()</code>), RMSE in
+kelvin by lead time:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>model        graphcast  pangu
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>lead (days)
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>0.25             0.296  0.336
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>1.25             0.464  0.554
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>2.25             0.608  0.734
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>3.25             0.780  0.936
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>4.25             0.988  1.191
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>5.25             1.228  1.469
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>6.25             1.470  1.747
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>7.25             1.763  2.096
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>8.25             2.092  2.489
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>9.25             2.380  2.814
+</span></code></pre></div>
+<h2 id="5-raster-vector-zonal-statistics-is-a-range-join">5. Raster × vector zonal statistics is a range <code>JOIN</code><a class="headerlink" href="#5-raster-vector-zonal-statistics-is-a-range-join" title="Permanent link">&para;</a></h2>
+<p>"Average the raster inside each region" is the canonical raster-meets-vector
+task. The array idiom rasterizes each polygon to a mask and reduces under it. But
+a region is a row in a table of bounds, and "pixel inside region" is a range
+predicate — so zonal statistics is a JOIN:</p>
+<div class="language-sql highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">region</span><span class="p">,</span><span class="w"> </span><span class="k">AVG</span><span class="p">(</span><span class="n">a</span><span class="p">.</span><span class="ss">"2m_temperature"</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">273</span><span class="p">.</span><span class="mi">15</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">avg_c</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">FROM</span><span class="w"> </span><span class="n">era5</span><span class="p">.</span><span class="n">surface</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="k">JOIN</span><span class="w"> </span><span class="n">regions</span><span class="w"> </span><span class="n">r</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="k">ON</span><span class="w">  </span><span class="n">a</span><span class="p">.</span><span class="n">latitude</span><span class="w">  </span><span class="k">BETWEEN</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">lat_min</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">lat_max</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="k">AND</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="n">longitude</span><span class="w"> </span><span class="k">BETWEEN</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">lon_min</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">lon_max</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="k">WHERE</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="k">time</span><span class="w"> </span><span class="k">BETWEEN</span><span class="w"> </span><span class="k">TIMESTAMP</span><span class="w"> </span><span class="s1">'2020-06-01'</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="k">TIMESTAMP</span><span class="w"> </span><span class="s1">'2020-06-01 23:00:00'</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="k">GROUP</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">region</span>
+</span></code></pre></div>
+<p>This is the README's promise — <em>joining tabular data with raster data</em> — made
+literal: the raster is the full ERA5 archive (the <code>WHERE</code> prunes it to a day),
+the regions are a second SQL table, and the spatial relationship is an ordinary
+<code>BETWEEN</code>. See <a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/06_zonal_vector.py"><code>06_zonal_vector.py</code></a>
+— it reports e.g. Sahara 33 °C vs Greenland −8 °C for a June day. (Rectangular
+regions keep this simple; arbitrary polygons would follow the same shape, with a
+point-in-polygon test in the join.)</p>
+<h2 id="6-the-hard-cases-where-a-udf-fits-and-where-it-doesnt">6. The hard cases: where a UDF fits, and where it doesn't<a class="headerlink" href="#6-the-hard-cases-where-a-udf-fits-and-where-it-doesnt" title="Permanent link">&para;</a></h2>
+<p>Reprojection and regridding are the operations most wedded to the array
+paradigm. They split cleanly along one line: <strong>is the operation row-independent?</strong></p>
+<p><strong>Reprojection is.</strong> Moving a coordinate from one CRS to another depends only on
+that coordinate, so it is a <em>scalar function</em> — exactly what PostGIS and
+DuckDB-spatial already ship as <code>ST_Transform</code>. xarray-sql ships it as an
+optional geo extension (<code>pip install xarray-sql[geo]</code>): with pyproj
+installed, every <code>XarrayContext</code> registers a PROJ-backed
+<code>reproject(x, y, src_crs, dst_crs)</code> scalar UDF, so the CRS pair — any CRS
+pyproj understands — is part of the query rather than baked into the function:</p>
+<div class="language-sql highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">,</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">       </span><span class="n">reproject</span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="s1">'EPSG:32610'</span><span class="p">,</span><span class="w"> </span><span class="s1">'EPSG:4326'</span><span class="p">)[</span><span class="s1">'x'</span><span class="p">]</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">lon</span><span class="p">,</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">       </span><span class="n">reproject</span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="s1">'EPSG:32610'</span><span class="p">,</span><span class="w"> </span><span class="s1">'EPSG:4326'</span><span class="p">)[</span><span class="s1">'y'</span><span class="p">]</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">lat</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">FROM</span><span class="w"> </span><span class="n">grid</span>
+</span></code></pre></div>
+<p><a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/07_reproject_udf.py"><code>07_reproject_udf.py</code></a> validates
+this against <strong>Earth Engine itself</strong>: it opens a UTM grid through
+<a href="https://github.com/google/Xee">Xee</a> carrying <code>ee.Image.pixelLonLat()</code>, so EE's
+own geodesy engine reports the true lon/lat of every pixel — an <em>independent</em>
+reprojection reference, not PROJ-vs-PROJ. The SQL UDF and EE agree to sub-metre
+precision. There is one practical gotcha — released pyproj mishandles threads
+not created by Python, like DataFusion's runtime workers
+(<a href="https://github.com/pyproj4/pyproj/pull/1541">pyproj#1541</a>), so the extension
+runs all PROJ work on its own pool of Python threads, which also caches
+transformers per thread,
+keeping the UDF safe (and parallel) under DataFusion's concurrent partitions —
+but the caveat that matters here is conceptual: reprojection
+moves the coordinates without resampling the data onto a new grid — and <em>that</em> is
+the next operation.</p>
+<p><strong>Regridding is not</strong> row-independent: each output cell is a weighted blend of
+several input cells. That is a <em>many-to-many</em> relationship — and a many-to-many
+weighted blend is a sparse matrix–vector product, which is a <code>JOIN</code> against a
+weight table plus a weighted <code>GROUP BY</code>:</p>
+<div class="language-sql highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">w</span><span class="p">.</span><span class="n">dst_id</span><span class="p">,</span><span class="w"> </span><span class="k">SUM</span><span class="p">(</span><span class="n">s</span><span class="p">.</span><span class="n">value</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">w</span><span class="p">.</span><span class="n">weight</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">regridded</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">FROM</span><span class="w"> </span><span class="n">weights</span><span class="w"> </span><span class="n">w</span><span class="w"> </span><span class="k">JOIN</span><span class="w"> </span><span class="n">src</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="n">cell_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">w</span><span class="p">.</span><span class="n">src_id</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="k">GROUP</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">w</span><span class="p">.</span><span class="n">dst_id</span>
+</span></code></pre></div>
+<p><a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/08_regrid_weights.py"><code>08_regrid_weights.py</code></a> regrids
+real <strong>SRTM elevation</strong> (Sierra Nevada terrain, opened from the Earth Engine
+catalog through <a href="https://github.com/google/Xee">Xee</a>) coarse → fine and matches
+xarray's bilinear <code>.interp()</code> exactly. So regridding does not weaken the thesis —
+it is the most relational operation of all.</p>
+<p><strong>A warp is just the two composed.</strong> The full operation a GIS calls <em>warp</em> (GDAL
+and rasterio's <code>reproject</code>) does both at once: change the CRS <em>and</em> resample onto
+the new grid. <a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/09_warp.py"><code>09_warp.py</code></a> writes it as the
+two cases above run back to back — the 07 reproject UDF carries the target
+lon/lat grid back into the source UTM space, arrays turn those reprojected points
+into bilinear weights, and the 08 <code>JOIN</code> applies them:</p>
+<div class="language-sql highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1">-- 1. reproject the target grid into source coordinates (the 07 UDF)</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">dst_lat</span><span class="p">,</span><span class="w"> </span><span class="n">dst_lon</span><span class="p">,</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">       </span><span class="n">reproject</span><span class="p">(</span><span class="n">dst_lon</span><span class="p">,</span><span class="w"> </span><span class="n">dst_lat</span><span class="p">,</span><span class="w"> </span><span class="s1">'EPSG:4326'</span><span class="p">,</span><span class="w"> </span><span class="s1">'EPSG:32610'</span><span class="p">)[</span><span class="s1">'x'</span><span class="p">]</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">sx</span><span class="p">,</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">       </span><span class="n">reproject</span><span class="p">(</span><span class="n">dst_lon</span><span class="p">,</span><span class="w"> </span><span class="n">dst_lat</span><span class="p">,</span><span class="w"> </span><span class="s1">'EPSG:4326'</span><span class="p">,</span><span class="w"> </span><span class="s1">'EPSG:32610'</span><span class="p">)[</span><span class="s1">'y'</span><span class="p">]</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">sy</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="k">FROM</span><span class="w"> </span><span class="n">target</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="c1">-- 2. apply the bilinear weights built from those points (the 08 JOIN)</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">w</span><span class="p">.</span><span class="n">dst_lat</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">lat</span><span class="p">,</span><span class="w"> </span><span class="n">w</span><span class="p">.</span><span class="n">dst_lon</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">lon</span><span class="p">,</span><span class="w"> </span><span class="k">SUM</span><span class="p">(</span><span class="n">s</span><span class="p">.</span><span class="n">value</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">w</span><span class="p">.</span><span class="n">weight</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">warped</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="k">FROM</span><span class="w"> </span><span class="n">weights</span><span class="w"> </span><span class="n">w</span><span class="w"> </span><span class="k">JOIN</span><span class="w"> </span><span class="n">src</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">w</span><span class="p">.</span><span class="n">src_x</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">w</span><span class="p">.</span><span class="n">src_y</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="k">GROUP</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">w</span><span class="p">.</span><span class="n">dst_lat</span><span class="p">,</span><span class="w"> </span><span class="n">w</span><span class="p">.</span><span class="n">dst_lon</span>
+</span></code></pre></div>
+<p>It warps SRTM from a UTM grid onto a lon/lat grid and matches xarray's <code>.interp()</code>
+at the reprojected points exactly, with Earth Engine's own lon/lat SRTM as a
+second, cross-CRS sanity check (a loose match — EE resamples its native 30 m data,
+we resample the 2 km source — so it is a corroboration, not the assertion). The
+warp lands exactly where the split predicts: the row-independent half is a UDF,
+the many-to-many half is a <code>JOIN</code>, and the only genuinely geometric step — turning
+the reprojected points into weights — is the array work the next section is about.</p>
+<h2 id="geoarrow-point-geometry-columns">GeoArrow point-geometry columns<a class="headerlink" href="#geoarrow-point-geometry-columns" title="Permanent link">&para;</a></h2>
+<p><code>register(..., geometry=("x", "y"))</code> derives a <code>geometry</code> point column
+from two coordinate dims. With the default <code>"wkb"</code> encoding DuckDB
+(spatial loaded) ingests it as a native <code>GEOMETRY</code> with the CRS
+attached, so geometry predicates need no <code>ST_Point(x, y)</code> construction:</p>
+<div class="language-sql highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="k">avg</span><span class="p">(</span><span class="n">risk</span><span class="p">)</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">eri</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="k">WHERE</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="k">BETWEEN</span><span class="w"> </span><span class="o">-</span><span class="mi">29</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="o">-</span><span class="mi">28</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="k">BETWEEN</span><span class="w"> </span><span class="o">-</span><span class="mi">58</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="o">-</span><span class="mi">57</span><span class="w">   </span><span class="c1">-- prunes chunks</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="k">AND</span><span class="w"> </span><span class="n">ST_Within</span><span class="p">(</span><span class="n">geometry</span><span class="p">,</span><span class="w"> </span><span class="n">ST_GeomFromText</span><span class="p">(</span><span class="s1">'POLYGON (...)'</span><span class="p">))</span><span class="w">  </span><span class="c1">-- refines</span>
+</span></code></pre></div>
+<p><strong>Always pair geometry predicates with bbox conjuncts on the coordinate
+columns.</strong> Engines do not push functions like <code>ST_Within</code> into the
+scan, so a geometry-only predicate scans (and encodes) every chunk —
+measured ~29x slower than the paired form on a 10M-row grid, where the
+bbox prunes first and the exact polygon test is nearly free.
+<code>xql.bbox_conjuncts(geom, x=..., y=...)</code> renders the conjuncts from any
+geometry's envelope (shapely objects or plain
+<code>(xmin, ymin, xmax, ymax)</code> tuples), with <code>pad=</code> for
+<code>ST_DWithin</code>-style margins — so the idiom is one f-string. The full
+reasoning lives in <a href="../limitations/#geometry-predicates-alone-cannot-prune">Known issues &amp; limitations</a>.</p>
+<p><code>geometry_encoding="point"</code> emits GeoArrow-native separated coordinates
+instead (the struct children <em>are</em> the coordinate arrays): zero-parse
+for GeoPandas 1.x (<code>GeoDataFrame.from_arrow</code>), lonboard, geoarrow-rs
+and SedonaDB. DuckDB does not consume this encoding — pick per
+destination. The CRS tag defaults to <code>OGC:CRS84</code>; pass
+<code>geometry_crs=...</code> for anything else.</p>
+<h2 id="where-the-array-paradigm-still-earns-its-keep">Where the array paradigm still earns its keep<a class="headerlink" href="#where-the-array-paradigm-still-earns-its-keep" title="Permanent link">&para;</a></h2>
+<p>The boundary is <strong>weight generation</strong>. Applying a regridding is a join;
+<em>computing</em> the weights — cell overlaps for conservative remapping, stencils and
+spherical geometry for bilinear, the whole machinery of xESMF/ESMF — is genuinely
+geometric work that arrays (and specialized libraries) do well. The relational
+view does not replace that; it consumes its output. The division of labor is
+clean and, we think, the right one:</p>
+<blockquote>
+<p><strong>Arrays compute the geometry (the weights). SQL applies it (the join).</strong></p>
+</blockquote>
+<p>Likewise, the array libraries remain the right tool for building the inputs in
+the first place — opening Zarr, decoding CF metadata, the numerics of generating
+a weight matrix. <code>xarray-sql</code> sits downstream of all that as a query front-end:
+once the data is openable as an <code>xarray.Dataset</code>, these everyday operations are
+expressible — and accessible — as SQL.</p>
+<p>That is the qualitative boundary; the rest of this page puts numbers to it. The
+<strong>Results</strong> below report what each operation costs in SQL versus the array
+reference, <strong>Analysis</strong> explains <em>why</em> the relational form is slower and where the
+time goes, and the <strong>Conclusion</strong> turns the whole thing into a when-to-use-which.</p>
+<h2 id="running-the-suite">Running the suite<a class="headerlink" href="#running-the-suite" title="Permanent link">&para;</a></h2>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>python<span class="w"> </span>benchmarks/geospatial/02_climatology.py<span class="w">   </span><span class="c1"># inside the repo</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>uv<span class="w"> </span>run<span class="w"> </span>benchmarks/geospatial/02_climatology.py<span class="w">   </span><span class="c1"># standalone (PEP 723 deps)</span>
+</span></code></pre></div>
+<p>Each script prints its SQL, runs the array reference, and asserts the two agree.
+See <a href="https://github.com/xqlsystems/xarray-sql/tree/main/benchmarks/geospatial"><code>benchmarks/geospatial/README.md</code></a> for
+the full list and dataset notes.</p>
+<h2 id="results">Results<a class="headerlink" href="#results" title="Permanent link">&para;</a></h2>
+<p>Correctness is the headline, but every case is also profiled. The numbers below
+come from <a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/run_perf.sh"><code>run_perf.sh</code></a> on a single Google
+Compute Engine <code>e2-standard-8</code> (8 vCPU, 32 GB) in <code>us-central1</code> — in-region with the
+ARCO-ERA5 and WeatherBench 2 buckets, so the cloud read is fast — with Earth Engine
+reached from the same VM, so all nine cases share one machine and one release build.
+Each case runs <strong>once per fresh process</strong>, with no warmup, repeated five times: the
+SQL operation <em>and</em> the xarray reference each pay a <strong>cold</strong> read on every
+measurement.</p>
+<p>Fairness here took some care, because the obvious trap is caching. A reference
+that calls <code>.load()</code> caches its data <em>in place</em> on the very object the SQL table
+also reads from, so a later read — even just running the reference after the SQL
+query in the same process — could be served warm. We close that two ways. The one
+case that loads shared objects (05, forecast skill) uses <code>.compute()</code> instead,
+which returns a fresh array and leaves the inputs lazy, caching nothing; the other
+references either reopen their data or recompute their reduction eagerly on every
+read (<code>chunks=None</code> is NumPy, not Dask, so there is no graph to keep warm). And
+<code>run_perf.sh</code> runs each case in a fresh process per repetition, ruling out any
+carryover between reps. We verified the result directly: reading a window
+repeatedly in one process stays flat, and running either side after the other
+speeds up neither — the SQL query and the reference do not warm each other.</p>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>Step</th>
+<th style="text-align: right;">median (s)</th>
+<th style="text-align: right;">stdev (s)</th>
+<th style="text-align: right;">min (s)</th>
+<th style="text-align: right;">max (s)</th>
+<th style="text-align: right;">peak (MB)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>01 · NDVI (per-pixel arithmetic)</td>
+<td>SQL</td>
+<td style="text-align: right;">3.528</td>
+<td style="text-align: right;">0.803</td>
+<td style="text-align: right;">2.861</td>
+<td style="text-align: right;">5.024</td>
+<td style="text-align: right;">114.0</td>
+</tr>
+<tr>
+<td></td>
+<td>xarray reference</td>
+<td style="text-align: right;">0.304</td>
+<td style="text-align: right;">0.104</td>
+<td style="text-align: right;">0.282</td>
+<td style="text-align: right;">0.496</td>
+<td style="text-align: right;">42.0</td>
+</tr>
+<tr>
+<td>02 · Climatology (<code>GROUP BY</code> lat, lon, hour)</td>
+<td>SQL</td>
+<td style="text-align: right;">4.443</td>
+<td style="text-align: right;">0.383</td>
+<td style="text-align: right;">4.216</td>
+<td style="text-align: right;">5.198</td>
+<td style="text-align: right;">490.2</td>
+</tr>
+<tr>
+<td></td>
+<td>xarray reference</td>
+<td style="text-align: right;">1.867</td>
+<td style="text-align: right;">0.106</td>
+<td style="text-align: right;">1.844</td>
+<td style="text-align: right;">2.053</td>
+<td style="text-align: right;">43.7</td>
+</tr>
+<tr>
+<td>03 · Zonal mean (<code>GROUP BY</code> latitude)</td>
+<td>SQL</td>
+<td style="text-align: right;">2.406</td>
+<td style="text-align: right;">0.122</td>
+<td style="text-align: right;">2.333</td>
+<td style="text-align: right;">2.631</td>
+<td style="text-align: right;">236.9</td>
+</tr>
+<tr>
+<td></td>
+<td>xarray reference</td>
+<td style="text-align: right;">0.385</td>
+<td style="text-align: right;">0.006</td>
+<td style="text-align: right;">0.381</td>
+<td style="text-align: right;">0.395</td>
+<td style="text-align: right;">249.5</td>
+</tr>
+<tr>
+<td>04 · Anomaly (climatology self-<code>JOIN</code>)</td>
+<td>SQL</td>
+<td style="text-align: right;">7.027</td>
+<td style="text-align: right;">0.123</td>
+<td style="text-align: right;">6.950</td>
+<td style="text-align: right;">7.239</td>
+<td style="text-align: right;">511.5</td>
+</tr>
+<tr>
+<td></td>
+<td>xarray reference</td>
+<td style="text-align: right;">2.549</td>
+<td style="text-align: right;">0.219</td>
+<td style="text-align: right;">2.126</td>
+<td style="text-align: right;">2.657</td>
+<td style="text-align: right;">72.1</td>
+</tr>
+<tr>
+<td>05 · Forecast skill (forecast↔truth <code>JOIN</code>)</td>
+<td>SQL</td>
+<td style="text-align: right;">10.714</td>
+<td style="text-align: right;">0.093</td>
+<td style="text-align: right;">10.663</td>
+<td style="text-align: right;">10.891</td>
+<td style="text-align: right;">6.6</td>
+</tr>
+<tr>
+<td></td>
+<td>xarray reference</td>
+<td style="text-align: right;">0.248</td>
+<td style="text-align: right;">0.013</td>
+<td style="text-align: right;">0.220</td>
+<td style="text-align: right;">0.254</td>
+<td style="text-align: right;">2.2</td>
+</tr>
+<tr>
+<td>06 · Zonal stats (raster × vector <code>JOIN</code>)</td>
+<td>SQL</td>
+<td style="text-align: right;">4.308</td>
+<td style="text-align: right;">0.053</td>
+<td style="text-align: right;">4.299</td>
+<td style="text-align: right;">4.401</td>
+<td style="text-align: right;">509.1</td>
+</tr>
+<tr>
+<td></td>
+<td>xarray reference</td>
+<td style="text-align: right;">1.557</td>
+<td style="text-align: right;">0.029</td>
+<td style="text-align: right;">1.499</td>
+<td style="text-align: right;">1.567</td>
+<td style="text-align: right;">1262.1</td>
+</tr>
+<tr>
+<td>07 · Reprojection (PROJ scalar UDF)</td>
+<td>SQL</td>
+<td style="text-align: right;">0.029</td>
+<td style="text-align: right;">0.003</td>
+<td style="text-align: right;">0.024</td>
+<td style="text-align: right;">0.031</td>
+<td style="text-align: right;">0.3</td>
+</tr>
+<tr>
+<td>08 · Regridding (weight-table <code>JOIN</code>)</td>
+<td>SQL</td>
+<td style="text-align: right;">0.875</td>
+<td style="text-align: right;">0.037</td>
+<td style="text-align: right;">0.845</td>
+<td style="text-align: right;">0.933</td>
+<td style="text-align: right;">11.9</td>
+</tr>
+<tr>
+<td></td>
+<td>xarray reference</td>
+<td style="text-align: right;">0.850</td>
+<td style="text-align: right;">0.658</td>
+<td style="text-align: right;">0.809</td>
+<td style="text-align: right;">2.310</td>
+<td style="text-align: right;">13.3</td>
+</tr>
+<tr>
+<td>09 · Warp (reproject UDF → regrid <code>JOIN</code>)</td>
+<td>SQL</td>
+<td style="text-align: right;">0.281</td>
+<td style="text-align: right;">0.038</td>
+<td style="text-align: right;">0.250</td>
+<td style="text-align: right;">0.353</td>
+<td style="text-align: right;">0.8</td>
+</tr>
+<tr>
+<td></td>
+<td>xarray reference</td>
+<td style="text-align: right;">0.817</td>
+<td style="text-align: right;">0.030</td>
+<td style="text-align: right;">0.764</td>
+<td style="text-align: right;">0.828</td>
+<td style="text-align: right;">11.2</td>
+</tr>
+</tbody>
+</table>
+<p>Two patterns are visible before any analysis. SQL is slower on wall-clock wherever
+a cloud read or a large relational expansion dominates — by ~2.5–6× on the
+<code>GROUP BY</code> and <code>JOIN</code> cases against ARCO-ERA5, and ~43× on case 05, the smallest
+grid but the biggest blow-up into rows — and its peak memory is highest on those
+join/group-by cases (≈0.5 GB on 02, 04, 06). But the pattern is <strong>not</strong> universal.
+On cases 08 and 09, where the interpolation <em>weights</em> are precomputed and SQL just
+applies them, SQL is at parity with the array reference (08: 0.875 vs 0.850 s) or
+<strong>faster</strong> (09: 0.281 vs 0.817 s — the reference pays for <code>pyproj</code> + <code>.interp</code>,
+while SQL streams the prebuilt weight <code>JOIN</code>). The slow and the fast cases follow
+from the same cause, which the next section pins down. (Case 01 reads Sentinel-2
+from Europe, the only non-US source, so its SQL time includes a cross-region read.
+Cases 07–09 run against Earth Engine from the same VM: 07 times only the SQL
+reproject transform, checked against Earth Engine's own <code>pixelLonLat</code>; 08 and 09
+read SRTM lazily on <strong>both</strong> the SQL and reference sides, so that comparison is
+symmetric.)</p>
+<p>Case 05 is the suite's most hardware-sensitive number: its SQL time is CPU-bound on
+the join and the (GIL-held) row production that feeds it, so it swings with the
+machine — across three <code>e2-standard-8</code> runs it has measured ≈10.7 s, ≈12 s, and
+≈23 s, while the read-bound <em>reference</em> stays near 0.25 s. So read the 05 ratio as
+"the relational form costs real CPU here," not as a fixed multiplier.</p>
+<h3 id="the-suite-across-engines-and-machine-sizes">The suite across engines and machine sizes<a class="headerlink" href="#the-suite-across-engines-and-machine-sizes" title="Permanent link">&para;</a></h3>
+<p>The table above measures the DataFusion-native path. The same cases also run
+through the suite's engine layer
+(<a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/_engines.py"><code>_engines.py</code></a>, selected per process
+with <code>GEOBENCH_ENGINE</code>) as four engines: <code>datafusion</code> (the native table
+provider — the harness builds the compiled module from the shipped crate on
+each VM), <code>datafusion-arrow</code> (the pure-Python pyarrow-dataset path, through
+<code>SessionContext.register_dataset(xql.arrow_dataset(ds))</code>), DuckDB, and
+Polars. We ran the portable cases across all four on an <code>e2-standard-8</code> in
+<code>us-central1</code>, in-region with the data, under the same protocol: <strong>fresh
+process per repetition, no warmup, five cold reps</strong>, and every engine's
+answer asserted against the xarray reference before its timing counts
+(<a href="https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/engine_suite.py"><code>engine_suite.py</code></a> drives it).</p>
+<p>Scope, stated plainly. The <code>datafusion</code> column is the same code path as the
+headline table, re-measured on this VM and day, so the two DataFusion columns
+compare the native table provider and the pyarrow-dataset path on identical
+hardware; DuckDB and Polars consume the same pyarrow pushdown datasets.
+Polars executes the identical SQL via <code>polars.SQLContext</code>, with the query's
+window bounds also applied as native scan-level expressions (its SQL
+<code>TIMESTAMP</code> literals compile to <code>strptime</code> casts that never reach the pyarrow
+scanner as filters); its SQL dialect cannot express case 06's range <code>JOIN</code> (a
+<code>BETWEEN</code> join constraint), recorded as unsupported rather than worked
+around. Cases 07 and 09 build DataFusion scalar UDFs (n/a on the other
+engines), case 08 is Earth-Engine-gated, and 07–09 skip on these VMs (no
+Earth Engine auth) — the skip reasons ride along in the results.</p>
+<p>The same grid was also measured on <code>e2-standard-16</code> and <code>e2-standard-32</code> in
+the same run, with no practical difference: every case is dominated by a
+single-stream cold cloud read plus a mostly single-threaded row pipeline, so
+extra vCPUs buy nothing, and the spread across sizes is shared-core <code>e2</code> and
+network variance, not engine behavior (the 16-vCPU VM measured <em>slower</em> than
+the 8-vCPU one on most cells in this run). The full per-size tables live in
+the <code>xarray-sql-notes</code> repository (<code>engine-matrix-results.md</code>).</p>
+<p>Software: CPython 3.12.8, duckdb 1.5.5, polars 1.42.1, datafusion 54.0.0,
+pyarrow 25.0.0, xarray 2026.7.0, Linux (glibc 2.41). Medians of 5 cold reps;
+peak is the Python-allocator peak per process.</p>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th style="text-align: right;">DataFusion (native)</th>
+<th style="text-align: right;">DataFusion (pyarrow)</th>
+<th style="text-align: right;">DuckDB</th>
+<th style="text-align: right;">Polars</th>
+<th style="text-align: right;">xarray reference</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>01 · NDVI</td>
+<td style="text-align: right;">4.308 s (114 MB)</td>
+<td style="text-align: right;">4.380 s (97 MB)</td>
+<td style="text-align: right;">5.325 s (106 MB)</td>
+<td style="text-align: right;">5.725 s (106 MB)</td>
+<td style="text-align: right;">0.444 s (42 MB)</td>
+</tr>
+<tr>
+<td>02 · Climatology</td>
+<td style="text-align: right;">7.235 s (1116 MB)</td>
+<td style="text-align: right;">8.746 s (1142 MB)</td>
+<td style="text-align: right;">4.622 s (627 MB)</td>
+<td style="text-align: right;">4.936 s (637 MB)</td>
+<td style="text-align: right;">2.367 s (44 MB)</td>
+</tr>
+<tr>
+<td>03 · Zonal mean</td>
+<td style="text-align: right;">4.763 s (406 MB)</td>
+<td style="text-align: right;">3.614 s (403 MB)</td>
+<td style="text-align: right;">2.958 s (403 MB)</td>
+<td style="text-align: right;">3.705 s (413 MB)</td>
+<td style="text-align: right;">0.829 s (250 MB)</td>
+</tr>
+<tr>
+<td>04 · Anomaly</td>
+<td style="text-align: right;">10.416 s (1117 MB)</td>
+<td style="text-align: right;">16.262 s (3003 MB)</td>
+<td style="text-align: right;">9.817 s (627 MB)</td>
+<td style="text-align: right;">13.837 s (936 MB)</td>
+<td style="text-align: right;">4.410 s (76 MB)</td>
+</tr>
+<tr>
+<td>05 · Forecast skill</td>
+<td style="text-align: right;">1.791 s (170 MB)</td>
+<td style="text-align: right;">1.814 s (175 MB)</td>
+<td style="text-align: right;">1.797 s (170 MB)</td>
+<td style="text-align: right;">2.405 s (184 MB)</td>
+<td style="text-align: right;">0.247 s (2 MB)</td>
+</tr>
+<tr>
+<td>06 · Zonal stats</td>
+<td style="text-align: right;">2.390 s (515 MB)</td>
+<td style="text-align: right;">6.131 s (513 MB)</td>
+<td style="text-align: right;">9.112 s (503 MB)</td>
+<td style="text-align: right;">unsupported (range <code>JOIN</code>)</td>
+<td style="text-align: right;">1.813 s (1262 MB)</td>
+</tr>
+</tbody>
+</table>
+<p>Cases 07–09 could not run on these VMs (no Earth Engine auth), so their rows
+come from the headline run instead: the original <code>e2-standard-8</code> GCE VM with
+Earth Engine access, DataFusion <strong>native</strong> path (07 and 09 are DataFusion
+scalar UDFs, n/a on the other engines):</p>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th style="text-align: right;">DataFusion (native path)</th>
+<th style="text-align: right;">xarray reference</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>07 · Reprojection (PROJ scalar UDF)</td>
+<td style="text-align: right;">0.029 s (0.3 MB)</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr>
+<td>08 · Regridding (weight-table <code>JOIN</code>)</td>
+<td style="text-align: right;">0.875 s (11.9 MB)</td>
+<td style="text-align: right;">0.850 s (13.3 MB)</td>
+</tr>
+<tr>
+<td>09 · Warp (reproject UDF → regrid <code>JOIN</code>)</td>
+<td style="text-align: right;">0.281 s (0.8 MB)</td>
+<td style="text-align: right;">0.817 s (11.2 MB)</td>
+</tr>
+</tbody>
+</table>
+<p>The engine story, in three observations. <strong>Native vs pyarrow on the same
+engine:</strong> the native table provider wins where rows are consumed in bulk —
+case 06's range <code>JOIN</code> (2.4 vs 6.1 s) and the anomaly self-<code>JOIN</code> 04 (10.4 vs
+16.3 s, at a third of the peak memory), ~1.2× on climatology 02 — while on
+the read-bound cases (01, 05) the two are at parity, and on the plain zonal
+mean 03 the pyarrow path is the faster one (3.6 vs 4.8 s). <strong>Across
+engines</strong>, DuckDB is the fastest consumer of the shared pushdown scan on the
+plain group-bys (02, 03) and narrowly beats native DataFusion on 04 (9.8 vs
+10.4 s), while native DataFusion leads the join-heavy 06 outright; Polars
+stays close to DuckDB on 02 and falls back on 04. The spread between engines is much smaller
+on cases whose cost is the read itself (01, 05), which is the same lesson as
+the headline table: the paradigm and the I/O set the floor, the engine sets
+the constant. And a benchmark side-effect worth keeping: streaming case 05's
+full window through the pyarrow protocol surfaced a real library bug —
+<code>pa.array</code> returns a <code>ChunkedArray</code> for a large string dimension coordinate,
+which the pivot's fast path passed straight into <code>RecordBatch.from_arrays</code>;
+fixed, and pinned by a regression test in <code>tests/test_df.py</code>
+(<code>test_iter_record_batches_large_string_dim_coord</code>).</p>
+<h2 id="analysis-how-a-relational-operation-spends-its-time">Analysis: how a relational operation spends its time<a class="headerlink" href="#analysis-how-a-relational-operation-spends-its-time" title="Permanent link">&para;</a></h2>
+<p>Why is SQL slower, and where does the time actually go? Profiling case 05 — the
+forecast-skill <code>JOIN</code>, the widest gap — with <code>cProfile</code>, run cold then warm so that
+<code>cold − warm</code> isolates the cloud read and the warm floor is ≈pure compute,
+decomposes it cleanly. (These are single-process numbers from a laptop with a slow
+cross-region read — a <em>different</em> machine from the in-region table above, on
+purpose: it puts both sides' reads on equal, slow footing so the compute gap shows
+through. The absolute seconds therefore differ from the table; the decomposition,
+not the totals, is the point.)</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th style="text-align: right;">read (I/O)</th>
+<th style="text-align: right;">compute</th>
+<th style="text-align: right;">total (cold)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQL</td>
+<td style="text-align: right;">~0.95 s</td>
+<td style="text-align: right;"><strong>~0.71 s</strong></td>
+<td style="text-align: right;">~1.66 s</td>
+</tr>
+<tr>
+<td>xarray reference</td>
+<td style="text-align: right;">~0.79 s</td>
+<td style="text-align: right;"><strong>~0.024 s</strong></td>
+<td style="text-align: right;">~0.81 s</td>
+</tr>
+</tbody>
+</table>
+<p>The read is comparable on both sides — both open the same Zarr store cold. <strong>The
+gap is compute, and it is about 30×.</strong> The SQL path explodes the 64×32×20×2 grid
+into Arrow rows, runs a hash <code>JOIN</code> to align each forecast row with its truth row
+on <code>(valid_time, latitude, longitude)</code>, aggregates, and streams the result batches
+back. The array reference does the identical math as a handful of vectorized NumPy
+reductions over contiguous buffers. Row materialization + hashing + the join probe
+is simply heavier than dense arithmetic on a regular grid — and it is the same
+work that inflates SQL's peak memory in the Results table: the join and group-by
+cases hold the grid as rows.</p>
+<p><code>cProfile</code> is unambiguous about <em>where</em> the SQL time sits. Essentially all of it is
+in pulling record batches from the DataFusion execution stream; the SQL→xarray
+round-trip that turns the query result back into a gridded <code>Dataset</code>
+(<code>to_dataset</code>) is <strong>sub-millisecond — under 1% of the query.</strong> So the cost is the
+relational engine doing row-oriented work, not the array reconstruction. The
+paradigm itself is the price, paid where the relational algebra runs.</p>
+<p>This explains the shape of the whole table. Case 05 stands alone at ~43× not
+because its join is exotic but because its <em>reference</em> is nearly free — a 64×32×20×2
+grid reduces in-memory in a quarter-second — while SQL still has to explode that
+grid into rows and hash-join them; a huge ratio over a tiny denominator. The
+ARCO-ERA5 cases (02, 03, 04, 06) instead cluster at ~2.5–6×, because there a large
+cloud read is a cost <em>both</em> sides pay, compressing the ratio. And cases 08 and 09
+invert it entirely: once the geometry — the interpolation weights — is precomputed,
+applying it is a <code>JOIN</code> that streams about as fast as (or faster than) the array
+reference's <code>pyproj</code>/<code>.interp</code>. The relational <em>overhead</em> is constant; the <em>ratio</em>
+you observe depends on how much non-relational work (the cloud read, the weight
+generation) sits on the other side of the comparison. And it shifts with hardware
+too: SQL is CPU-bound on the join while the array reference is read-bound, so the
+two are gated by different resources. On a fast laptop with a slow cross-region
+read the gap nearly closes; on an in-region VM with modest cores it widens. The
+underlying cause is
+constant — materialize rows, hash-join, aggregate — but which resource you are
+waiting on is not.</p>
+<h2 id="conclusion">Conclusion<a class="headerlink" href="#conclusion" title="Permanent link">&para;</a></h2>
+<p>None of this is an argument that SQL is <em>faster</em>. On a single node, for the
+reduction-shaped operations, it is not — it pays a real per-operation overhead to
+express an array reduction as relational algebra. (The exceptions, cases 08 and 09,
+prove the rule: once the array work — generating the weights — is already done, the
+relational half that remains is competitive, because there is no dense reduction
+left for arrays to win.) The honest tradeoff is about which property you are
+optimizing for.</p>
+<p><strong>Reach for the array paradigm when the work is dense and grid-aligned.</strong> Per-pixel
+formulas, stencils, convolutions, FFTs, linear algebra — anything that stays in
+contiguous typed buffers and treats the chunk grid as its unit of parallelism. The
+array model has the lowest overhead here, and the lead is structural, not
+incidental: there are no rows to materialize and nothing to shuffle. NDVI (case 01)
+is the tell — column arithmetic expresses cleanly in SQL, but the array side is
+~10× faster (part of which is case 01's cross-region read; the rest is that
+per-pixel math is exactly what arrays are for).</p>
+<p><strong>Reach for SQL when the work is relationally shaped, or the audience is.</strong> Joins,
+group-bys, alignment across data with different indexes (case 05's three time
+axes), raster-meets-vector predicates (case 06) — these are awkward to express and
+to reason about as array operations, and they are the native vocabulary of a query
+engine. The overhead buys you an operation that reads like its own definition, that
+prunes its own reads (a query against the whole ERA5 archive touches only the
+variable and window it asks for), and that is accessible to the large audience
+fluent in SQL rather than in <code>apply_ufunc</code> and rechunking.</p>
+<p>There is also a payoff this single-node benchmark cannot show. The same overhead —
+row materialization and a hash join — is what makes the operation a <em>first-class
+citizen of a distributed query engine.</em> Cost-based query optimization (join
+reordering, choosing broadcast vs. shuffle joins, predicate pushdown), mature
+partitioned shuffle and spill-to-disk, partitioning driven by the query rather than
+locked to a physical chunk grid — these are exactly the capabilities the
+array/Dask ecosystem struggles to provide for join- and group-by-heavy workloads
+at scale, and exactly what the relational framing puts within reach. Whether the
+constant-factor overhead is worth paying flips as the data grows and the bottleneck
+moves from per-element compute to data movement. <code>xarray-sql</code> is single-node today,
+so that is a direction rather than a result — but it is the latent reason the
+thesis matters beyond expressibility.</p>
+<p>So the division of labor from the section above generalizes past regridding. Arrays
+own the dense numerics and the geometry; SQL owns the relational shape — the joins,
+the alignment, the aggregation — and, increasingly, the path to running them at
+scale. The point of this suite is not to crown a winner but to show that the line
+between the two is exactly where the operation is dense versus where it is
+relational, and that for a surprising share of geoscience, the operation is
+relational.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../engines/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Engines">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Engines
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../performance/" class="md-footer__link md-footer__link--next" aria-label="Next: Performance">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Performance
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/xqlsystems/xarray-sql" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://pypi.org/project/xarray-sql" target="_blank" rel="noopener" title="pypi.org" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.8 200.5c-7.7-30.9-22.3-54.2-53.4-54.2h-40.1v47.4c0 36.8-31.2 67.8-66.8 67.8H172.7c-29.2 0-53.4 25-53.4 54.3v101.8c0 29 25.2 46 53.4 54.3 33.8 9.9 66.3 11.7 106.8 0 26.9-7.8 53.4-23.5 53.4-54.3v-40.7H226.2v-13.6h160.2c31.1 0 42.6-21.7 53.4-54.2 11.2-33.5 10.7-65.7 0-108.6M286.2 444.7a20.4 20.4 0 1 1 0-40.7 20.4 20.4 0 1 1 0 40.7M167.8 248.1h106.8c29.7 0 53.4-24.5 53.4-54.3V91.9c0-29-24.4-50.7-53.4-55.6-35.8-5.9-74.7-5.6-106.8.1-45.2 8-53.4 24.7-53.4 55.6v40.7h106.9v13.6h-147c-31.1 0-58.3 18.7-66.8 54.2-9.8 40.7-10.2 66.1 0 108.6 7.6 31.6 25.7 54.2 56.8 54.2H101v-48.8c0-35.3 30.5-66.4 66.8-66.4m-6.6-183.4a20.4 20.4 0 1 1 0 40.8 20.4 20.4 0 1 1 0-40.8"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["announce.dismiss","content.action.edit","content.action.view","content.code.annotate","content.code.copy","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.sections","navigation.top","navigation.tracking","search.highlight","search.share","search.suggest","toc.follow"],"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"provider":"mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.e886cdf1.min.js"></script>
+      
+    
+  </body>
+</html>
