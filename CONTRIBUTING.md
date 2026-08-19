@@ -84,6 +84,23 @@ To create a release, please do the following:
 7. Click "Publish Release". This will kick of a GitHub action to build the project and push the binaries + wheels to PyPI.
 8. Celebrate a successful release!
 
+### Documentation versions
+
+Publishing a release also deploys the documentation, versioned with
+[mike](https://zensical.org/docs/setup/versioning/) on the `gh-pages` branch:
+
+- A stable release deploys its docs under `XX.YY/` and moves the `latest`
+  alias (the version the site root redirects to) to it.
+- A pre-release (e.g. `vXX.YY.0-rc.1`) deploys under `XX.YY/` but leaves
+  `latest` untouched, so the public default stays on the latest stable
+  release.
+- Every push to `main` refreshes the `dev` version.
+
+Docs for any version can be (re)deployed manually from the
+[docs workflow](https://github.com/xqlsystems/xarray-sql/actions/workflows/docs.yml)
+via "Run workflow": pick the git tag as the ref, set the docs version (e.g.
+`0.3`), and tick "latest" only if the site root should point there.
+
 ## Undoing a bad release
 
 We all mess up sometimes. For example, I have often forgotten to do one of the steps (often, step 1) in the above process, and it leads to a failed release (i.e. an unsuccessful push to PyPI.)

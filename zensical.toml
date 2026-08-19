@@ -2,7 +2,7 @@
 site_name = "xarray-sql"
 site_description = "Query Xarray with SQL"
 site_author = "Alexander Merose"
-site_url = "https://xqlsystems.github.io/xarray-sql"
+site_url = "https://xqlsystems.github.io/xarray-sql/"
 repo_url = "https://github.com/xqlsystems/xarray-sql"
 repo_name = "xqlsystems/xarray-sql"
 edit_uri = "edit/main/docs/"
@@ -128,6 +128,11 @@ filters = ["!^_"]
 
 # Extra configuration
 [project.extra]
+
+# Versioned docs via mike (Zensical fork); versions live on the gh-pages branch
+[project.extra.version]
+provider = "mike"
+default = "latest"
 
 [[project.extra.social]]
 icon = "fontawesome/brands/github"
