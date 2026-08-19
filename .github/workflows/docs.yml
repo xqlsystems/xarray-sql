@@ -173,13 +173,15 @@ jobs:
               *) return 2 ;;
             esac
           }
-          # Concurrent runs race on the gh-pages push; each attempt re-fetches
-          # the branch, so retrying resolves the race
+          # Concurrent runs race on the gh-pages push; the local branch must
+          # be reset to the remote before rerunning, or every retry replays
+          # the same non-fast-forward rejection
           retry() {
             for attempt in 1 2; do
               "$@" && return 0
               echo "attempt ${attempt} failed; retrying" >&2
               sleep 15
+              git fetch --force origin gh-pages:gh-pages 2>/dev/null || true
             done
             "$@"
           }
