@@ -84,6 +84,43 @@ To create a release, please do the following:
 7. Click "Publish Release". This will kick of a GitHub action to build the project and push the binaries + wheels to PyPI.
 8. Celebrate a successful release!
 
+### Documentation versions
+
+Publishing a release also deploys the documentation, versioned with
+[mike](https://zensical.org/docs/setup/versioning/) on the `gh-pages` branch:
+
+- A stable release deploys its docs under `XX.YY/` and moves the `latest`
+  alias (the version the site root redirects to) to it.
+- A pre-release (e.g. `vXX.YY.0-rc.1`) deploys under a rolling `rc/` version
+  (titled with the full tag) and leaves `latest` untouched, so the public
+  default stays on the latest stable release.
+- Every push to `main` refreshes the `dev` version.
+
+Docs for any version can be (re)deployed manually from the
+[docs workflow](https://github.com/xqlsystems/xarray-sql/actions/workflows/docs.yml)
+via "Run workflow": run it on `main` (dispatch uses the workflow definition
+at the selected ref, and tags predating it have no manual trigger), put the
+git tag to build from in the "ref" input, set the docs version (e.g. `0.3`),
+and tick "latest" only if the site root should point there.
+
+When undoing a bad release (see below), note that deleting the release and
+tag does not undo its docs deployment. To roll the docs back:
+
+1. If the bad version should disappear entirely, delete it from `gh-pages`
+   with the same pinned mike fork the workflow uses (the `mike` on PyPI is
+   not Zensical-compatible):
+
+   ```shell
+   uvx --from "git+https://github.com/squidfunk/mike.git@2d4ad799442f4592db8ad53b179bfb33db8c69ac" \
+     --with "mkdocstrings[python]" mike delete --push XX.YY
+   ```
+
+2. Re-run the docs workflow on `main` with "ref" set to the last good tag,
+   its docs version, and "latest" ticked. Pages only updates through the
+   workflow — never from `gh-pages` pushes alone — so this single run moves
+   the public default back and republishes the site without the deleted
+   version.
+
 ## Undoing a bad release
 
 We all mess up sometimes. For example, I have often forgotten to do one of the steps (often, step 1) in the above process, and it leads to a failed release (i.e. an unsuccessful push to PyPI.)

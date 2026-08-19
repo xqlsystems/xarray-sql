@@ -4,15 +4,25 @@ on:
   push:
     branches:
       - main
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (tag) to build the docs from; empty builds the ref the workflow runs on"
+        required: false
+        type: string
+        default: ""
+      version:
+        description: "Docs version to deploy (e.g. 0.3, or rc for the rolling pre-release docs)"
+        required: true
+        type: string
+      latest:
+        description: "Point the 'latest' alias (public default) at this version"
+        required: false
+        type: boolean
+        default: false
 
 defaults:
   run:
@@ -21,22 +31,161 @@ defaults:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # Rolling targets (dev, rc) are newest-wins; stable releases queue in
+    # publish order. The groups must stay separate: cancel-in-progress is
+    # evaluated per incoming run, so a shared group would let an arriving
+    # pre-release cancel a running stable build
+    concurrency:
+      group: docs-build-${{ github.event_name == 'push' && 'dev' || ((github.event_name == 'release' && (github.event.release.prerelease || (contains(github.event.release.tag_name, '-') && !contains(github.event.release.tag_name, '+')))) || (github.event_name == 'workflow_dispatch' && inputs.version == 'rc')) && 'rc' || github.event_name == 'release' && 'stable' || github.run_id }}
+      cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'release' && (github.event.release.prerelease || (contains(github.event.release.tag_name, '-') && !contains(github.event.release.tag_name, '+')))) || (github.event_name == 'workflow_dispatch' && inputs.version == 'rc') }}
 
     steps:
+      # Dispatch builds a tag via the ref input; dispatching from a tag
+      # would use that tag's workflow definition, which lacks this trigger
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          ref: ${{ inputs.ref }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Build documentation
-        run: uvx --with "mkdocstrings[python]" zensical build
+      # Tags predating the versioning setup lack the provider key, and
+      # their docs would build without the version selector
+      - name: Ensure version provider on backfill builds
+        if: github.event_name == 'workflow_dispatch' && inputs.ref != ''
+        run: |
+          if ! grep -q 'provider = "mike"' zensical.toml; then
+            printf '\n[project.extra.version]\nprovider = "mike"\n' >> zensical.toml
+          fi
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: ./site
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Resolve docs version
+        id: docs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_LATEST: ${{ inputs.latest }}
+          INPUT_REF: ${{ inputs.ref }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            # Only MAJOR.MINOR or the rolling 'rc' target; in particular
+            # this rejects the 'latest' alias and the auto-managed 'dev'
+            if [[ ! "$INPUT_VERSION" =~ ^([0-9]+\.[0-9]+|rc)$ ]]; then
+              echo "Invalid docs version '$INPUT_VERSION'; expected MAJOR.MINOR (e.g. 0.3) or rc" >&2
+              exit 1
+            fi
+            if [[ "$INPUT_VERSION" == "rc" && "$INPUT_LATEST" == "true" ]]; then
+              echo "The public default cannot point at the rolling rc version" >&2
+              exit 1
+            fi
+            version="$INPUT_VERSION"
+            latest="$INPUT_LATEST"
+            # An rc rebuild keeps its tag-derived title instead of 'rc'
+            if [[ "$INPUT_VERSION" == "rc" && -n "$INPUT_REF" ]]; then
+              title="${INPUT_REF#v}"
+            fi
+          elif [[ "$EVENT_NAME" == "release" ]]; then
+            if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+].*)?$ ]]; then
+              echo "Tag '$RELEASE_TAG' is not vMAJOR.MINOR.PATCH; refusing to deploy docs" >&2
+              exit 1
+            fi
+            # The tag's own pre-release suffix counts even when the GitHub
+            # pre-release checkbox was forgotten: a '-' right after the
+            # patch number, not a hyphen inside '+' build metadata
+            if [[ "$RELEASE_PRERELEASE" == "true" || "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+- ]]; then
+              # Pre-releases go to a rolling 'rc' version so they can never
+              # overwrite the stable X.Y that 'latest' may already point to
+              version="rc"
+              title="${RELEASE_TAG#v}"
+              latest="false"
+            else
+              # v0.4.0 -> 0.4
+              version="$(echo "${RELEASE_TAG#v}" | cut -d. -f1,2)"
+              latest="true"
+            fi
+          else
+            version="dev"
+            latest="false"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "title=${title:-${version}}" >> "$GITHUB_OUTPUT"
+          echo "latest=${latest}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy documentation version
+        env:
+          VERSION: ${{ steps.docs.outputs.version }}
+          TITLE: ${{ steps.docs.outputs.title }}
+          LATEST: ${{ steps.docs.outputs.latest }}
+          GUARD_LATEST: ${{ github.event_name == 'release' }}
+        run: |
+          # The zensical fork of mike is GitHub-only (no PyPI releases), so
+          # pin it to a commit; this job holds contents: write
+          mike() {
+            uvx --from "git+https://github.com/squidfunk/mike.git@2d4ad799442f4592db8ad53b179bfb33db8c69ac" \
+              --with "mkdocstrings[python]" mike "$@"
+          }
+          # A maintenance release for an older line (e.g. v0.3.4 after
+          # v0.4.0) must not move 'latest' backward; re-checked against
+          # fresh gh-pages state on every attempt since release builds are
+          # not serialized. Dispatches honor the explicit input.
+          # Returns 0 = may move, 1 = older line, 2 = could not verify —
+          # fail closed, except for a confirmed-absent gh-pages (bootstrap)
+          may_move_latest() {
+            [[ "$GUARD_LATEST" == "true" ]] || return 0
+            if ! git fetch --quiet origin gh-pages 2>/dev/null; then
+              rc=0
+              git ls-remote --exit-code origin refs/heads/gh-pages >/dev/null 2>&1 || rc=$?
+              [[ "$rc" -eq 2 ]] && return 0
+              echo "Cannot verify the current latest target; failing this attempt" >&2
+              return 2
+            fi
+            current="$(git show FETCH_HEAD:versions.json 2>/dev/null \
+              | jq -r '.[] | select(.aliases | index("latest")) | .version')" || {
+              echo "Cannot read versions.json from gh-pages; failing this attempt" >&2
+              return 2
+            }
+            if [[ -n "$current" ]] && \
+               [[ "$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -1)" != "$VERSION" ]]; then
+              echo "Line ${VERSION} is older than current latest (${current}); not moving the alias" >&2
+              return 1
+            fi
+          }
+          deploy() {
+            if [[ "$LATEST" != "true" ]]; then
+              mike deploy --push --title "$TITLE" "$VERSION"
+              return
+            fi
+            rc=0
+            may_move_latest || rc=$?
+            case "$rc" in
+              0) mike deploy --push --update-aliases --title "$TITLE" "$VERSION" latest &&
+                   mike set-default --push latest ;;
+              1) mike deploy --push --title "$TITLE" "$VERSION" ;;
+              *) return 2 ;;
+            esac
+          }
+          # Concurrent runs race on the gh-pages push; the local branch must
+          # be reset to the remote before rerunning, or every retry replays
+          # the same non-fast-forward rejection
+          retry() {
+            for attempt in 1 2; do
+              "$@" && return 0
+              echo "attempt ${attempt} failed; retrying" >&2
+              sleep 15
+              git fetch --force origin gh-pages:gh-pages 2>/dev/null || true
+            done
+            "$@"
+          }
+          retry deploy
 
   deploy:
     environment:
@@ -44,7 +193,42 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    # Serialize Pages publishes only; every build job must run so no mike
+    # deploy is lost. gh-pages state is cumulative, so a pending deploy
+    # superseded in this queue is covered by the newer one that replaced it
+    concurrency:
+      group: "pages"
+      cancel-in-progress: false
+
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+
+      - name: Check a default version exists
+        id: bootstrapped
+        run: |
+          # The root redirect only exists once a stable version has been
+          # deployed and set as default; until then, keep serving the
+          # previously published site instead of a broken root
+          if [[ -f index.html ]]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "No default docs version set yet; skipping Pages publish" >&2
+          fi
+
+      - name: Upload artifact
+        if: steps.bootstrapped.outputs.ok == 'true'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: .
+
       - name: Deploy to GitHub Pages
+        if: steps.bootstrapped.outputs.ok == 'true'
         id: deployment
         uses: actions/deploy-pages@v5
