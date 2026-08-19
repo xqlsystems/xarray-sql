@@ -33,6 +33,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    # Rolling versions (dev from main pushes, rc from pre-releases) are
+    # newest-wins: an overlapping older build must not finish last and
+    # overwrite the newer content. Stable releases and manual dispatches
+    # get unique groups and always run
+    concurrency:
+      group: docs-build-${{ github.event_name == 'push' && 'dev' || github.event_name == 'release' && github.event.release.prerelease && 'rc' || github.run_id }}
+      cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'release' && github.event.release.prerelease) }}
 
     steps:
       # Dispatch runs on main (older tags predate the manual trigger) and
