@@ -15,7 +15,7 @@ on:
         type: string
         default: ""
       version:
-        description: "Docs version to deploy (e.g. 0.3)"
+        description: "Docs version to deploy (e.g. 0.3, or rc for the rolling pre-release docs)"
         required: true
         type: string
       latest:
@@ -67,10 +67,14 @@ jobs:
           INPUT_LATEST: ${{ inputs.latest }}
         run: |
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            # Reject anything that isn't MAJOR.MINOR, in particular the
-            # reserved 'latest' and 'dev' identifiers
-            if [[ ! "$INPUT_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
-              echo "Invalid docs version '$INPUT_VERSION'; expected MAJOR.MINOR (e.g. 0.3)" >&2
+            # Only MAJOR.MINOR or the rolling 'rc' target; in particular
+            # this rejects the 'latest' alias and the auto-managed 'dev'
+            if [[ ! "$INPUT_VERSION" =~ ^([0-9]+\.[0-9]+|rc)$ ]]; then
+              echo "Invalid docs version '$INPUT_VERSION'; expected MAJOR.MINOR (e.g. 0.3) or rc" >&2
+              exit 1
+            fi
+            if [[ "$INPUT_VERSION" == "rc" && "$INPUT_LATEST" == "true" ]]; then
+              echo "The public default cannot point at the rolling rc version" >&2
               exit 1
             fi
             version="$INPUT_VERSION"
