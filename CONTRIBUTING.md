@@ -101,6 +101,11 @@ Docs for any version can be (re)deployed manually from the
 via "Run workflow": pick the git tag as the ref, set the docs version (e.g.
 `0.3`), and tick "latest" only if the site root should point there.
 
+When undoing a bad release (see below), note that deleting the release and
+tag does not undo its docs deployment. Re-run the docs workflow from the last
+good tag with "latest" ticked to move the public default back, and remove the
+bad version entirely with `mike delete --push XX.YY` locally if needed.
+
 ## Undoing a bad release
 
 We all mess up sometimes. For example, I have often forgotten to do one of the steps (often, step 1) in the above process, and it leads to a failed release (i.e. an unsuccessful push to PyPI.)
