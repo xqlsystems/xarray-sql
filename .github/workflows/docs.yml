@@ -83,15 +83,6 @@ jobs:
               # v0.4.0 -> 0.4
               version="$(echo "${RELEASE_TAG#v}" | cut -d. -f1,2)"
               latest="true"
-              # A maintenance release for an older line (e.g. v0.3.4 after
-              # v0.4.0) must not move 'latest' backward
-              current="$(git show origin/gh-pages:versions.json 2>/dev/null \
-                | jq -r '.[] | select(.aliases | index("latest")) | .version' || true)"
-              if [[ -n "$current" ]] && \
-                 [[ "$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -1)" != "$version" ]]; then
-                echo "Line ${version} is older than current latest (${current}); not moving the alias" >&2
-                latest="false"
-              fi
             fi
           else
             version="dev"
@@ -106,6 +97,7 @@ jobs:
           VERSION: ${{ steps.docs.outputs.version }}
           TITLE: ${{ steps.docs.outputs.title }}
           LATEST: ${{ steps.docs.outputs.latest }}
+          GUARD_LATEST: ${{ github.event_name == 'release' }}
         run: |
           # The zensical fork of mike is GitHub-only (no PyPI releases), so
           # pin it to a commit; this job holds contents: write
@@ -113,8 +105,32 @@ jobs:
             uvx --from "git+https://github.com/squidfunk/mike.git@2d4ad799442f4592db8ad53b179bfb33db8c69ac" \
               --with "mkdocstrings[python]" mike "$@"
           }
-          # Concurrent runs race on the gh-pages push; mike re-fetches the
-          # branch on each attempt, so retrying resolves the race
+          # A maintenance release for an older line (e.g. v0.3.4 after
+          # v0.4.0) must not move 'latest' backward. Checked against freshly
+          # fetched gh-pages state on every push attempt, since builds for
+          # overlapping releases are not serialized; manual dispatches honor
+          # the explicit input instead
+          may_move_latest() {
+            [[ "$GUARD_LATEST" == "true" ]] || return 0
+            git fetch --quiet origin gh-pages 2>/dev/null || return 0
+            current="$(git show FETCH_HEAD:versions.json 2>/dev/null \
+              | jq -r '.[] | select(.aliases | index("latest")) | .version' || true)"
+            if [[ -n "$current" ]] && \
+               [[ "$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -1)" != "$VERSION" ]]; then
+              echo "Line ${VERSION} is older than current latest (${current}); not moving the alias" >&2
+              return 1
+            fi
+          }
+          deploy() {
+            if [[ "$LATEST" == "true" ]] && may_move_latest; then
+              mike deploy --push --update-aliases --title "$TITLE" "$VERSION" latest &&
+                mike set-default --push latest
+            else
+              mike deploy --push --title "$TITLE" "$VERSION"
+            fi
+          }
+          # Concurrent runs race on the gh-pages push; each attempt re-fetches
+          # the branch, so retrying resolves the race
           retry() {
             for attempt in 1 2; do
               "$@" && return 0
@@ -123,12 +139,7 @@ jobs:
             done
             "$@"
           }
-          if [[ "$LATEST" == "true" ]]; then
-            retry mike deploy --push --update-aliases --title "$TITLE" "$VERSION" latest
-            retry mike set-default --push latest
-          else
-            retry mike deploy --push --title "$TITLE" "$VERSION"
-          fi
+          retry deploy
 
   deploy:
     environment:
