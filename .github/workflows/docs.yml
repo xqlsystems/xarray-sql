@@ -105,11 +105,26 @@ jobs:
         with:
           ref: gh-pages
 
+      - name: Check a default version exists
+        id: bootstrapped
+        run: |
+          # The root redirect only exists once a stable version has been
+          # deployed and set as default; until then, keep serving the
+          # previously published site instead of a broken root
+          if [[ -f index.html ]]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "No default docs version set yet; skipping Pages publish" >&2
+          fi
+
       - name: Upload artifact
+        if: steps.bootstrapped.outputs.ok == 'true'
         uses: actions/upload-pages-artifact@v4
         with:
           path: .
 
       - name: Deploy to GitHub Pages
+        if: steps.bootstrapped.outputs.ok == 'true'
         id: deployment
         uses: actions/deploy-pages@v5
