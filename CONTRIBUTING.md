@@ -104,9 +104,22 @@ git tag to build from in the "ref" input, set the docs version (e.g. `0.3`),
 and tick "latest" only if the site root should point there.
 
 When undoing a bad release (see below), note that deleting the release and
-tag does not undo its docs deployment. Re-run the docs workflow from the last
-good tag with "latest" ticked to move the public default back, and remove the
-bad version entirely with `mike delete --push XX.YY` locally if needed.
+tag does not undo its docs deployment. To roll the docs back:
+
+1. If the bad version should disappear entirely, delete it from `gh-pages`
+   with the same pinned mike fork the workflow uses (the `mike` on PyPI is
+   not Zensical-compatible):
+
+   ```shell
+   uvx --from "git+https://github.com/squidfunk/mike.git@2d4ad799442f4592db8ad53b179bfb33db8c69ac" \
+     --with "mkdocstrings[python]" mike delete --push XX.YY
+   ```
+
+2. Re-run the docs workflow on `main` with "ref" set to the last good tag,
+   its docs version, and "latest" ticked. Pages only updates through the
+   workflow — never from `gh-pages` pushes alone — so this single run moves
+   the public default back and republishes the site without the deleted
+   version.
 
 ## Undoing a bad release
 
