@@ -132,7 +132,6 @@ filters = ["!^_"]
 # Versioned docs via mike (Zensical fork); versions live on the gh-pages branch
 [project.extra.version]
 provider = "mike"
-default = "latest"
 
 [[project.extra.social]]
 icon = "fontawesome/brands/github"
