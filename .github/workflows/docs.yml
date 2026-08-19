@@ -35,10 +35,12 @@ jobs:
       contents: write
     # Rolling versions (dev from main pushes, rc from pre-releases) are
     # newest-wins: an overlapping older build must not finish last and
-    # overwrite the newer content. Stable releases and manual dispatches
-    # get unique groups and always run
+    # overwrite the newer content. Stable releases queue in publish order
+    # so releases of the same line cannot deploy out of order; they never
+    # cancel and stay separate from rc so an incoming pre-release cannot
+    # cancel a running stable build. Manual non-rc dispatches run freely
     concurrency:
-      group: docs-build-${{ github.event_name == 'push' && 'dev' || ((github.event_name == 'release' && github.event.release.prerelease) || (github.event_name == 'workflow_dispatch' && inputs.version == 'rc')) && 'rc' || github.run_id }}
+      group: docs-build-${{ github.event_name == 'push' && 'dev' || ((github.event_name == 'release' && github.event.release.prerelease) || (github.event_name == 'workflow_dispatch' && inputs.version == 'rc')) && 'rc' || github.event_name == 'release' && 'stable' || github.run_id }}
       cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'release' && github.event.release.prerelease) || (github.event_name == 'workflow_dispatch' && inputs.version == 'rc') }}
 
     steps:
