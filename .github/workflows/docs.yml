@@ -19,10 +19,6 @@ on:
         type: boolean
         default: false
 
-concurrency:
-  group: "docs"
-  cancel-in-progress: false
-
 defaults:
   run:
     shell: bash
@@ -82,11 +78,21 @@ jobs:
             uvx --from git+https://github.com/squidfunk/mike.git \
               --with "mkdocstrings[python]" mike "$@"
           }
+          # Concurrent runs race on the gh-pages push; mike re-fetches the
+          # branch on each attempt, so retrying resolves the race
+          retry() {
+            for attempt in 1 2; do
+              "$@" && return 0
+              echo "attempt ${attempt} failed; retrying" >&2
+              sleep 15
+            done
+            "$@"
+          }
           if [[ "$LATEST" == "true" ]]; then
-            mike deploy --push --update-aliases "$VERSION" latest
-            mike set-default --push latest
+            retry mike deploy --push --update-aliases "$VERSION" latest
+            retry mike set-default --push latest
           else
-            mike deploy --push "$VERSION"
+            retry mike deploy --push "$VERSION"
           fi
 
   deploy:
@@ -99,6 +105,12 @@ jobs:
       contents: read
       pages: write
       id-token: write
+    # Serialize Pages publishes only; every build job must run so no mike
+    # deploy is lost. gh-pages state is cumulative, so a pending deploy
+    # superseded in this queue is covered by the newer one that replaced it
+    concurrency:
+      group: "pages"
+      cancel-in-progress: false
 
     steps:
       - uses: actions/checkout@v6
