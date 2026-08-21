@@ -1,0 +1,5896 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Query Xarray with SQL">
+      
+      
+        <meta name="author" content="Alexander Merose">
+      
+      
+        <link rel="canonical" href="https://alxmrs.github.io/0.3/reference/xarray_sql/">
+      
+      
+        <link rel="prev" href="../../contributing/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.56">
+    
+    
+      
+        <title>xarray-sql - xarray-sql</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.20815dad.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="blue">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#xarray-sql" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="xarray-sql" class="md-header__button md-logo" aria-label="xarray-sql" data-md-component="logo">
+      
+  <img src="../../assets/logo.svg" alt="xarray-sql">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            xarray-sql
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              xarray-sql
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="blue"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="black"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/alxmrs/xarray-sql" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    alxmrs/xarray-sql
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="xarray-sql" class="md-nav__button md-logo" aria-label="xarray-sql" data-md-component="logo">
+      
+  <img src="../../assets/logo.svg" alt="xarray-sql">
+
+    </a>
+    xarray-sql
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/alxmrs/xarray-sql" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    alxmrs/xarray-sql
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Home
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Examples
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../geospatial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Geospatial in SQL
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Contributing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Reference
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Reference
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#xarray_sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        xarray_sql
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="xarray_sql">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.__all__" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        __all__
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.XarrayContext" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        XarrayContext
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="XarrayContext">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.XarrayContext.from_dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        from_dataset
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.XarrayContext.sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        sql
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.from_map" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        from_map
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.read_xarray" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        read_xarray
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.read_xarray_table" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        read_xarray_table
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="read_xarray_table">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.read_xarray_table--data-is-only-read-here-during-query-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Data is only read here, during query execution
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.read_xarray_table--filters-on-time-will-prune-partitions-automatically" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Filters on 'time' will prune partitions automatically!
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        cftime
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="cftime">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.DEFAULT_UNITS" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        DEFAULT_UNITS
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.GREGORIAN_LIKE_CALENDARS" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        GREGORIAN_LIKE_CALENDARS
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.arrow_field" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        arrow_field
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.calendar" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        calendar
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.convert_for_field" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        convert_for_field
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        encoding
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.is_cftime" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        is_cftime
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.is_cftime_index" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        is_cftime_index
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.is_gregorian_like" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        is_gregorian_like
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.make_cftime_udf" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        make_cftime_udf
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.partition_bounds" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        partition_bounds
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.to_microseconds" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        to_microseconds
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.to_offsets" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        to_offsets
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.core" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        core
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="core">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.core.Row" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Row
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.core.get_columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        get_columns
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.core.unbounded_unravel" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        unbounded_unravel
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.core.unravel" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        unravel
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        df
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="df">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.Block" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Block
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.Chunks" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Chunks
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.DEFAULT_BATCH_SIZE" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        DEFAULT_BATCH_SIZE
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.PartitionBounds" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        PartitionBounds
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.block_slices" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        block_slices
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.compute_chunks" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        compute_chunks
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.dataset_to_record_batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        dataset_to_record_batch
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.explode" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        explode
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.from_map" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        from_map
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.from_map_batched" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        from_map_batched
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.iter_record_batches" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        iter_record_batches
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.partition_metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        partition_metadata
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.pivot" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        pivot
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.resolve_chunks" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        resolve_chunks
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        ds
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ds">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds.Sparsity" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Sparsity
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds.SQLBackendArray" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        SQLBackendArray
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SQLBackendArray">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds.SQLBackendArray.dtype" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        dtype
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds.SQLBackendArray.shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        shape
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds.XarrayDataFrame" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        XarrayDataFrame
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="XarrayDataFrame">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds.XarrayDataFrame.to_dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        to_dataset
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds.XarrayDataFrame.to_pandas" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        to_pandas
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.proj" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        proj
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="proj">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.proj.RETURN_TYPE" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        RETURN_TYPE
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.proj.register" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        register
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        reader
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="reader">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.XarrayRecordBatchReader" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        XarrayRecordBatchReader
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="XarrayRecordBatchReader">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.XarrayRecordBatchReader--at-this-point-no-data-has-been-read-from-xarray" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        At this point, NO data has been read from xarray
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.XarrayRecordBatchReader--data-is-only-read-when-consumed" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Data is only read when consumed:
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.XarrayRecordBatchReader.schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        schema
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.read_xarray" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        read_xarray
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.read_xarray_table" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        read_xarray_table
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="read_xarray_table">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.read_xarray_table--data-is-only-read-here-during-query-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Data is only read here, during query execution
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.read_xarray_table--filters-on-time-will-prune-partitions-automatically" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Filters on 'time' will prune partitions automatically!
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        sql
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="sql">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.sql.XarrayContext" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        XarrayContext
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="XarrayContext">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.sql.XarrayContext.from_dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        from_dataset
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.sql.XarrayContext.sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        sql
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#xarray_sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        xarray_sql
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="xarray_sql">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.__all__" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        __all__
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.XarrayContext" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        XarrayContext
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="XarrayContext">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.XarrayContext.from_dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        from_dataset
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.XarrayContext.sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        sql
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.from_map" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        from_map
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.read_xarray" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        read_xarray
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.read_xarray_table" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        read_xarray_table
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="read_xarray_table">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.read_xarray_table--data-is-only-read-here-during-query-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Data is only read here, during query execution
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.read_xarray_table--filters-on-time-will-prune-partitions-automatically" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Filters on 'time' will prune partitions automatically!
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        cftime
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="cftime">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.DEFAULT_UNITS" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        DEFAULT_UNITS
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.GREGORIAN_LIKE_CALENDARS" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        GREGORIAN_LIKE_CALENDARS
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.arrow_field" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        arrow_field
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.calendar" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        calendar
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.convert_for_field" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        convert_for_field
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        encoding
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.is_cftime" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        is_cftime
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.is_cftime_index" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        is_cftime_index
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.is_gregorian_like" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        is_gregorian_like
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.make_cftime_udf" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        make_cftime_udf
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.partition_bounds" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        partition_bounds
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.to_microseconds" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        to_microseconds
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.cftime.to_offsets" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        to_offsets
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.core" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        core
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="core">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.core.Row" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Row
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.core.get_columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        get_columns
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.core.unbounded_unravel" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        unbounded_unravel
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.core.unravel" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        unravel
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        df
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="df">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.Block" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Block
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.Chunks" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Chunks
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.DEFAULT_BATCH_SIZE" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        DEFAULT_BATCH_SIZE
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.PartitionBounds" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        PartitionBounds
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.block_slices" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        block_slices
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.compute_chunks" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        compute_chunks
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.dataset_to_record_batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        dataset_to_record_batch
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.explode" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        explode
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.from_map" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        from_map
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.from_map_batched" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        from_map_batched
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.iter_record_batches" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        iter_record_batches
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.partition_metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        partition_metadata
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.pivot" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        pivot
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.df.resolve_chunks" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        resolve_chunks
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        ds
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ds">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds.Sparsity" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Sparsity
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds.SQLBackendArray" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        SQLBackendArray
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SQLBackendArray">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds.SQLBackendArray.dtype" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        dtype
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds.SQLBackendArray.shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        shape
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds.XarrayDataFrame" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        XarrayDataFrame
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="XarrayDataFrame">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds.XarrayDataFrame.to_dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        to_dataset
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ds.XarrayDataFrame.to_pandas" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        to_pandas
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.proj" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        proj
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="proj">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.proj.RETURN_TYPE" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        RETURN_TYPE
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.proj.register" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        register
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        reader
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="reader">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.XarrayRecordBatchReader" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        XarrayRecordBatchReader
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="XarrayRecordBatchReader">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.XarrayRecordBatchReader--at-this-point-no-data-has-been-read-from-xarray" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        At this point, NO data has been read from xarray
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.XarrayRecordBatchReader--data-is-only-read-when-consumed" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Data is only read when consumed:
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.XarrayRecordBatchReader.schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        schema
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.read_xarray" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        read_xarray
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.read_xarray_table" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        read_xarray_table
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="read_xarray_table">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.read_xarray_table--data-is-only-read-here-during-query-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Data is only read here, during query execution
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.reader.read_xarray_table--filters-on-time-will-prune-partitions-automatically" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Filters on 'time' will prune partitions automatically!
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        sql
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="sql">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.sql.XarrayContext" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        XarrayContext
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="XarrayContext">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.sql.XarrayContext.from_dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        from_dataset
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.sql.XarrayContext.sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        sql
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+    <a href="https://github.com/alxmrs/xarray-sql/edit/main/docs/reference/xarray_sql.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-pen" viewBox="0 0 24 24"><path d="M12.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v9.34"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10.378 12.622a1 1 0 0 1 3 3.003L8.36 20.637a2 2 0 0 1-.854.506l-2.867.837a.5.5 0 0 1-.62-.62l.836-2.869a2 2 0 0 1 .506-.853z"/></svg>
+    </a>
+  
+  
+    
+      
+    
+    <a href="https://github.com/alxmrs/xarray-sql/raw/main/docs/reference/xarray_sql.md" title="View source of this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code-2" viewBox="0 0 24 24"><path d="M4 12.15V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-3.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5M5 16l-3 3 3 3M9 22l3-3-3-3"/></svg>
+    </a>
+  
+
+
+<h1 id="xarray-sql">xarray-sql<a class="headerlink" href="#xarray-sql" title="Permanent link">&para;</a></h1>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="xarray_sql" class="doc doc-heading">
+            <code>xarray_sql</code>
+
+
+<a href="#xarray_sql" class="headerlink" title="Permanent link">&para;</a></h2>
+
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="xarray_sql.__all__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'cftime'</span><span class="p">,</span> <span class="s1">'XarrayContext'</span><span class="p">,</span> <span class="s1">'read_xarray_table'</span><span class="p">,</span> <span class="s1">'read_xarray'</span><span class="p">,</span> <span class="s1">'from_map'</span><span class="p">]</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#xarray_sql.__all__" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="xarray_sql.XarrayContext" class="doc doc-heading">
+            <code>XarrayContext</code>
+
+
+<a href="#xarray_sql.XarrayContext" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="datafusion.SessionContext">SessionContext</span></code></p>
+
+
+
+        <p>A datafusion <code>SessionContext</code> that also supports <code>xarray.Dataset</code>s.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.XarrayContext.from_dataset" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">from_dataset</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">input_table</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">table_names</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.XarrayContext.from_dataset" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Register an xarray Dataset as one or more queryable SQL tables.</p>
+<p>When all data variables share the same dimensions, the dataset is
+registered as a single table named <code>name</code>. When variables have
+differing dimensions (e.g. some on a 3D grid and others on a 4D
+grid), the dataset is split into one table per dimension group.
+The tables are registered under a SQL schema (namespace) named
+<code>name</code> and named <code>&lt;dim1&gt;_&lt;dim2&gt;_...</code> by default::</p>
+<div class="language-text highlight"><pre><span></span><code>ctx.from_dataset('era5', ds, chunks={'time': 24})
+# registers tables: 'era5.time_lat_lon' and
+#                   'era5.time_lat_lon_level'
+ctx.sql('SELECT AVG(temperature_2m) FROM era5.time_lat_lon')
+</code></pre></div>
+<p>Use <code>table_names</code> to override the name for specific dimension
+tuples::</p>
+<div class="language-text highlight"><pre><span></span><code>ctx.from_dataset(
+    'era5', ds,
+    table_names={('time', 'lat', 'lon'): 'surface'},
+)
+ctx.sql('SELECT * FROM era5.surface')
+</code></pre></div>
+<p>For datasets with non-Gregorian cftime coordinates (e.g. 360_day,
+julian), a <code>cftime()</code> scalar UDF is automatically registered so
+you can write ergonomic SQL filters::</p>
+<div class="language-text highlight"><pre><span></span><code>ctx.from_dataset("ds360", ds, chunks={"time": 6})
+ctx.sql("SELECT * FROM ds360 WHERE time &gt;= cftime('2000-07-01')")
+</code></pre></div>
+<p>.. note::</p>
+<div class="language-text highlight"><pre><span></span><code>Only one ``cftime()`` UDF is registered per context, using the
+units and calendar of the *first* non-Gregorian coordinate
+encountered. If you register multiple datasets with *different*
+non-Gregorian calendars (e.g. one 360_day and one julian), the
+UDF from the first registration will be used for all subsequent
+``cftime()`` calls and may produce incorrect offsets for the
+other dataset. In that case, create a separate ``XarrayContext``
+for each calendar.
+</code></pre></div>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>name</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The SQL identifier under which the dataset is registered.
+For datasets with uniform dimensions, this is the table
+name. For datasets with mixed dimensions, this is the name
+of a SQL schema (namespace) containing one table per
+dimension group.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>input_table</code>
+            </td>
+            <td>
+                  <code><span title="xarray.Dataset">Dataset</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>An xarray Dataset.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>table_names</code>
+            </td>
+            <td>
+                  <code><span title="dict">dict</span>[<span title="tuple">tuple</span>[<span title="str">str</span>, ...], <span title="str">str</span>] | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional mapping from dimension tuples to custom
+table names within the schema, used when the dataset has
+variables with differing dimensions.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>chunks</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;Chunks&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;dict&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;str&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;None&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-module-attribute&quot;&gt;&lt;code&gt;module-attribute&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.df.Chunks">Chunks</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Xarray-like chunks specification. If not provided, uses
+the Dataset's existing chunks.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>self, to allow chaining.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.XarrayContext.sql" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">sql</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.XarrayContext.sql" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Run a SQL query, returning an :class:<code>XarrayDataFrame</code> wrapper.</p>
+<p>Identical to <code>datafusion.SessionContext.sql</code> except the returned
+object wraps the DataFusion DataFrame. The wrapper exposes
+<code>.to_pandas()</code> (unchanged), forwards every other DataFusion
+method via <code>__getattr__</code>, and adds
+<code>.to_dataset(dimension_columns=[...])</code> for round-tripping the
+result back to an <code>xr.Dataset</code>.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>query</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A SQL query string.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>*args</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to <code>SessionContext.sql</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>()</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>**kwargs</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to <code>SessionContext.sql</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>{}</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>An</code></td>            <td>
+                  <code><a class="autorefs autorefs-internal" href="./#xarray_sql.ds.XarrayDataFrame">XarrayDataFrame</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>class:<code>XarrayDataFrame</code> wrapping the DataFusion DataFrame.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="xarray_sql.from_map" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">from_map</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="o">*</span><span class="n">iterables</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.from_map" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Create a PyArrow Table by mapping a function over iterables.</p>
+<p>This is equivalent to dask's from_map but returns a PyArrow Table
+that can be used with DataFusion instead of a Dask DataFrame.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>func</code>
+            </td>
+            <td>
+                  <code><span title="collections.abc.Callable">Callable</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Function to apply to each element of the iterables.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>*iterables</code>
+            </td>
+            <td>
+                  <code><span title="tuple">tuple</span>[<span title="typing.Any">Any</span>, ...]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Iterable objects to map the function over.</p>
+              </div>
+            </td>
+            <td>
+                  <code>()</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>args</code>
+            </td>
+            <td>
+                  <code><span title="tuple">tuple</span> | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Additional positional arguments to pass to func.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>**kwargs</code>
+            </td>
+            <td>
+                  <code><span title="dict">dict</span>[<span title="str">str</span>, <span title="typing.Any">Any</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Additional keyword arguments to pass to func.</p>
+              </div>
+            </td>
+            <td>
+                  <code>{}</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pyarrow.Table">Table</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A PyArrow Table containing the concatenated results.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="xarray_sql.read_xarray" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">read_xarray</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.read_xarray" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Pivots an Xarray Dataset into a PyArrow Table, partitioned by chunks.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>ds</code>
+            </td>
+            <td>
+                  <code><span title="xarray.Dataset">Dataset</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>An Xarray Dataset. All <code>data_vars</code> must share the same dimensions.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>chunks</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;Chunks&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;dict&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;str&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;None&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-module-attribute&quot;&gt;&lt;code&gt;module-attribute&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.df.Chunks">Chunks</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Xarray-like chunks. If not provided, will default to the
+Dataset's chunks. The product of the chunk sizes becomes the
+standard length of each dataframe partition.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pyarrow.RecordBatchReader">RecordBatchReader</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A PyArrow RecordBatchReader, which is a table representation of the input</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pyarrow.RecordBatchReader">RecordBatchReader</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Dataset.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="xarray_sql.read_xarray_table" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">read_xarray_table</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">DEFAULT_BATCH_SIZE</span><span class="p">,</span> <span class="n">coord_arrays</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">_iteration_callback</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.read_xarray_table" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Create a lazy DataFusion table from an xarray Dataset.</p>
+<p>This is the simplest way to register xarray data with DataFusion.
+Data is only read when queries are executed, not during registration.
+The table can be queried multiple times.</p>
+<p>Each chunk becomes a separate partition, enabling DataFusion's parallel
+execution across multiple cores.</p>
+
+
+<details class="note" open>
+  <summary>Note</summary>
+  <p>SQL queries with WHERE clauses on dimension columns (time, lat, lon, etc.)
+automatically prune partitions that can't contain matching rows — this is
+called <em>filter pushdown</em>. For example:</p>
+<div class="language-text highlight"><pre><span></span><code># This query will skip loading partitions with time &lt; '2020-02-01'
+result = ctx.sql('SELECT * FROM air WHERE time &gt; "2020-02-01"').collect()
+</code></pre></div>
+<p>Supported operators: <code>=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>, <code>BETWEEN</code>, <code>IN</code>, <code>AND</code>, <code>OR</code>.</p>
+</details>
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>ds</code>
+            </td>
+            <td>
+                  <code><span title="xarray.Dataset">Dataset</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>An xarray Dataset. All data_vars must share the same dimensions.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>chunks</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;Chunks&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;dict&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;str&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;None&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-module-attribute&quot;&gt;&lt;code&gt;module-attribute&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.df.Chunks">Chunks</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Xarray-like chunks specification. If not provided, uses
+the Dataset's existing chunks.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>batch_size</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum rows per Arrow RecordBatch emitted per partition.
+Smaller values let DataFusion start processing earlier; the default
+(65 536) works well for most datasets.</p>
+              </div>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;DEFAULT_BATCH_SIZE&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;65536&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-module-attribute&quot;&gt;&lt;code&gt;module-attribute&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.df.DEFAULT_BATCH_SIZE">DEFAULT_BATCH_SIZE</a></code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>coord_arrays</code>
+            </td>
+            <td>
+                  <code><span title="dict">dict</span>[<span title="str">str</span>, <span title="numpy.ndarray">ndarray</span>] | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Pre-materialised coordinate arrays keyed by dim-name
+string.  Hand in to share a single read across multiple tables
+built from the same parent Dataset (e.g. surface + atmosphere
+from ARCO-ERA5); the dim coords are otherwise read once per
+<code>read_xarray_table</code> call, which is a network round-trip for
+Zarr-backed datasets.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>_iteration_callback</code>
+            </td>
+            <td>
+                  <code><span title="collections.abc.Callable">Callable</span>[[<a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;Block&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;dict&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Hashable&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;slice&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-module-attribute&quot;&gt;&lt;code&gt;module-attribute&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.df.Block">Block</a>, <span title="list">list</span>[<span title="str">str</span>] | None], None] | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Internal callback for testing. Called with
+each block dict just before it's converted to Arrow.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>&#39;LazyArrowStreamTable&#39;</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A LazyArrowStreamTable ready for registration with DataFusion.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <blockquote>
+<blockquote>
+<blockquote>
+<p>from datafusion import SessionContext
+import xarray as xr
+from xarray_sql import read_xarray_table</p>
+<p>ds = xr.tutorial.open_dataset('air_temperature')
+table = read_xarray_table(ds, chunks={'time': 240})</p>
+<p>ctx = SessionContext()
+ctx.register_table('air', table)</p>
+<h4 id="xarray_sql.read_xarray_table--data-is-only-read-here-during-query-execution">Data is only read here, during query execution<a class="headerlink" href="#xarray_sql.read_xarray_table--data-is-only-read-here-during-query-execution" title="Permanent link">&para;</a></h4>
+<h4 id="xarray_sql.read_xarray_table--filters-on-time-will-prune-partitions-automatically">Filters on 'time' will prune partitions automatically!<a class="headerlink" href="#xarray_sql.read_xarray_table--filters-on-time-will-prune-partitions-automatically" title="Permanent link">&para;</a></h4>
+<p>result = ctx.sql('SELECT AVG(air) FROM air').collect()</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</details>
+
+    </div>
+
+</div>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="xarray_sql.cftime" class="doc doc-heading">
+            <code>cftime</code>
+
+
+<a href="#xarray_sql.cftime" class="headerlink" title="Permanent link">&para;</a></h3>
+
+    <div class="doc doc-contents ">
+
+        <p>Bridge between cftime calendars and Arrow/DataFusion types.</p>
+<p>cftime (https://unidata.github.io/cftime/) provides datetime objects for
+calendars used in climate science — noleap, 360-day, all-leap, julian, etc.
+Arrow and DataFusion have no native concept of non-Gregorian calendars, so
+this module handles the conversion in two tiers:</p>
+<ul>
+<li>
+<p><strong>Gregorian-like calendars</strong> (standard, gregorian, proleptic_gregorian,
+  noleap/365_day, all_leap/366_day): mapped to <code>pa.timestamp('us')</code> so
+  that string-based SQL filters like <code>WHERE time &gt; '1980-01-01'</code> work
+  naturally.  Microsecond resolution avoids the 1678–2262 overflow of
+  nanoseconds while preserving sub-second precision.</p>
+</li>
+<li>
+<p><strong>Non-Gregorian calendars</strong> (360_day, julian): mapped to <code>pa.int64()</code>
+  with <code>xarray:units</code> and <code>xarray:calendar</code> metadata on the Arrow field.
+  This preserves the original CF-convention encoding losslessly.  A
+  <code>cftime()</code> DataFusion UDF (registered automatically by
+  <code>XarrayContext.from_dataset</code>) provides ergonomic SQL filtering.</p>
+</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="xarray_sql.cftime.DEFAULT_UNITS" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">DEFAULT_UNITS</span> <span class="o">=</span> <span class="s1">'microseconds since 1970-01-01T00:00:00'</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#xarray_sql.cftime.DEFAULT_UNITS" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="xarray_sql.cftime.GREGORIAN_LIKE_CALENDARS" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">GREGORIAN_LIKE_CALENDARS</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">({</span><span class="s1">'standard'</span><span class="p">,</span> <span class="s1">'gregorian'</span><span class="p">,</span> <span class="s1">'proleptic_gregorian'</span><span class="p">,</span> <span class="s1">'noleap'</span><span class="p">,</span> <span class="s1">'365_day'</span><span class="p">,</span> <span class="s1">'all_leap'</span><span class="p">,</span> <span class="s1">'366_day'</span><span class="p">})</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#xarray_sql.cftime.GREGORIAN_LIKE_CALENDARS" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.cftime.arrow_field" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">arrow_field</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">units</span><span class="p">,</span> <span class="n">cal</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.cftime.arrow_field" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Build a <code>pa.Field</code> for a cftime coordinate.</p>
+<p>Gregorian-like → <code>pa.timestamp('us')</code>; non-Gregorian → <code>pa.int64()</code>.
+Both carry <code>xarray:calendar</code> and <code>xarray:units</code> metadata for
+round-trip fidelity.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.cftime.calendar" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">calendar</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">coord_name</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.cftime.calendar" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return the calendar name for a cftime coordinate, or <code>None</code>.</p>
+<p>Checks the xarray index first (no data materialization), then falls
+back to inspecting element 0 of the coordinate values.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.cftime.convert_for_field" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">convert_for_field</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">field</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.cftime.convert_for_field" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Convert cftime values to the numeric type dictated by <em>field</em>.</p>
+<p>Reads <code>xarray:calendar</code> and <code>xarray:units</code> from the field's Arrow
+metadata to choose between the timestamp path and the integer-offset path.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.cftime.encoding" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">encoding</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">coord_name</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.cftime.encoding" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return <code>(units, calendar)</code> for a cftime coordinate.</p>
+<p>Reads xarray <code>.encoding</code> metadata (from the originating NetCDF file)
+first, falling back to :data:<code>DEFAULT_UNITS</code>.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.cftime.is_cftime" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">is_cftime</span><span class="p">(</span><span class="n">values</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.cftime.is_cftime" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Check if a numpy array contains cftime datetime objects.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.cftime.is_cftime_index" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">is_cftime_index</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">coord_name</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.cftime.is_cftime_index" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Check if a coordinate uses a <code>CFTimeIndex</code> without materializing data.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.cftime.is_gregorian_like" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">is_gregorian_like</span><span class="p">(</span><span class="n">calendar</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.cftime.is_gregorian_like" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return True if <em>calendar</em> is close enough to Gregorian for <code>pa.timestamp</code>.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.cftime.make_cftime_udf" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">make_cftime_udf</span><span class="p">(</span><span class="n">units</span><span class="p">,</span> <span class="n">calendar</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.cftime.make_cftime_udf" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Create a DataFusion scalar UDF that converts date strings to int64 offsets.</p>
+<p>This enables ergonomic SQL filtering on non-Gregorian cftime columns::</p>
+<div class="language-text highlight"><pre><span></span><code>SELECT * FROM ds360 WHERE time &gt; cftime('0500-01-01')
+</code></pre></div>
+<p>The UDF parses the input string as a cftime datetime in the given
+calendar system and returns the corresponding int64 offset in the
+specified units.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.cftime.partition_bounds" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">partition_bounds</span><span class="p">(</span><span class="n">values</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.cftime.partition_bounds" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return <code>(min, max, dtype_tag)</code> for a cftime coordinate slice.</p>
+<p>Gregorian-like calendars return nanosecond bounds tagged
+<code>"timestamp_ns"</code> (compatible with <code>ScalarBound::TimestampNanos</code>
+in the Rust pruning layer).  Non-Gregorian calendars return int64
+offsets tagged <code>"int64"</code>.</p>
+<p>Returns <code>None</code> when the nanosecond bound falls outside the int64 range
+(e.g. paleoclimate dates before ~1678), signalling the caller to skip
+pruning for that dimension rather than emit a bound the Rust layer would
+reject.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.cftime.to_microseconds" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">to_microseconds</span><span class="p">(</span><span class="n">values</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.cftime.to_microseconds" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Convert cftime objects to int64 microseconds since Unix epoch.</p>
+<p>Used for Gregorian-like calendars.  Vectorised via <code>cftime.date2num</code>
+(implemented in C).</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.cftime.to_offsets" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">to_offsets</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">units</span><span class="p">,</span> <span class="n">cal</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.cftime.to_offsets" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Convert cftime objects to int64 offsets in the given <em>units</em>/<em>calendar</em>.</p>
+<p>Used for non-Gregorian calendars where data is stored as <code>pa.int64()</code>.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="xarray_sql.core" class="doc doc-heading">
+            <code>core</code>
+
+
+<a href="#xarray_sql.core" class="headerlink" title="Permanent link">&para;</a></h3>
+
+    <div class="doc doc-contents ">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="xarray_sql.core.Row" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">Row</span> <span class="o">=</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#xarray_sql.core.Row" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.core.get_columns" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_columns</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.core.get_columns" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.core.unbounded_unravel" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">unbounded_unravel</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.core.unbounded_unravel" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Unravel with unbounded memory (as a NumPy Array).</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.core.unravel" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">unravel</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.core.unravel" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="xarray_sql.df" class="doc doc-heading">
+            <code>df</code>
+
+
+<a href="#xarray_sql.df" class="headerlink" title="Permanent link">&para;</a></h3>
+
+    <div class="doc doc-contents ">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="xarray_sql.df.Block" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">Block</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">[</span><span class="n">Hashable</span><span class="p">,</span> <span class="nb">slice</span><span class="p">]</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#xarray_sql.df.Block" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="xarray_sql.df.Chunks" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">Chunks</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#xarray_sql.df.Chunks" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="xarray_sql.df.DEFAULT_BATCH_SIZE" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">DEFAULT_BATCH_SIZE</span> <span class="o">=</span> <span class="mi">65536</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#xarray_sql.df.DEFAULT_BATCH_SIZE" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="xarray_sql.df.PartitionBounds" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">PartitionBounds</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#xarray_sql.df.PartitionBounds" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.df.block_slices" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">block_slices</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.df.block_slices" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Compute block slices for a chunked Dataset.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.df.compute_chunks" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">compute_chunks</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.df.compute_chunks" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Per-dim chunk-size tuples matching <code>ds.chunk(chunks).chunks</code>.</p>
+<p>Pure arithmetic replacement for the dask rechunk round-trip; dask's
+<code>.chunk()</code> eagerly builds a task graph, which dominates
+<code>block_slices()</code> cost on large datasets.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.df.dataset_to_record_batch" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">dataset_to_record_batch</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">schema</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.df.dataset_to_record_batch" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Convert an xarray Dataset partition to an Arrow RecordBatch.</p>
+<p>Builds the RecordBatch directly from numpy arrays, bypassing the pandas
+round-trip (to_dataframe → reset_index → from_pandas) used by pivot().
+For large partitions this reduces peak memory from ~5× to ~2× the
+partition size.</p>
+<p>Dimension coordinates are broadcast to the full partition shape and
+ravelled. np.broadcast_to() is zero-copy; the ravel() forces one copy
+per coordinate (unavoidable, since broadcast arrays are non-contiguous).
+Data variable arrays are ravelled in-place — a zero-copy view when the
+underlying array is already C-contiguous (the common case for numpy-backed
+xarray datasets).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>ds</code>
+            </td>
+            <td>
+                  <code><span title="xarray.Dataset">Dataset</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A partition-sized xarray Dataset (already sliced via isel).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>schema</code>
+            </td>
+            <td>
+                  <code><span title="pyarrow.Schema">Schema</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The Arrow schema for the output, as produced by _parse_schema.
+Column order in the output matches schema field order.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pyarrow.RecordBatch">RecordBatch</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A RecordBatch with one column per dimension coordinate and data</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pyarrow.RecordBatch">RecordBatch</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>variable, in schema order.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.df.explode" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">explode</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.df.explode" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Explodes a dataset into its chunks.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.df.from_map" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">from_map</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="o">*</span><span class="n">iterables</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.df.from_map" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Create a PyArrow Table by mapping a function over iterables.</p>
+<p>This is equivalent to dask's from_map but returns a PyArrow Table
+that can be used with DataFusion instead of a Dask DataFrame.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>func</code>
+            </td>
+            <td>
+                  <code><span title="collections.abc.Callable">Callable</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Function to apply to each element of the iterables.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>*iterables</code>
+            </td>
+            <td>
+                  <code><span title="tuple">tuple</span>[<span title="typing.Any">Any</span>, ...]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Iterable objects to map the function over.</p>
+              </div>
+            </td>
+            <td>
+                  <code>()</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>args</code>
+            </td>
+            <td>
+                  <code><span title="tuple">tuple</span> | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Additional positional arguments to pass to func.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>**kwargs</code>
+            </td>
+            <td>
+                  <code><span title="dict">dict</span>[<span title="str">str</span>, <span title="typing.Any">Any</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Additional keyword arguments to pass to func.</p>
+              </div>
+            </td>
+            <td>
+                  <code>{}</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pyarrow.Table">Table</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A PyArrow Table containing the concatenated results.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.df.from_map_batched" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">from_map_batched</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="o">*</span><span class="n">iterables</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">schema</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.df.from_map_batched" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Create a PyArrow RecordBatchReader by mapping a function over iterables.</p>
+<p>This is equivalent to dask's from_map but returns a PyArrow
+RecordBatchReader that can be used with DataFusion. It iterates over
+RecordBatches which are created via the <code>func</code> one-at-a-time.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>func</code>
+            </td>
+            <td>
+                  <code><span title="collections.abc.Callable">Callable</span>[..., <span title="pandas.DataFrame">DataFrame</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Function to apply to each element of the iterables. Currently, the
+function must return a Pandas DataFrame.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>*iterables</code>
+            </td>
+            <td>
+                  <code><span title="tuple">tuple</span>[<span title="typing.Any">Any</span>, ...]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Iterable objects to map the function over.</p>
+              </div>
+            </td>
+            <td>
+                  <code>()</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>schema</code>
+            </td>
+            <td>
+                  <code><span title="pyarrow.Schema">Schema</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional schema needed for the RecordBatchReader.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>args</code>
+            </td>
+            <td>
+                  <code><span title="tuple">tuple</span> | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Additional positional arguments to pass to func.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>**kwargs</code>
+            </td>
+            <td>
+                  <code><span title="dict">dict</span>[<span title="str">str</span>, <span title="typing.Any">Any</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Additional keyword arguments to pass to func.</p>
+              </div>
+            </td>
+            <td>
+                  <code>{}</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pyarrow.RecordBatchReader">RecordBatchReader</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A PyArrow RecordBatchReader containing the stream of RecordBatches.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.df.iter_record_batches" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">iter_record_batches</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">schema</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">DEFAULT_BATCH_SIZE</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.df.iter_record_batches" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Yield RecordBatches of at most <em>batch_size</em> rows from a partition Dataset.</p>
+<p>Unlike <code>dataset_to_record_batch</code>, which materialises the entire
+partition as one batch, this generator emits smaller batches so that
+DataFusion can begin filtering and aggregating before the full partition
+is loaded.  Peak memory per batch is O(batch_size) for coordinate columns
+and O(partition_size) for data-variable columns (which must be loaded in
+full from storage).</p>
+<p>Coordinate values are computed per batch via strided index arithmetic —
+no broadcast array spanning the whole partition is ever allocated.  Data
+variable flat arrays are loaded once (triggering any remote I/O) and then
+sliced as zero-copy views for each batch.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>ds</code>
+            </td>
+            <td>
+                  <code><span title="xarray.Dataset">Dataset</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A partition-sized xarray Dataset (already sliced via isel).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>schema</code>
+            </td>
+            <td>
+                  <code><span title="pyarrow.Schema">Schema</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The Arrow schema for the output, as produced by _parse_schema.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>batch_size</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum number of rows per yielded RecordBatch.</p>
+              </div>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;DEFAULT_BATCH_SIZE&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;65536&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-module-attribute&quot;&gt;&lt;code&gt;module-attribute&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.df.DEFAULT_BATCH_SIZE">DEFAULT_BATCH_SIZE</a></code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Yields:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pyarrow.RecordBatch">RecordBatch</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>RecordBatches in schema column order, covering all rows of the</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pyarrow.RecordBatch">RecordBatch</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>partition exactly once.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.df.partition_metadata" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">partition_metadata</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">blocks</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.df.partition_metadata" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Compute min/max coordinate values for each partition.</p>
+<p>This metadata enables filter pushdown: SQL queries with WHERE clauses
+on dimension columns can prune partitions that can't contain matching rows.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>ds</code>
+            </td>
+            <td>
+                  <code><span title="xarray.Dataset">Dataset</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The xarray Dataset containing coordinate values.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>blocks</code>
+            </td>
+            <td>
+                  <code><span title="list">list</span>[<a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;Block&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;dict&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Hashable&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;slice&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-module-attribute&quot;&gt;&lt;code&gt;module-attribute&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.df.Block">Block</a>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>List of block slices from block_slices().</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="list">list</span>[<a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;PartitionBounds&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;dict&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;str&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;tuple&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Any&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Any&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;str&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-module-attribute&quot;&gt;&lt;code&gt;module-attribute&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.df.PartitionBounds">PartitionBounds</a>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>List of dicts mapping dimension name to</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="list">list</span>[<a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;PartitionBounds&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;dict&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;str&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;tuple&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Any&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Any&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;str&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-module-attribute&quot;&gt;&lt;code&gt;module-attribute&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.df.PartitionBounds">PartitionBounds</a>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>(min_value, max_value, dtype_str) tuples.</p>
+<ul>
+<li>For datetime64, values are nanoseconds since Unix epoch
+  (int64), dtype_str is "timestamp_ns"</li>
+<li>For numeric types, values are Python int or float,
+  dtype_str is "int64" or "float64"</li>
+</ul>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="note" open>
+  <summary>Note</summary>
+  <p>If a partition has an empty slice for a dimension, that dimension is
+omitted from the partition's metadata. The Rust pruning logic treats
+missing dimensions conservatively (never prunes on them).</p>
+</details>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.df.pivot" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">pivot</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.df.pivot" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Converts an xarray Dataset to a pandas DataFrame.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.df.resolve_chunks" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">resolve_chunks</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.df.resolve_chunks" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Normalise the user's <code>chunks</code> argument to per-dim size tuples.</p>
+<p>Filters out keys for dims this dataset doesn't have (sub-datasets in a
+heterogeneous group need not contain every dimension named in the
+spec), then either rechunks arithmetically via <code>compute_chunks</code> or
+falls back to the dataset's existing dask chunks.</p>
+<p>Returns an empty mapping for scalar datasets; callers should treat that
+as "one block covering everything".</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="xarray_sql.ds" class="doc doc-heading">
+            <code>ds</code>
+
+
+<a href="#xarray_sql.ds" class="headerlink" title="Permanent link">&para;</a></h3>
+
+    <div class="doc doc-contents ">
+
+        <p>Reconstruct xarray Datasets from SQL query results.</p>
+<p>The inverse of the forward Dataset-to-table pivot done by
+:func:<code>xarray_sql.df.pivot</code>. Internally defines an :class:<code>XarrayDataFrame</code>
+wrapper around the DataFusion <code>DataFrame</code> returned by
+:meth:<code>XarrayContext.sql</code>, with a :meth:<code>XarrayDataFrame.to_dataset</code>
+method that round-trips a query result back to <code>xr.Dataset</code>.</p>
+<p>Reconstruction is controlled by the <code>chunks</code> argument to
+:meth:<code>XarrayDataFrame.to_dataset</code> -- the xarray idiom for tuning how a
+result is partitioned -- rather than by reflecting on the query plan:</p>
+<ul>
+<li><strong>Eager</strong> (<code>chunks=None</code>, or the default <code>"inherit"</code> when the
+  result keeps no multi-chunk source dimension): the plan executes
+  exactly once via <code>execute_stream</code> and the result is scattered into a
+  dense in-memory Dataset. This is the right default for reductions
+  (aggregations), whose results are small, and it never re-executes.</li>
+<li><strong>Lazy / chunked</strong> (<code>chunks</code> is a mapping, <code>"auto"</code>, or
+  <code>"inherit"</code> over a multi-chunk source dimension): data variables are
+  backed by :class:<code>SQLBackendArray</code> wrapped in
+  <code>xarray.core.indexing.LazilyIndexedArray</code> and chunked via xarray's
+  configured chunk manager (dask, cubed, ...). Each chunk maps onto the
+  source partitions and reads its coordinate range on access by
+  translating the indexer into a DataFusion <code>filter</code> expression, so only
+  the requested partitions are materialized as Arrow <code>RecordBatch</code> es
+  and scattered into numpy.</li>
+</ul>
+<p><code>.compute()</code> materializes the whole Dataset in memory.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="xarray_sql.ds.Sparsity" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">Sparsity</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s1">'result'</span><span class="p">,</span> <span class="s1">'template'</span><span class="p">]</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#xarray_sql.ds.Sparsity" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Output coordinate extent for a filtered round-trip.</p>
+<ul>
+<li><code>"result"</code> keeps only the dim values present in the query result, so
+  the output is sparse and equal to whatever rows came back.</li>
+<li><code>"template"</code> reindexes to the registered Dataset's full coord ranges
+  and fills absent cells with <code>fill_value</code>.</li>
+</ul>
+
+    </div>
+
+</div>
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="xarray_sql.ds.SQLBackendArray" class="doc doc-heading">
+            <code>SQLBackendArray</code>
+
+
+<a href="#xarray_sql.ds.SQLBackendArray" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="xarray.backends.BackendArray">BackendArray</span></code></p>
+
+
+
+        <p>Read-only lazy N-D array view over a DataFusion DataFrame.</p>
+<p>Bridges xarray's lazy-indexing interface
+(:class:<code>xarray.backends.BackendArray</code>) to a DataFusion query result,
+so an xarray <code>Dataset</code> can present a SQL query as if it were a
+materialized N-D array without actually loading any data until the
+caller asks for it. This is the workhorse that lets
+:meth:<code>XarrayDataFrame.to_dataset</code> return a Dataset cheaply.</p>
+<p>On each <code>__getitem__</code> call, the requested xarray indexer is
+translated into a DataFusion filter expression (<code>df.filter(expr)</code>)
+and a column projection (<code>df.select(*cols)</code>). The filtered
+DataFrame is consumed via <code>execute_stream</code> as a sequence of Arrow
+<code>RecordBatch</code> es and scattered into a preallocated numpy buffer,
+so only the requested data is materialized.</p>
+<p>Constraints and caveats:</p>
+<ul>
+<li>Read-only: there is no write path; the backend exists to surface
+  query results, not to round-trip writes into a SQL store.</li>
+<li>The underlying DataFusion <code>DataFrame</code> holds a reference to its
+  originating <code>SessionContext</code>, which is not picklable. The class
+  therefore overrides <code>__copy__</code> and <code>__deepcopy__</code> to return
+  <code>self</code> -- this is safe because the backend is read-only.</li>
+<li><code>IndexingSupport.OUTER</code>: <code>BasicIndexer</code> and <code>OuterIndexer</code>
+  are translated to filter predicates directly; <code>VectorizedIndexer</code>
+  paths through xarray's adapter to outer-then-gather and so still
+  works, just less efficiently.</li>
+</ul>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>ValueError, datafusion exceptions</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>propagated from the
+underlying <code>df.filter().select().execute_stream()</code> chain
+if a predicate refers to a missing column, the dtype of a
+literal is incompatible, or the execution itself fails.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="AssertionError">AssertionError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>from <code>np.searchsorted</code> mis-alignment, which
+indicates the result contains coordinate values not present
+in the wrapper's pre-computed coord arrays -- usually a
+symptom of a filtered query whose coord discovery missed a
+value.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+        <p>Constructed by :func:<code>_build_lazy_scan</code>; users should not instantiate
+this class directly.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h5 id="xarray_sql.ds.SQLBackendArray.dtype" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">dtype</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-instance-attribute"><code>instance-attribute</code></small>
+  </span>
+
+<a href="#xarray_sql.ds.SQLBackendArray.dtype" class="headerlink" title="Permanent link">&para;</a></h5>
+
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h5 id="xarray_sql.ds.SQLBackendArray.shape" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">shape</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-instance-attribute"><code>instance-attribute</code></small>
+  </span>
+
+<a href="#xarray_sql.ds.SQLBackendArray.shape" class="headerlink" title="Permanent link">&para;</a></h5>
+
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="xarray_sql.ds.XarrayDataFrame" class="doc doc-heading">
+            <code>XarrayDataFrame</code>
+
+
+<a href="#xarray_sql.ds.XarrayDataFrame" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Wrapper around a DataFusion <code>DataFrame</code> with xarray-aware helpers.</p>
+<p>Returned by :meth:<code>xarray_sql.XarrayContext.sql</code>. Forwards every
+attribute it does not define itself to the wrapped DataFrame, so
+<code>.collect()</code>, <code>.schema()</code>, <code>.show()</code>, <code>.count()</code> all work
+unchanged.</p>
+<p>Carries a private snapshot of the context's registered Datasets so
+:meth:<code>to_dataset</code> can default <code>dims</code> and recover metadata
+dropped by the forward pivot.</p>
+<p>Users should not construct this class directly; let
+:meth:<code>XarrayContext.sql</code> produce it.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h5 id="xarray_sql.ds.XarrayDataFrame.to_dataset" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">to_dataset</span><span class="p">(</span><span class="n">dims</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">template</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sparsity</span><span class="o">=</span><span class="s1">'result'</span><span class="p">,</span> <span class="n">fill_value</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="s1">'inherit'</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.ds.XarrayDataFrame.to_dataset" class="headerlink" title="Permanent link">&para;</a></h5>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Convert the result to an <code>xr.Dataset</code>.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>dims</code>
+            </td>
+            <td>
+                  <code><span title="list">list</span>[<span title="str">str</span>] | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Result columns to use as Dataset dimensions. When
+<code>None</code>, defaults to a registered Dataset's dimensions that
+survive into the result columns, so an aggregation that drops
+dims (e.g. <code>GROUP BY time</code> over a <code>(time, lat, lon)</code> grid)
+round-trips on the remaining dim. Raises when no dimension
+survives, or when several registered Datasets imply different
+dims (pass <code>dims</code> explicitly then).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>template</code>
+            </td>
+            <td>
+                  <code><span title="xarray.Dataset">Dataset</span> | <span title="str">str</span> | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Source to recover metadata (attrs, encoding, non-dim
+coordinates, dim-coord dtype) from. Either an <code>xr.Dataset</code>
+used directly, or the name of a registered table (e.g.
+<code>"era5.surface"</code>) whose Dataset is looked up. When <code>None</code>
+and exactly one Dataset is registered, that one is used.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>sparsity</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;Sparsity&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Literal&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;&#x27;result&#x27;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&#x27;template&#x27;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-module-attribute&quot;&gt;&lt;code&gt;module-attribute&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.ds.Sparsity">Sparsity</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>"result"</code> (default) keeps only dim values
+present in the result. <code>"template"</code> reindexes to the
+template's full coord ranges, filling absent cells with
+<code>fill_value</code>; requires a template.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;result&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>fill_value</code>
+            </td>
+            <td>
+                  <code><span title="typing.Any">Any</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Used when <code>sparsity="template"</code> reindexes
+to a wider extent. Defaults to <code>np.nan</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code><span title="numpy.nan">nan</span></code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>chunks</code>
+            </td>
+            <td>
+                  <code><span title="collections.abc.Mapping">Mapping</span>[<span title="str">str</span>, <span title="int">int</span>] | <span title="str">str</span> | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Output chunking, controlling laziness (an xarray idiom).</p>
+<ul>
+<li><code>"inherit"</code> (default): reuse the source Dataset's chunk
+  sizes, but only for dimensions that were genuinely split into
+  multiple chunks in the input -- so the output chunk grid maps
+  onto the source partitions. A reduction that drops the chunked
+  dimension (e.g. a global aggregation) inherits nothing and so
+  is materialized eagerly. Falls back to eager when no source
+  Dataset is resolvable.</li>
+<li><code>None</code>: eager. Execute the query once and return a dense
+  in-memory Dataset. Best for reductions (small results).</li>
+<li>a mapping (e.g. <code>{"time": 100}</code>): chunk explicitly. Each
+  chunk reads its coordinate range lazily via filter pushdown on
+  access, through xarray's configured chunk manager (dask,
+  cubed, ...).</li>
+<li><code>"auto"</code>: size chunks to the chunk manager's byte target but
+  snap boundaries to whole source partitions, so each chunk is a
+  union of source partitions. Useful for finely partitioned
+  sources (e.g. ERA5 <code>chunks={"time": 1}</code>), coarsening many
+  tiny partitions into memory-sized, aligned chunks.</li>
+</ul>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;inherit&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="xarray.Dataset">Dataset</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>An <code>xr.Dataset</code> with <code>dims</code> as dimensions and the</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="xarray.Dataset">Dataset</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>remaining result columns as data variables.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>dims</code> cannot be inferred, names a missing
+column, or the result has duplicate dim tuples;
+<code>template</code> names an unknown registered table; or
+<code>sparsity="template"</code> is requested without a
+resolvable template.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h5 id="xarray_sql.ds.XarrayDataFrame.to_pandas" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">to_pandas</span><span class="p">()</span></code>
+
+<a href="#xarray_sql.ds.XarrayDataFrame.to_pandas" class="headerlink" title="Permanent link">&para;</a></h5>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Materialize the result as a <code>pd.DataFrame</code> (DataFusion API).</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="xarray_sql.proj" class="doc doc-heading">
+            <code>proj</code>
+
+
+<a href="#xarray_sql.proj" class="headerlink" title="Permanent link">&para;</a></h3>
+
+    <div class="doc doc-contents ">
+
+        <p>PROJ-backed CRS transforms for SQL — the optional geo extension.</p>
+<p>Geospatial SQL dialects expose coordinate reference system (CRS)
+transforms as a scalar function — PostGIS and DuckDB-spatial both call it
+<code>ST_Transform</code> — because a CRS transform is row-independent: each
+point's new coordinate depends only on its own old coordinate. This
+module brings the same capability to xarray-sql as a vectorized scalar
+UDF over Arrow arrays::</p>
+<div class="language-text highlight"><pre><span></span><code>SELECT x, y,
+       reproject(x, y, 'EPSG:32610', 'EPSG:4326')['x'] AS lon,
+       reproject(x, y, 'EPSG:32610', 'EPSG:4326')['y'] AS lat
+FROM grid
+</code></pre></div>
+<p>The CRS pair is part of the <em>query</em>, not baked in at registration time,
+so one registered UDF serves any transform — and, because the arguments
+are ordinary SQL expressions, the CRS may even vary per row (e.g. a
+<code>CASE</code> expression selecting the UTM zone from the longitude).</p>
+<p>Design notes:</p>
+<ul>
+<li><strong>Both output coordinates come from one call</strong>, returned as an Arrow
+  struct <code>{x, y}</code> (in <code>always_xy</code> order: easting/longitude first).
+  Splitting the transform into two scalar UDFs would run PROJ twice per
+  row and, worse, evaluate the two projections concurrently on separate
+  expression trees.</li>
+<li><strong>All pyproj work runs on a dedicated pool of Python threads.</strong>
+  DataFusion's runtime workers are not Python-created threads, and
+  pyproj (&lt; 3.8, see pyproj#1541) leaves a dangling <code>PJ_CONTEXT</code>
+  behind when their ephemeral Python thread states are torn down, so
+  calling pyproj in place segfaults — the UDF hands each batch to the
+  pool instead. Pool threads are long-lived, so each caches one
+  transformer per CRS pair (transformers must not be shared across
+  threads), amortizing the expensive construction — PROJ database
+  lookups and candidate-operation selection — across record batches.
+  Concurrent partitions still transform in parallel across the pool.</li>
+<li>Any CRS spelling <code>pyproj.CRS</code> accepts works: authority codes
+  (<code>EPSG:4326</code>), WKT, PROJ strings (<code>+proj=utm +zone=10</code>), etc.
+  An unknown CRS raises <code>pyproj.exceptions.CRSError</code> and fails the
+  query loudly rather than returning wrong coordinates.</li>
+<li>Non-finite or NULL input coordinates yield NaN output (PROJ itself
+  would return <code>inf</code>); NULL CRS arguments yield NaN as well.</li>
+</ul>
+<p>Requires <code>pyproj</code> (<code>pip install xarray-sql[geo]</code>). When pyproj is
+installed, :class:<code>xarray_sql.XarrayContext</code> registers <code>reproject()</code>
+automatically; :func:<code>register</code> is the explicit hook for plain
+DataFusion <code>SessionContext</code> objects or custom UDF names.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="xarray_sql.proj.RETURN_TYPE" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">RETURN_TYPE</span> <span class="o">=</span> <span class="n">pa</span><span class="o">.</span><span class="n">struct</span><span class="p">([(</span><span class="s1">'x'</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">float64</span><span class="p">()),</span> <span class="p">(</span><span class="s1">'y'</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">float64</span><span class="p">())])</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#xarray_sql.proj.RETURN_TYPE" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.proj.register" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">register</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">'reproject'</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.proj.register" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Register the <code>reproject(x, y, src_crs, dst_crs)</code> scalar UDF.</p>
+<p>Works on any DataFusion <code>SessionContext</code> (<code>XarrayContext</code>
+registers it automatically when pyproj is installed). The UDF
+returns a <code>{x, y}</code> struct of destination coordinates, so a query
+selects components with subscripts::</p>
+<div class="language-text highlight"><pre><span></span><code>SELECT reproject(x, y, 'EPSG:32610', 'EPSG:4326')['x'] AS lon
+FROM grid
+</code></pre></div>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>ctx</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The DataFusion session context to register the UDF on.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>name</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>SQL name for the function (default <code>"reproject"</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;reproject&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="xarray_sql.reader" class="doc doc-heading">
+            <code>reader</code>
+
+
+<a href="#xarray_sql.reader" class="headerlink" title="Permanent link">&para;</a></h3>
+
+    <div class="doc doc-contents ">
+
+        <p>Lazy Arrow stream reader for xarray Datasets.</p>
+<p>This module provides XarrayRecordBatchReader, which implements the Arrow
+PyCapsule Interface (<strong>arrow_c_stream</strong>) to enable zero-copy, lazy streaming
+of xarray data to DataFusion and other Arrow consumers.</p>
+<p>The implementation delegates to PyArrow's RecordBatchReader for the
+actual stream implementation, wrapping xarray block iteration in a generator.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="xarray_sql.reader.XarrayRecordBatchReader" class="doc doc-heading">
+            <code>XarrayRecordBatchReader</code>
+
+
+<a href="#xarray_sql.reader.XarrayRecordBatchReader" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>A lazy Arrow stream reader for xarray Datasets.</p>
+<p>Implements the Arrow PyCapsule Interface (<strong>arrow_c_stream</strong>) to enable
+zero-copy, lazy streaming of xarray data to DataFusion and other Arrow
+consumers.</p>
+<p>The key property is that xarray blocks are only converted to Arrow
+RecordBatches when the consumer calls get_next (e.g., during DataFusion's
+collect()), NOT when the reader is created or registered.</p>
+
+
+<p><span class="doc-section-title">Attributes:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;schema&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-property&quot;&gt;&lt;code&gt;property&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.reader.XarrayRecordBatchReader.schema">schema</a></code></td>
+            <td>
+                  <code><span title="pyarrow.Schema">Schema</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The Arrow schema for the stream.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <blockquote>
+<blockquote>
+<blockquote>
+<p>import xarray as xr
+from xarray_sql import XarrayRecordBatchReader
+ds = xr.tutorial.open_dataset('air_temperature')
+reader = XarrayRecordBatchReader(ds, chunks={'time': 240})</p>
+<h5 id="xarray_sql.reader.XarrayRecordBatchReader--at-this-point-no-data-has-been-read-from-xarray">At this point, NO data has been read from xarray<a class="headerlink" href="#xarray_sql.reader.XarrayRecordBatchReader--at-this-point-no-data-has-been-read-from-xarray" title="Permanent link">&para;</a></h5>
+<h5 id="xarray_sql.reader.XarrayRecordBatchReader--data-is-only-read-when-consumed">Data is only read when consumed:<a class="headerlink" href="#xarray_sql.reader.XarrayRecordBatchReader--data-is-only-read-when-consumed" title="Permanent link">&para;</a></h5>
+<p>import pyarrow as pa
+pa_reader = pa.RecordBatchReader.from_stream(reader)
+for batch in pa_reader:
+...     print(batch.num_rows)  # Data read here</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</details>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h5 id="xarray_sql.reader.XarrayRecordBatchReader.schema" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">schema</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#xarray_sql.reader.XarrayRecordBatchReader.schema" class="headerlink" title="Permanent link">&para;</a></h5>
+
+
+    <div class="doc doc-contents ">
+
+        <p>The Arrow schema for this stream.</p>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.reader.read_xarray" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">read_xarray</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.reader.read_xarray" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Pivots an Xarray Dataset into a PyArrow Table, partitioned by chunks.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>ds</code>
+            </td>
+            <td>
+                  <code><span title="xarray.Dataset">Dataset</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>An Xarray Dataset. All <code>data_vars</code> must share the same dimensions.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>chunks</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;Chunks&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;dict&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;str&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;None&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-module-attribute&quot;&gt;&lt;code&gt;module-attribute&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.df.Chunks">Chunks</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Xarray-like chunks. If not provided, will default to the
+Dataset's chunks. The product of the chunk sizes becomes the
+standard length of each dataframe partition.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pyarrow.RecordBatchReader">RecordBatchReader</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A PyArrow RecordBatchReader, which is a table representation of the input</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pyarrow.RecordBatchReader">RecordBatchReader</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Dataset.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.reader.read_xarray_table" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">read_xarray_table</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">DEFAULT_BATCH_SIZE</span><span class="p">,</span> <span class="n">coord_arrays</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">_iteration_callback</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.reader.read_xarray_table" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Create a lazy DataFusion table from an xarray Dataset.</p>
+<p>This is the simplest way to register xarray data with DataFusion.
+Data is only read when queries are executed, not during registration.
+The table can be queried multiple times.</p>
+<p>Each chunk becomes a separate partition, enabling DataFusion's parallel
+execution across multiple cores.</p>
+
+
+<details class="note" open>
+  <summary>Note</summary>
+  <p>SQL queries with WHERE clauses on dimension columns (time, lat, lon, etc.)
+automatically prune partitions that can't contain matching rows — this is
+called <em>filter pushdown</em>. For example:</p>
+<div class="language-text highlight"><pre><span></span><code># This query will skip loading partitions with time &lt; '2020-02-01'
+result = ctx.sql('SELECT * FROM air WHERE time &gt; "2020-02-01"').collect()
+</code></pre></div>
+<p>Supported operators: <code>=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>, <code>BETWEEN</code>, <code>IN</code>, <code>AND</code>, <code>OR</code>.</p>
+</details>
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>ds</code>
+            </td>
+            <td>
+                  <code><span title="xarray.Dataset">Dataset</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>An xarray Dataset. All data_vars must share the same dimensions.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>chunks</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;Chunks&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;dict&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;str&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;None&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-module-attribute&quot;&gt;&lt;code&gt;module-attribute&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.df.Chunks">Chunks</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Xarray-like chunks specification. If not provided, uses
+the Dataset's existing chunks.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>batch_size</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum rows per Arrow RecordBatch emitted per partition.
+Smaller values let DataFusion start processing earlier; the default
+(65 536) works well for most datasets.</p>
+              </div>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;DEFAULT_BATCH_SIZE&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;65536&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-module-attribute&quot;&gt;&lt;code&gt;module-attribute&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.df.DEFAULT_BATCH_SIZE">DEFAULT_BATCH_SIZE</a></code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>coord_arrays</code>
+            </td>
+            <td>
+                  <code><span title="dict">dict</span>[<span title="str">str</span>, <span title="numpy.ndarray">ndarray</span>] | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Pre-materialised coordinate arrays keyed by dim-name
+string.  Hand in to share a single read across multiple tables
+built from the same parent Dataset (e.g. surface + atmosphere
+from ARCO-ERA5); the dim coords are otherwise read once per
+<code>read_xarray_table</code> call, which is a network round-trip for
+Zarr-backed datasets.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>_iteration_callback</code>
+            </td>
+            <td>
+                  <code><span title="collections.abc.Callable">Callable</span>[[<a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;Block&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;dict&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Hashable&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;slice&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-module-attribute&quot;&gt;&lt;code&gt;module-attribute&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.df.Block">Block</a>, <span title="list">list</span>[<span title="str">str</span>] | None], None] | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Internal callback for testing. Called with
+each block dict just before it's converted to Arrow.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>&#39;LazyArrowStreamTable&#39;</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A LazyArrowStreamTable ready for registration with DataFusion.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <blockquote>
+<blockquote>
+<blockquote>
+<p>from datafusion import SessionContext
+import xarray as xr
+from xarray_sql import read_xarray_table</p>
+<p>ds = xr.tutorial.open_dataset('air_temperature')
+table = read_xarray_table(ds, chunks={'time': 240})</p>
+<p>ctx = SessionContext()
+ctx.register_table('air', table)</p>
+<h5 id="xarray_sql.reader.read_xarray_table--data-is-only-read-here-during-query-execution">Data is only read here, during query execution<a class="headerlink" href="#xarray_sql.reader.read_xarray_table--data-is-only-read-here-during-query-execution" title="Permanent link">&para;</a></h5>
+<h5 id="xarray_sql.reader.read_xarray_table--filters-on-time-will-prune-partitions-automatically">Filters on 'time' will prune partitions automatically!<a class="headerlink" href="#xarray_sql.reader.read_xarray_table--filters-on-time-will-prune-partitions-automatically" title="Permanent link">&para;</a></h5>
+<p>result = ctx.sql('SELECT AVG(air) FROM air').collect()</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</details>
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="xarray_sql.sql" class="doc doc-heading">
+            <code>sql</code>
+
+
+<a href="#xarray_sql.sql" class="headerlink" title="Permanent link">&para;</a></h3>
+
+    <div class="doc doc-contents ">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="xarray_sql.sql.XarrayContext" class="doc doc-heading">
+            <code>XarrayContext</code>
+
+
+<a href="#xarray_sql.sql.XarrayContext" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="datafusion.SessionContext">SessionContext</span></code></p>
+
+
+
+        <p>A datafusion <code>SessionContext</code> that also supports <code>xarray.Dataset</code>s.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h5 id="xarray_sql.sql.XarrayContext.from_dataset" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">from_dataset</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">input_table</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">table_names</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.sql.XarrayContext.from_dataset" class="headerlink" title="Permanent link">&para;</a></h5>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Register an xarray Dataset as one or more queryable SQL tables.</p>
+<p>When all data variables share the same dimensions, the dataset is
+registered as a single table named <code>name</code>. When variables have
+differing dimensions (e.g. some on a 3D grid and others on a 4D
+grid), the dataset is split into one table per dimension group.
+The tables are registered under a SQL schema (namespace) named
+<code>name</code> and named <code>&lt;dim1&gt;_&lt;dim2&gt;_...</code> by default::</p>
+<div class="language-text highlight"><pre><span></span><code>ctx.from_dataset('era5', ds, chunks={'time': 24})
+# registers tables: 'era5.time_lat_lon' and
+#                   'era5.time_lat_lon_level'
+ctx.sql('SELECT AVG(temperature_2m) FROM era5.time_lat_lon')
+</code></pre></div>
+<p>Use <code>table_names</code> to override the name for specific dimension
+tuples::</p>
+<div class="language-text highlight"><pre><span></span><code>ctx.from_dataset(
+    'era5', ds,
+    table_names={('time', 'lat', 'lon'): 'surface'},
+)
+ctx.sql('SELECT * FROM era5.surface')
+</code></pre></div>
+<p>For datasets with non-Gregorian cftime coordinates (e.g. 360_day,
+julian), a <code>cftime()</code> scalar UDF is automatically registered so
+you can write ergonomic SQL filters::</p>
+<div class="language-text highlight"><pre><span></span><code>ctx.from_dataset("ds360", ds, chunks={"time": 6})
+ctx.sql("SELECT * FROM ds360 WHERE time &gt;= cftime('2000-07-01')")
+</code></pre></div>
+<p>.. note::</p>
+<div class="language-text highlight"><pre><span></span><code>Only one ``cftime()`` UDF is registered per context, using the
+units and calendar of the *first* non-Gregorian coordinate
+encountered. If you register multiple datasets with *different*
+non-Gregorian calendars (e.g. one 360_day and one julian), the
+UDF from the first registration will be used for all subsequent
+``cftime()`` calls and may produce incorrect offsets for the
+other dataset. In that case, create a separate ``XarrayContext``
+for each calendar.
+</code></pre></div>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>name</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The SQL identifier under which the dataset is registered.
+For datasets with uniform dimensions, this is the table
+name. For datasets with mixed dimensions, this is the name
+of a SQL schema (namespace) containing one table per
+dimension group.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>input_table</code>
+            </td>
+            <td>
+                  <code><span title="xarray.Dataset">Dataset</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>An xarray Dataset.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>table_names</code>
+            </td>
+            <td>
+                  <code><span title="dict">dict</span>[<span title="tuple">tuple</span>[<span title="str">str</span>, ...], <span title="str">str</span>] | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional mapping from dimension tuples to custom
+table names within the schema, used when the dataset has
+variables with differing dimensions.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>chunks</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;Chunks&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;dict&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;str&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;None&lt;/span&gt;&lt;/code&gt;
+
+  &lt;span class=&quot;doc doc-labels&quot;&gt;
+      &lt;small class=&quot;doc doc-label doc-label-module-attribute&quot;&gt;&lt;code&gt;module-attribute&lt;/code&gt;&lt;/small&gt;
+  &lt;/span&gt;" href="./#xarray_sql.df.Chunks">Chunks</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Xarray-like chunks specification. If not provided, uses
+the Dataset's existing chunks.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>self, to allow chaining.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h5 id="xarray_sql.sql.XarrayContext.sql" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">sql</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.sql.XarrayContext.sql" class="headerlink" title="Permanent link">&para;</a></h5>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Run a SQL query, returning an :class:<code>XarrayDataFrame</code> wrapper.</p>
+<p>Identical to <code>datafusion.SessionContext.sql</code> except the returned
+object wraps the DataFusion DataFrame. The wrapper exposes
+<code>.to_pandas()</code> (unchanged), forwards every other DataFusion
+method via <code>__getattr__</code>, and adds
+<code>.to_dataset(dimension_columns=[...])</code> for round-tripping the
+result back to an <code>xr.Dataset</code>.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>query</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A SQL query string.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>*args</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to <code>SessionContext.sql</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>()</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>**kwargs</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to <code>SessionContext.sql</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>{}</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>An</code></td>            <td>
+                  <code><a class="autorefs autorefs-internal" href="./#xarray_sql.ds.XarrayDataFrame">XarrayDataFrame</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>class:<code>XarrayDataFrame</code> wrapping the DataFusion DataFrame.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../../contributing/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Contributing">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Contributing
+              </div>
+            </div>
+          </a>
+        
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/alxmrs/xarray-sql" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://pypi.org/project/xarray-sql" target="_blank" rel="noopener" title="pypi.org" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.8 200.5c-7.7-30.9-22.3-54.2-53.4-54.2h-40.1v47.4c0 36.8-31.2 67.8-66.8 67.8H172.7c-29.2 0-53.4 25-53.4 54.3v101.8c0 29 25.2 46 53.4 54.3 33.8 9.9 66.3 11.7 106.8 0 26.9-7.8 53.4-23.5 53.4-54.3v-40.7H226.2v-13.6h160.2c31.1 0 42.6-21.7 53.4-54.2 11.2-33.5 10.7-65.7 0-108.6M286.2 444.7a20.4 20.4 0 1 1 0-40.7 20.4 20.4 0 1 1 0 40.7M167.8 248.1h106.8c29.7 0 53.4-24.5 53.4-54.3V91.9c0-29-24.4-50.7-53.4-55.6-35.8-5.9-74.7-5.6-106.8.1-45.2 8-53.4 24.7-53.4 55.6v40.7h106.9v13.6h-147c-31.1 0-58.3 18.7-66.8 54.2-9.8 40.7-10.2 66.1 0 108.6 7.6 31.6 25.7 54.2 56.8 54.2H101v-48.8c0-35.3 30.5-66.4 66.8-66.4m-6.6-183.4a20.4 20.4 0 1 1 0 40.8 20.4 20.4 0 1 1 0-40.8"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.action.view","content.code.annotate","content.code.copy","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.sections","navigation.top","navigation.tracking","search.highlight","search.share","search.suggest","toc.follow"],"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"provider":"mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.e886cdf1.min.js"></script>
+      
+    
+  </body>
+</html>

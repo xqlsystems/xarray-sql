@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url>
+        <loc>https://alxmrs.github.io/0.3/</loc>
+      </url>
+      <url>
+        <loc>https://alxmrs.github.io/0.3/examples/</loc>
+      </url>
+      <url>
+        <loc>https://alxmrs.github.io/0.3/geospatial/</loc>
+      </url>
+      <url>
+        <loc>https://alxmrs.github.io/0.3/contributing/</loc>
+      </url>
+      <url>
+        <loc>https://alxmrs.github.io/0.3/reference/xarray_sql/</loc>
+      </url>
+</urlset>
