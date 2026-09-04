@@ -196,6 +196,7 @@ def read_xarray_table(
     chunks: Chunks = None,
     *,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    index_columns: bool = False,
     coord_arrays: dict[str, np.ndarray] | None = None,
     _iteration_callback: (
         Callable[[Block, list[str] | None], None] | None
@@ -257,7 +258,7 @@ def read_xarray_table(
     from ._native import LazyArrowStreamTable
 
     ds = _ensure_default_indexes(ds)
-    schema = _parse_schema(ds)
+    schema = _parse_schema(ds, index_columns=index_columns)
 
     # Hoist coordinate reads once; avoids N_partitions remote I/O calls for
     # Zarr-backed datasets (e.g. ARCO-ERA5 on GCS).  When the caller supplies
@@ -298,9 +299,17 @@ def read_xarray_table(
                 ds_block = ds.isel(block)
                 batch_schema = schema
 
+            # Absolute start of this block on each axis, so `<dim>_idx` columns
+            # carry global positions that line up across partitions.
+            index_offsets = {str(dim): (block[dim].start or 0) for dim in block}
             return pa.RecordBatchReader.from_batches(
                 batch_schema,
-                iter_record_batches(ds_block, batch_schema, batch_size),
+                iter_record_batches(
+                    ds_block,
+                    batch_schema,
+                    batch_size,
+                    index_offsets=index_offsets,
+                ),
             )
 
         return make_stream
@@ -315,7 +324,10 @@ def read_xarray_table(
     static_dims = [d for d in ds.dims if d not in varying_dims]
     static_block: Block = {d: slice(None) for d in static_dims}
     static_ranges = _block_metadata(
-        coord_arrays, static_block, dims=static_dims
+        coord_arrays,
+        static_block,
+        dims=static_dims,
+        index_columns=index_columns,
     )
 
     def partition_pairs():
@@ -327,7 +339,12 @@ def read_xarray_table(
         of O(N_partitions).
         """
         for block in _block_slices_from_resolved(ds, resolved):
-            dynamic = _block_metadata(coord_arrays, block, dims=varying_dims)
+            dynamic = _block_metadata(
+                coord_arrays,
+                block,
+                dims=varying_dims,
+                index_columns=index_columns,
+            )
             yield (
                 make_partition_factory(block),
                 {**static_ranges, **dynamic},
