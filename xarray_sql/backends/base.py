@@ -42,13 +42,7 @@ class EngineAdapter(Protocol[ConT]):
         table_names: TableNames = None,
         **kwargs: Any,
     ) -> ConT:
-        """Register *ds* as table *name* on *con*; returns *con*.
-
-        ``table_names`` names the per-dimension-group tables a
-        mixed-dimension Dataset splits into (see
-        [resolve_table_names][xarray_sql.df.resolve_table_names]);
-        adapters that split must honour it.
-        """
+        """Register *ds* as table *name* on *con*; returns *con*."""
         ...
 
 

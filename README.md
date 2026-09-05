@@ -105,11 +105,6 @@ ds = xr.open_zarr(
 
 ctx = xql.XarrayContext()
 # Make sure to pass `chunks`!
-# ERA5's variables sit on two different grids, so it registers as two tables.
-# `table_names` is what lets you call them `surface` and `atmosphere` instead
-# of `time_latitude_longitude` and `time_level_latitude_longitude`. The same
-# kwarg works on `xql.register(con, ...)` for DuckDB and on
-# `xql.arrow_datasets(ds, ...)` for Polars.
 ctx.from_dataset('era5', ds, chunks=dict(time=6), table_names={
     ('time', 'latitude', 'longitude'): 'surface',
     ('time', 'level', 'latitude', 'longitude'): 'atmosphere',

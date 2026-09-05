@@ -53,12 +53,8 @@ def _mirror_as_schema(
 ) -> None:
     """Expose flat tables as views in a DuckDB schema named *name*.
 
-    ``con.register`` can only place an object in DuckDB's temporary
-    namespace, so a dim-group split lands as flat ``name_group`` tables.
-    A schema of views over them makes the dotted ``name.group`` spelling
-    resolve too — the same SQL text that queries the split on
-    DataFusion, which is the point: the table names are the user's, and
-    they should not have to rewrite queries to change engine.
+    This translates a view to `name_group` can be queried as `name.group`
+    in DuckDB.
 
     *tables* maps each group's table name to the flat name it was
     registered under.
