@@ -16,45 +16,6 @@ builds for itself:
 Everything between the seams — geometry functions, dialects,
 optimizers — belongs to the engine.
 
-## Naming the tables
-
-A Dataset whose variables sit on different dimensions is registered as
-one table per dimension group, because a table has one shape.
-ARCO-ERA5 splits into a surface group on
-`(time, latitude, longitude)` and an atmospheric group on
-`(time, level, latitude, longitude)`; unnamed, those tables are called
-`era5.time_latitude_longitude` and `era5.time_level_latitude_longitude`.
-`table_names` maps a group's dimensions to the name you would rather
-call it:
-
-```python
-xql.register(con, "era5", ds, table_names={
-    ("time", "latitude", "longitude"): "surface",
-    ("time", "level", "latitude", "longitude"): "atmosphere",
-})
-
-con.sql("SELECT AVG(temperature) FROM era5.atmosphere WHERE level = 500")
-```
-
-This is the same keyword `XarrayContext.from_dataset` takes, and the
-`name.group` spelling resolves on every engine that has a connection to
-register into — so the query text above moves between DataFusion and
-DuckDB unchanged. Groups you do not name keep their joined dimension
-names, and keys naming a group the Dataset does not have are ignored,
-so one naming map can be reused across Datasets holding different
-subsets of the same variables.
-
-Polars has no connection object to dispatch on, so it takes the tables
-directly:
-
-```python
-tables = xql.arrow_datasets(ds, "era5", table_names={...})
-
-ctx = pl.SQLContext()
-for table, dataset in tables.items():     # 'era5_surface', ...
-    ctx.register(table, pl.scan_pyarrow_dataset(dataset))
-```
-
 ## DataFusion (default)
 
 DataFusion is the built-in engine, wrapped in a session:
@@ -129,6 +90,18 @@ exact expression via pyarrow — pruning is only an optimization on top.
 `XarrayArrowStream`, the dependency-light re-scannable C-stream wrapper
 without pushdown, remains available as a fallback.
 
+As is standard in for all Xarray-SQL engines, users may provide a mapping of
+groups of dimensions to their preferred table names, like so:
+
+```python
+xql.register(con, "era5", ds, table_names={
+  ("time", "latitude", "longitude"): "surface",
+  ("time", "level", "latitude", "longitude"): "atmosphere",
+})
+
+con.sql("SELECT AVG(temperature) FROM era5.atmosphere WHERE level = 500")
+```
+
 Mixed-dimension Datasets split as they do everywhere else, with one
 DuckDB-specific wrinkle: `con.register` can only place an object in
 DuckDB's temporary namespace, so each group is registered flat as
@@ -198,6 +171,14 @@ xql.to_dataset(out, template=ds)   # polars frames speak Arrow PyCapsule
 dimensions; `xql.arrow_datasets(ds, "era5", table_names=...)` splits a
 mixed-dimension one and hands back the tables named, reading the shared
 dimension coordinates once for all of them.
+
+```python
+tables = xql.arrow_datasets(ds, "era5", table_names={...})
+
+ctx = pl.SQLContext()
+for table, dataset in tables.items():     # 'era5_surface', ...
+  ctx.register(table, pl.scan_pyarrow_dataset(dataset))
+```
 
 Polars pushes its predicate and column selection into the dataset scan
 (verified: a filtered group-by read 1 of 20 chunks and 3 of 5 columns),
