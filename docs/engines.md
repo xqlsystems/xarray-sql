@@ -16,6 +16,45 @@ builds for itself:
 Everything between the seams — geometry functions, dialects,
 optimizers — belongs to the engine.
 
+## Naming the tables
+
+A Dataset whose variables sit on different dimensions is registered as
+one table per dimension group, because a table has one shape.
+ARCO-ERA5 splits into a surface group on
+`(time, latitude, longitude)` and an atmospheric group on
+`(time, level, latitude, longitude)`; unnamed, those tables are called
+`era5.time_latitude_longitude` and `era5.time_level_latitude_longitude`.
+`table_names` maps a group's dimensions to the name you would rather
+call it:
+
+```python
+xql.register(con, "era5", ds, table_names={
+    ("time", "latitude", "longitude"): "surface",
+    ("time", "level", "latitude", "longitude"): "atmosphere",
+})
+
+con.sql("SELECT AVG(temperature) FROM era5.atmosphere WHERE level = 500")
+```
+
+This is the same keyword `XarrayContext.from_dataset` takes, and the
+`name.group` spelling resolves on every engine that has a connection to
+register into — so the query text above moves between DataFusion and
+DuckDB unchanged. Groups you do not name keep their joined dimension
+names, and keys naming a group the Dataset does not have are ignored,
+so one naming map can be reused across Datasets holding different
+subsets of the same variables.
+
+Polars has no connection object to dispatch on, so it takes the tables
+directly:
+
+```python
+tables = xql.arrow_datasets(ds, "era5", table_names={...})
+
+ctx = pl.SQLContext()
+for table, dataset in tables.items():     # 'era5_surface', ...
+    ctx.register(table, pl.scan_pyarrow_dataset(dataset))
+```
+
 ## DataFusion (default)
 
 DataFusion is the built-in engine, wrapped in a session:
@@ -90,6 +129,15 @@ exact expression via pyarrow — pruning is only an optimization on top.
 `XarrayArrowStream`, the dependency-light re-scannable C-stream wrapper
 without pushdown, remains available as a fallback.
 
+Mixed-dimension Datasets split as they do everywhere else, with one
+DuckDB-specific wrinkle: `con.register` can only place an object in
+DuckDB's temporary namespace, so each group is registered flat as
+`era5_surface` and mirrored as a view `era5.surface` in a schema of its
+own. Both spellings hit the same scan — pushdown and projection travel
+through the view — and the dotted one is what keeps the SQL portable.
+A read-only connection cannot create the schema; registration then
+warns and leaves the flat tables.
+
 Details that matter in production:
 
 - **Finely partitioned axes** (e.g. hourly-chunked reanalysis time with
@@ -146,6 +194,11 @@ out = (
 xql.to_dataset(out, template=ds)   # polars frames speak Arrow PyCapsule
 ```
 
+`arrow_dataset` wants a Dataset whose variables share one set of
+dimensions; `xql.arrow_datasets(ds, "era5", table_names=...)` splits a
+mixed-dimension one and hands back the tables named, reading the shared
+dimension coordinates once for all of them.
+
 Polars pushes its predicate and column selection into the dataset scan
 (verified: a filtered group-by read 1 of 20 chunks and 3 of 5 columns),
 and its results round-trip through `xql.to_dataset` unchanged. The
@@ -166,7 +219,8 @@ What each integration provides. Known issues and constraints live on
 | Eager round-trip (`xql.to_dataset`) | yes | yes | yes |
 | Chunked round-trip (`chunks=`) | re-execution | `spill=True` [^spill-only] | re-execution (streaming engine) |
 | `geometry` column ([geospatial](geospatial.md#geoarrow-point-geometry-columns)) | annotated WKB passes through | native `GEOMETRY` (`"wkb"` encoding) | plain binary/struct |
-| Mixed-dimension datasets | one schema, `name.group` tables | `<name>_<dims>` tables | filter `data_vars` before `arrow_dataset` |
+| Mixed-dimension datasets | one schema, `name.group` tables | `name.group` views over `name_group` tables | `xql.arrow_datasets(ds, name)`, one per group |
+| Naming those tables (`table_names=`) | yes | yes | yes |
 | Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` |
 
 [^spill-only]: Why DuckDB relations do not re-execute — and two other

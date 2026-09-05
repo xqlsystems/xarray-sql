@@ -21,6 +21,7 @@ from .pyarrow import (
     XarrayArrowStream,
     XarrayPushdownDataset,
     arrow_dataset,
+    arrow_datasets,
 )
 
 __all__ = [
@@ -28,6 +29,7 @@ __all__ = [
     "XarrayArrowStream",
     "XarrayPushdownDataset",
     "arrow_dataset",
+    "arrow_datasets",
     "get_adapter",
     "register",
     "register_adapter",

@@ -18,9 +18,11 @@ as it always registered them on ``XarrayContext``, and calls
 :meth:`EngineContext.sql_to_dataset`. On the ``datafusion`` path this
 is byte-for-byte the original behavior (``from_dataset`` + ``sql`` +
 ``XarrayDataFrame.to_dataset``); the other engines register one pyarrow
-dataset per dimension group under flattened table names
-(``era5.surface`` → ``era5_surface`` — rewritten in the SQL text) and the
-result rows are round-tripped to an ``xr.Dataset`` through pandas.
+dataset per dimension group under the flat table names
+``xql.arrow_datasets`` returns (``era5.surface`` → ``era5_surface`` —
+rewritten in the SQL text, since these paths register frames one at a
+time rather than through a schema) and the result rows are
+round-tripped to an ``xr.Dataset`` through pandas.
 
 The DataFusion-only UDF cases (07 and the UDF half of 09) build
 ``xql.XarrayContext`` directly rather than through this layer; the suite
@@ -45,24 +47,6 @@ def engine_name() -> str:
     if engine not in _ENGINES:
         raise ValueError(f"GEOBENCH_ENGINE={engine!r}; expected {_ENGINES}")
     return engine
-
-
-def _group_tables(name, ds, table_names):
-    """Split ``ds`` into per-dimension-group tables like XarrayContext does.
-
-    Returns ``[(flat_name, dotted_name, sub_dataset)]``; a uniform dataset
-    keeps its plain name (flat == dotted == name).
-    """
-    groups: dict[tuple, list] = {}
-    for var, v in ds.data_vars.items():
-        groups.setdefault(tuple(v.dims), []).append(var)
-    if len(groups) == 1:
-        return [(name, name, ds)]
-    out = []
-    for dims, variables in groups.items():
-        sub = (table_names or {}).get(dims) or "_".join(dims)
-        out.append((f"{name}_{sub}", f"{name}.{sub}", ds[variables]))
-    return out
 
 
 def _literal(value: Any) -> str:
@@ -134,15 +118,16 @@ class EngineContext:
         """Register ``ds`` as SQL table(s), mirroring XarrayContext naming."""
         import xarray_sql as xql
 
-        for flat, dotted, sub in _group_tables(name, ds, table_names):
-            if dotted != flat:
-                self._renames[dotted] = flat
-            sub_chunks = (
-                {d: c for d, c in chunks.items() if d in sub.dims}
-                if isinstance(chunks, dict)
-                else chunks
-            ) or None
-            self._register(flat, xql.arrow_dataset(sub, sub_chunks))
+        tables = xql.arrow_datasets(
+            ds, name, chunks=chunks, table_names=table_names
+        )
+        for flat, dataset in tables.items():
+            if flat != name:
+                # `era5_surface` here is `era5.surface` in the case's SQL,
+                # which was written against XarrayContext's schema split.
+                group = flat[len(name) + 1 :]
+                self._renames[f"{name}.{group}"] = flat
+            self._register(flat, dataset)
 
     # -- querying ----------------------------------------------------------
 

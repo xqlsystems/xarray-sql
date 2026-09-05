@@ -4,7 +4,13 @@ from datafusion.catalog import Schema
 from types import ModuleType
 
 from . import cftime as cft
-from .df import Chunks, group_vars_by_dims
+from .df import (
+    Chunks,
+    TableNames,
+    group_vars_by_dims,
+    resolve_table_names,
+    shared_coord_arrays,
+)
 from .ds import XarrayDataFrame
 from .reader import read_xarray_table
 
@@ -39,7 +45,7 @@ class XarrayContext(SessionContext):
         name: str,
         input_table: xr.Dataset,
         *,
-        table_names: dict[tuple[str, ...], str] | None = None,
+        table_names: TableNames = None,
         chunks: Chunks = None,
     ):
         """Register an xarray Dataset as one or more queryable SQL tables.
@@ -100,13 +106,12 @@ class XarrayContext(SessionContext):
             self, to allow chaining.
         """
         groups = group_vars_by_dims(input_table)
+        names = resolve_table_names(input_table, table_names)
 
         # Materialise dim coordinates once and share across every sub-table.
         # For Zarr-backed parents (e.g. ARCO-ERA5 on GCS) this saves one
         # network round-trip per dim per dim-group.
-        coord_arrays = {
-            str(dim): input_table.coords[dim].values for dim in input_table.dims
-        }
+        coord_arrays = shared_coord_arrays(input_table)
 
         if len(groups) <= 1:
             self._registered_datasets[name] = input_table
@@ -114,14 +119,11 @@ class XarrayContext(SessionContext):
                 name, input_table, chunks, coord_arrays=coord_arrays
             )
 
-        table_names = table_names or {}
         schema = Schema.memory_schema(self)
         self.catalog().register_schema(name, schema)
 
         for dims, var_names in groups.items():
-            # Scalar variables group under empty dims, where "_".join(()) is
-            # the empty string; fall back to a valid default table name.
-            sub_name = table_names.get(dims, "_".join(dims) or "scalar")
+            sub_name = names[dims]
             sub_ds = input_table[var_names]
             self._from_dataset(
                 sub_name,

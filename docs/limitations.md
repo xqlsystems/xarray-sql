@@ -144,12 +144,14 @@ A materialized table or bare C-stream has no query behind it, so the
 re-execution form of `chunks=` cannot serve it — `spill=True` (one
 pass to a temporary Parquet file) is the chunked path for these.
 
-### Mixed-dimension datasets split into one DuckDB table per dim group
+### A read-only DuckDB connection loses the dotted table names
 
-DuckDB registration has no schema namespace, so variables with
-different dims land in suffixed tables (`<name>_<dims>`), sharing one
-set of coordinate reads. DataFusion registers the same layout as
-`name.group` tables inside one schema.
+Mixed-dimension Datasets split into one table per dimension group on
+every engine, addressed as `name.group`. On DuckDB that dotted spelling
+is a view in a schema, because `con.register` reaches only the
+temporary namespace — and creating a schema needs a writable catalog.
+Registering on a read-only connection therefore warns and leaves the
+flat `name_group` tables, which are always registered and always work.
 
 ### Pointwise indexers on lazy round-trip arrays are slower
 

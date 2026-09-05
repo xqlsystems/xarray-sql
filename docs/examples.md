@@ -107,7 +107,11 @@ ctx.sql('''
 
 If you omit `table_names`, each table is named by joining its dimension names
 with underscores, e.g. `era5.time_latitude_longitude` and
-`era5.time_level_latitude_longitude`.
+`era5.time_level_latitude_longitude`. Keys naming a dimension group the Dataset
+does not have are ignored, so one naming map can be reused across Datasets
+holding different subsets of the same variables. The keyword is not
+DataFusion-only — `xql.register` takes it on every engine (see
+[the same tables on DuckDB and Polars](#the-same-tables-on-duckdb-and-polars)).
 
 ## GOES satellite imagery (scalar variables)
 
@@ -154,5 +158,44 @@ not DataFusion-specific: `xql.register(con, name, ds)` attaches the same lazy,
 pushdown-scanned table to a DuckDB connection, and
 `pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))` serves Polars — same
 splitting rules for mixed-dimension Datasets, same round-trip through
-`xql.to_dataset(result, template=ds)`. See [Engines](engines.md) for the
-support matrix and per-engine details.
+`xql.to_dataset(result, template=ds)`.
+
+`table_names` travels with them, so the ERA5 example above changes engine
+without changing a word of its SQL:
+
+```python
+import duckdb
+
+con = duckdb.connect()
+xql.register(con, 'era5', ds, table_names={
+    ('time', 'latitude', 'longitude'): 'surface',
+    ('time', 'level', 'latitude', 'longitude'): 'atmosphere',
+})
+
+rel = con.sql('''
+  SELECT level, AVG(temperature) - 273.15 AS avg_c
+  FROM era5.atmosphere
+  WHERE time BETWEEN TIMESTAMP '2020-01-01'
+                 AND TIMESTAMP '2020-01-01 05:00:00'
+  GROUP BY level
+  ORDER BY level DESC
+''')
+xql.to_dataset(rel, template=ds, dims=['level'])
+```
+
+Polars registers table by table, so it takes the split datasets by name:
+
+```python
+import polars as pl
+
+tables = xql.arrow_datasets(ds, 'era5', table_names={
+    ('time', 'latitude', 'longitude'): 'surface',
+    ('time', 'level', 'latitude', 'longitude'): 'atmosphere',
+})
+
+ctx = pl.SQLContext()
+for table, dataset in tables.items():   # 'era5_surface', 'era5_atmosphere'
+    ctx.register(table, pl.scan_pyarrow_dataset(dataset))
+```
+
+See [Engines](engines.md) for the support matrix and per-engine details.
