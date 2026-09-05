@@ -317,6 +317,9 @@ I want to give a special thanks to the following folks and institutions:
   changes.
 - Aman Kumar for spending a considerable amount of his GSoC internship 
   contributing to this project. 
+- Miguel Moncada Isla for reimagining this project to be a cross SQL engine 
+  interface to and from Xarray. He brought new life to this experiment, in my 
+  opinion.
 
 
 ## License
