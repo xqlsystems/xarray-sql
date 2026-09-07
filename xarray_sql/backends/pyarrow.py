@@ -45,10 +45,14 @@ from ..df import (
     Block,
     Chunks,
     DEFAULT_BATCH_SIZE,
+    TableNames,
     _ensure_default_indexes,
     _parse_schema,
+    group_vars_by_dims,
     iter_record_batches,
     resolve_chunks,
+    resolve_table_names,
+    shared_coord_arrays,
 )
 from ..geometry import GEOMETRY_COLUMN, build_geometry, geometry_field
 from ..reader import XarrayRecordBatchReader
@@ -1141,3 +1145,82 @@ def arrow_dataset(
         geometry_encoding=geometry_encoding,
         geometry_crs=geometry_crs,
     )
+
+
+def arrow_datasets(
+    ds: xr.Dataset,
+    name: str | None = None,
+    *,
+    chunks: Chunks = None,
+    table_names: TableNames = None,
+    **kwargs: Any,
+) -> dict[str, XarrayPushdownDataset]:
+    """Named pushdown datasets, one per dimension group of ``ds``.
+
+    [arrow_dataset][xarray_sql.backends.pyarrow.arrow_dataset] needs a
+    Dataset whose data variables all share one set of dimensions. This
+    applies the same split the DataFusion and DuckDB adapters do — one
+    table per dimension group — and hands back the tables *named*, ready
+    to register on an engine that has no connection object to dispatch
+    on::
+
+        tables = xql.arrow_datasets(ds, 'era5', table_names={
+            ('time', 'latitude', 'longitude'): 'surface',
+            ('time', 'level', 'latitude', 'longitude'): 'atmosphere',
+        })
+
+        ctx = pl.SQLContext()
+        for table, dataset in tables.items():   # 'era5_surface', ...
+            ctx.register(table, pl.scan_pyarrow_dataset(dataset))
+
+        ctx.execute('SELECT AVG("2m_temperature") FROM era5_surface')
+
+    Dimension coordinates are read once and shared across the returned
+    tables, which is a network round-trip saved per dimension per group
+    on Zarr-backed stores.
+
+    Args:
+        ds: An xarray Dataset, with variables on any mix of dimensions.
+        name: Prefix for the table names, as in ``era5_surface``. Omit it
+            to get the bare group names (``surface``).
+        chunks: Xarray-like chunks specification controlling partition
+            granularity. Keys naming dimensions a group does not have are
+            ignored for that group. Defaults to the Dataset's existing
+            chunks.
+        table_names: Maps a dimension group's exact dim tuple to the name
+            its table takes, e.g.
+            ``{('time', 'latitude', 'longitude'): 'surface'}``. Groups
+            left unnamed take their dimensions joined by underscores
+            (``time_latitude_longitude``); the group holding scalar
+            variables, if any, takes ``scalar``.
+        **kwargs: Forwarded to
+            [arrow_dataset][xarray_sql.backends.pyarrow.arrow_dataset]
+            (``batch_size``, ``prefetch``, ``geometry``, ...), applied to
+            every returned table.
+
+    Returns:
+        Table name to
+        [XarrayPushdownDataset][xarray_sql.backends.pyarrow.XarrayPushdownDataset].
+        A Dataset with a single dimension group yields one entry, keyed
+        by ``name`` when given.
+    """
+    groups = group_vars_by_dims(ds)
+    names = resolve_table_names(ds, table_names)
+
+    def table_name(dims: tuple[str, ...]) -> str:
+        group = names[dims]
+        return f"{name}_{group}" if name else group
+
+    if len(groups) <= 1:
+        # One group is one table, named `name` — there is no group to
+        # tell apart. Without a `name`, it takes the group's own.
+        only = name if name else next(iter(names.values()), "scalar")
+        return {only: arrow_dataset(ds, chunks, **kwargs)}
+
+    coord_arrays = shared_coord_arrays(ds)
+    return {
+        table_name(dims): XarrayPushdownDataset(
+            ds[var_names], chunks, coord_arrays=coord_arrays, **kwargs
+        )
+        for dims, var_names in groups.items()
+    }

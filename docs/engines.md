@@ -90,6 +90,27 @@ exact expression via pyarrow — pruning is only an optimization on top.
 `XarrayArrowStream`, the dependency-light re-scannable C-stream wrapper
 without pushdown, remains available as a fallback.
 
+As is standard in for all Xarray-SQL engines, users may provide a mapping of
+groups of dimensions to their preferred table names, like so:
+
+```python
+xql.register(con, "era5", ds, table_names={
+  ("time", "latitude", "longitude"): "surface",
+  ("time", "level", "latitude", "longitude"): "atmosphere",
+})
+
+con.sql("SELECT AVG(temperature) FROM era5.atmosphere WHERE level = 500")
+```
+
+Mixed-dimension Datasets split as they do everywhere else, with one
+DuckDB-specific wrinkle: `con.register` can only place an object in
+DuckDB's temporary namespace, so each group is registered flat as
+`era5_surface` and mirrored as a view `era5.surface` in a schema of its
+own. Both spellings hit the same scan — pushdown and projection travel
+through the view — and the dotted one is what keeps the SQL portable.
+A read-only connection cannot create the schema; registration then
+warns and leaves the flat tables.
+
 Details that matter in production:
 
 - **Finely partitioned axes** (e.g. hourly-chunked reanalysis time with
@@ -146,6 +167,19 @@ out = (
 xql.to_dataset(out, template=ds)   # polars frames speak Arrow PyCapsule
 ```
 
+`arrow_dataset` wants a Dataset whose variables share one set of
+dimensions; `xql.arrow_datasets(ds, "era5", table_names=...)` splits a
+mixed-dimension one and hands back the tables named, reading the shared
+dimension coordinates once for all of them.
+
+```python
+tables = xql.arrow_datasets(ds, "era5", table_names={...})
+
+ctx = pl.SQLContext()
+for table, dataset in tables.items():     # 'era5_surface', ...
+  ctx.register(table, pl.scan_pyarrow_dataset(dataset))
+```
+
 Polars pushes its predicate and column selection into the dataset scan
 (verified: a filtered group-by read 1 of 20 chunks and 3 of 5 columns),
 and its results round-trip through `xql.to_dataset` unchanged. The
@@ -166,7 +200,8 @@ What each integration provides. Known issues and constraints live on
 | Eager round-trip (`xql.to_dataset`) | yes | yes | yes |
 | Chunked round-trip (`chunks=`) | re-execution | `spill=True` [^spill-only] | re-execution (streaming engine) |
 | `geometry` column ([geospatial](geospatial.md#geoarrow-point-geometry-columns)) | annotated WKB passes through | native `GEOMETRY` (`"wkb"` encoding) | plain binary/struct |
-| Mixed-dimension datasets | one schema, `name.group` tables | `<name>_<dims>` tables | filter `data_vars` before `arrow_dataset` |
+| Mixed-dimension datasets | one schema, `name.group` tables | `name.group` views over `name_group` tables | `xql.arrow_datasets(ds, name)`, one per group |
+| Naming those tables (`table_names=`) | yes | yes | yes |
 | Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` |
 
 [^spill-only]: Why DuckDB relations do not re-execute — and two other
