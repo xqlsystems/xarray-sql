@@ -116,9 +116,12 @@ class DataFusionHandle:
         dim_only = self._df.select(col(f'"{column}"')).distinct()
         batches = [b.to_pyarrow() for b in dim_only.execute_stream()]
         if not batches:
-            return np.asarray([])
-        return np.concatenate(
-            [b.column(0).to_numpy(zero_copy_only=False) for b in batches]
+            return cast(np.ndarray, np.asarray([]))
+        return cast(
+            np.ndarray,
+            np.concatenate(
+                [b.column(0).to_numpy(zero_copy_only=False) for b in batches]
+            ),
         )
 
     def fetch(
@@ -230,7 +233,10 @@ class DuckDBHandle:
                 self._rel.project(duckdb.ColumnExpression(column)).distinct()
             )
         )
-        return np.asarray(table.column(0).to_numpy(zero_copy_only=False))
+        return cast(
+            np.ndarray,
+            np.asarray(table.column(0).to_numpy(zero_copy_only=False)),
+        )
 
     def fetch(
         self, specs: dict[str, DimSpec], columns: list[str]
@@ -287,7 +293,7 @@ class PolarsHandle:
         import polars as pl
 
         out = _collect_streaming(self._lf.select(pl.col(column).unique()))
-        return out.to_series().to_numpy()
+        return cast(np.ndarray, out.to_series().to_numpy())
 
     def fetch(
         self, specs: dict[str, DimSpec], columns: list[str]

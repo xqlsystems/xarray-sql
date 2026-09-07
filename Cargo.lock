@@ -3375,6 +3375,7 @@ dependencies = [
  "datafusion",
  "datafusion-ffi",
  "futures",
+ "half",
  "pyo3",
  "pyo3-build-config",
  "tokio",

@@ -16,6 +16,7 @@ Additional tests verify:
 
 import threading
 import time
+from decimal import Decimal
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -1028,6 +1029,273 @@ class TestFilterPushdown:
         # Verify correctness: Jan 1–25 (25 days) × 5 lat = 125 rows
         count = result["cnt"].iloc[0]
         assert count == 125, f"Expected 125 rows, got {count}"
+
+    @pytest.mark.parametrize(
+        "dtype",
+        [
+            "int8",
+            "int16",
+            "int32",
+            "int64",
+            "uint8",
+            "uint16",
+            "uint32",
+            "uint64",
+        ],
+    )
+    def test_integer_coordinate_types_prune(self, dtype):
+        tracker = IterationTracker()
+        coord = np.arange(8, dtype=dtype)
+        ds = xr.Dataset({"value": (["x"], np.arange(8))}, coords={"x": coord})
+        table = read_xarray_table(
+            ds, chunks={"x": 2}, _iteration_callback=tracker
+        )
+        ctx = SessionContext()
+        ctx.register_table("test", table)
+
+        result = ctx.sql(
+            "SELECT x FROM test WHERE x >= 6 ORDER BY x"
+        ).to_pandas()
+
+        assert result["x"].tolist() == [6, 7]
+        assert tracker.iteration_count == 1
+
+    @pytest.mark.parametrize("dtype", ["float16", "float32", "float64"])
+    def test_float_coordinate_types_prune_with_natural_literal(self, dtype):
+        tracker = IterationTracker()
+        coord = np.arange(8, dtype=dtype)
+        ds = xr.Dataset({"value": (["x"], np.arange(8))}, coords={"x": coord})
+        table = read_xarray_table(
+            ds, chunks={"x": 2}, _iteration_callback=tracker
+        )
+        ctx = SessionContext()
+        ctx.register_table("test", table)
+
+        result = ctx.sql(
+            "SELECT x FROM test WHERE x >= 6.0 ORDER BY x"
+        ).to_pandas()
+
+        assert result["x"].tolist() == [6.0, 7.0]
+        assert tracker.iteration_count == 1
+
+    @pytest.mark.parametrize(
+        ("coord", "predicate"),
+        [
+            (np.asarray(list("abcdefgh")), "x >= 'g'"),
+            (
+                np.asarray([bytes([value]) for value in range(97, 105)]),
+                "x >= X'67'",
+            ),
+        ],
+    )
+    def test_text_and_binary_coordinate_types_prune(self, coord, predicate):
+        tracker = IterationTracker()
+        ds = xr.Dataset({"value": (["x"], np.arange(8))}, coords={"x": coord})
+        table = read_xarray_table(
+            ds, chunks={"x": 2}, _iteration_callback=tracker
+        )
+        ctx = SessionContext()
+        ctx.register_table("test", table)
+
+        result = ctx.sql(
+            f"SELECT x FROM test WHERE {predicate} ORDER BY x"
+        ).to_pandas()
+
+        assert len(result) == 2
+        assert tracker.iteration_count == 1
+
+    def test_categorical_string_coordinate_prunes(self):
+        tracker = IterationTracker()
+        coord = pd.CategoricalIndex(list("abcdefgh"), ordered=True, name="x")
+        ds = xr.Dataset({"value": (["x"], np.arange(8))}, coords={"x": coord})
+        table = read_xarray_table(
+            ds, chunks={"x": 2}, _iteration_callback=tracker
+        )
+        ctx = SessionContext()
+        ctx.register_table("test", table)
+
+        result = ctx.sql(
+            "SELECT x FROM test WHERE x >= 'g' ORDER BY x"
+        ).to_pandas()
+
+        assert result["x"].tolist() == ["g", "h"]
+        assert tracker.iteration_count == 1
+
+    def test_boolean_optimizer_forms_prune(self):
+        coord = np.asarray([False] * 4 + [True] * 4)
+        ds = xr.Dataset(
+            {"value": (["flag"], np.arange(8))}, coords={"flag": coord}
+        )
+
+        for predicate, expected in (
+            ("flag = TRUE", True),
+            ("flag = FALSE", False),
+            ("flag IS TRUE", True),
+            ("flag IS FALSE", False),
+        ):
+            tracker = IterationTracker()
+            table = read_xarray_table(
+                ds, chunks={"flag": 2}, _iteration_callback=tracker
+            )
+            ctx = SessionContext()
+            ctx.register_table("test", table)
+
+            result = ctx.sql(
+                f"SELECT flag FROM test WHERE {predicate} ORDER BY flag"
+            ).to_pandas()
+
+            assert result["flag"].tolist() == [expected] * 4
+            assert tracker.iteration_count == 2
+
+    @pytest.mark.parametrize(
+        ("unit", "interval"),
+        [
+            ("s", "6 seconds"),
+            ("ms", "6 milliseconds"),
+            ("us", "6 microseconds"),
+            ("ns", "6 nanoseconds"),
+        ],
+    )
+    def test_duration_coordinate_units_prune_with_interval(
+        self, unit, interval
+    ):
+        tracker = IterationTracker()
+        coord = np.arange(8).astype(f"timedelta64[{unit}]")
+        ds = xr.Dataset(
+            {"value": (["lead_time"], np.arange(8))},
+            coords={"lead_time": coord},
+        )
+        table = read_xarray_table(
+            ds, chunks={"lead_time": 2}, _iteration_callback=tracker
+        )
+        ctx = SessionContext()
+        ctx.register_table("test", table)
+
+        result = ctx.sql(
+            "SELECT lead_time FROM test "
+            f"WHERE lead_time >= INTERVAL '{interval}' ORDER BY lead_time"
+        ).to_pandas()
+
+        assert len(result) == 2
+        assert tracker.iteration_count == 1
+
+    def test_negative_duration_literal_prunes(self):
+        tracker = IterationTracker()
+        coord = np.arange(-4, 4).astype("timedelta64[us]")
+        ds = xr.Dataset(
+            {"value": (["lead_time"], np.arange(8))},
+            coords={"lead_time": coord},
+        )
+        table = read_xarray_table(
+            ds, chunks={"lead_time": 2}, _iteration_callback=tracker
+        )
+        ctx = SessionContext()
+        ctx.register_table("test", table)
+
+        result = ctx.sql(
+            "SELECT lead_time FROM test "
+            "WHERE lead_time < INTERVAL '-2 microseconds' ORDER BY lead_time"
+        ).to_pandas()
+
+        assert result["lead_time"].tolist() == [
+            pd.Timedelta(microseconds=-4),
+            pd.Timedelta(microseconds=-3),
+        ]
+        assert tracker.iteration_count == 1
+
+    def test_invalid_metadata_tag_is_rejected(self):
+        schema = pa.schema([("x", pa.int64())])
+
+        with pytest.raises(TypeError, match="Unsupported dtype tag"):
+            LazyArrowStreamTable(
+                [(lambda: None, {"x": (0, 1, "not-a-dtype")}, 1)],
+                schema,
+            )
+
+    @pytest.mark.parametrize(
+        ("predicate", "expected", "expected_reads"),
+        [
+            ("'g' <= x", ["g", "h"], 1),
+            ("x BETWEEN 'g' AND 'h'", ["g", "h"], 1),
+            ("x IN ('a', 'h')", ["a", "h"], 2),
+        ],
+    )
+    def test_text_coordinate_filter_shapes_prune(
+        self, predicate, expected, expected_reads
+    ):
+        tracker = IterationTracker()
+        ds = xr.Dataset(
+            {"value": (["x"], np.arange(8))},
+            coords={"x": np.asarray(list("abcdefgh"))},
+        )
+        table = read_xarray_table(
+            ds, chunks={"x": 2}, _iteration_callback=tracker
+        )
+        ctx = SessionContext()
+        ctx.register_table("test", table)
+
+        result = ctx.sql(
+            f"SELECT x FROM test WHERE {predicate} ORDER BY x"
+        ).to_pandas()
+
+        assert result["x"].tolist() == expected
+        assert tracker.iteration_count == expected_reads
+
+    def test_calendar_month_interval_is_not_pruned(self):
+        tracker = IterationTracker()
+        coord = np.arange(8).astype("timedelta64[D]")
+        ds = xr.Dataset(
+            {"value": (["lead_time"], np.arange(8))},
+            coords={"lead_time": coord},
+        )
+        table = read_xarray_table(
+            ds, chunks={"lead_time": 2}, _iteration_callback=tracker
+        )
+        ctx = SessionContext()
+        ctx.register_table("test", table)
+
+        ctx.sql(
+            "SELECT lead_time FROM test WHERE lead_time < INTERVAL '1 month'"
+        ).collect()
+
+        assert tracker.iteration_count == 4
+
+    def test_duration_cast_overflow_is_not_hidden_by_pruning(self):
+        tracker = IterationTracker()
+        coord = np.asarray([np.iinfo(np.int64).max], dtype="timedelta64[s]")
+        ds = xr.Dataset(
+            {"value": (["lead_time"], [1])}, coords={"lead_time": coord}
+        )
+        table = read_xarray_table(
+            ds, chunks={"lead_time": 1}, _iteration_callback=tracker
+        )
+        ctx = SessionContext()
+        ctx.register_table("test", table)
+
+        with pytest.raises(Exception, match="[Oo]verflow"):
+            ctx.sql(
+                "SELECT lead_time FROM test "
+                "WHERE lead_time < INTERVAL '1 second'"
+            ).collect()
+
+        assert tracker.iteration_count == 1
+
+    def test_arrow_representable_unsupported_object_registers_without_pruning(
+        self,
+    ):
+        tracker = IterationTracker()
+        coord = np.asarray([Decimal("1.0"), Decimal("2.0")], dtype=object)
+        ds = xr.Dataset({"value": (["x"], [1, 2])}, coords={"x": coord})
+        table = read_xarray_table(
+            ds, chunks={"x": 1}, _iteration_callback=tracker
+        )
+        ctx = SessionContext()
+        ctx.register_table("test", table)
+
+        result = ctx.sql("SELECT x FROM test ORDER BY x").to_pandas()
+
+        assert result["x"].tolist() == [Decimal("1.0"), Decimal("2.0")]
+        assert tracker.iteration_count == 2
 
     def test_time_between_filter_prunes_outside_range(self, time_chunked_ds):
         """Query with BETWEEN should prune partitions outside the range."""

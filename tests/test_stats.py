@@ -7,6 +7,7 @@ and per dimension-column min/max bounds. These tests pin that behaviour.
 """
 
 import numpy as np
+import pytest
 import xarray as xr
 
 from xarray_sql import XarrayContext
@@ -73,6 +74,53 @@ def test_dimension_column_min_max_in_scan_statistics():
     # lat spans 0..3, lon spans 0..4, both never null.
     assert "Min=Exact(Int64(0)) Max=Exact(Int64(3)) Null=Exact(0)" in plan
     assert "Min=Exact(Int64(0)) Max=Exact(Int64(4)) Null=Exact(0)" in plan
+
+
+@pytest.mark.parametrize(
+    ("coord", "expected"),
+    [
+        (
+            np.arange(4, dtype="uint64") + 2**63,
+            "Min=Exact(UInt64(9223372036854775808)) "
+            "Max=Exact(UInt64(9223372036854775811)) Null=Exact(0)",
+        ),
+        (
+            np.asarray(list("abcd")),
+            'Min=Exact(Utf8("a")) Max=Exact(Utf8("d")) Null=Exact(0)',
+        ),
+        (
+            np.arange(4).astype("timedelta64[us]"),
+            'Min=Exact(DurationMicrosecond("0")) '
+            'Max=Exact(DurationMicrosecond("3")) Null=Exact(0)',
+        ),
+    ],
+)
+def test_coordinate_statistics_preserve_logical_type(coord, expected):
+    ds = xr.Dataset(
+        {"value": (["x"], np.arange(4))},
+        coords={"x": coord},
+    )
+    ctx = XarrayContext()
+    ctx.from_dataset("values", ds, chunks={"x": 2})
+
+    plan = _explain(ctx, "SELECT x, value FROM values")
+
+    assert expected in plan
+
+
+def test_missing_partition_bound_removes_global_coordinate_statistics():
+    ds = xr.Dataset(
+        {"value": (["x"], np.arange(4))},
+        coords={"x": np.asarray([0.0, 1.0, np.nan, 3.0])},
+    )
+    ctx = XarrayContext()
+    ctx.from_dataset("values", ds, chunks={"x": 2})
+
+    plan = _explain(ctx, "SELECT x, value FROM values")
+
+    assert "Min=Exact(Float64" not in plan
+    assert "Max=Exact(Float64" not in plan
+    assert "Null=Exact(0)" not in plan
 
 
 def test_count_star_answered_from_statistics():

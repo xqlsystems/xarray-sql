@@ -81,7 +81,7 @@ def _wkb_points(x: np.ndarray, y: np.ndarray) -> pa.Array:
             "pa.binary() offsets are int32 and n * 21 bytes would "
             "overflow them. Use a smaller batch_size."
         )
-    buf = np.empty((n, 21), dtype=np.uint8)
+    buf: np.ndarray = np.empty((n, 21), dtype=np.uint8)
     buf[:, 0] = 1  # little-endian byte order mark
     buf[:, 1:5] = np.array([1, 0, 0, 0], dtype=np.uint8)  # WKB type 1: Point
     buf[:, 5:13] = x.view(np.uint8).reshape(n, 8)

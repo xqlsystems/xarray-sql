@@ -104,6 +104,8 @@ module = [
     "datafusion.*",
     "xarray.*",
     "pandas.*",
+    "cftime.*",
+    "xarray_sql._native",
 ]
 ignore_missing_imports = true
 

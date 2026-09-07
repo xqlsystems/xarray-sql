@@ -20,6 +20,8 @@ this module handles the conversion in two tiers:
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 import pyarrow as pa
 import xarray as xr
@@ -139,7 +141,7 @@ def to_microseconds(values) -> np.ndarray:
         units=DEFAULT_UNITS,
         calendar=values.ravel()[0].calendar,
     )
-    return np.asarray(us, dtype=np.float64).astype(np.int64)
+    return cast(np.ndarray, np.asarray(us, dtype=np.float64).astype(np.int64))
 
 
 def to_offsets(values, units: str, cal: str) -> np.ndarray:
@@ -150,7 +152,7 @@ def to_offsets(values, units: str, cal: str) -> np.ndarray:
     import cftime as _cftime
 
     raw = _cftime.date2num(values.ravel(), units=units, calendar=cal)
-    return np.asarray(raw, dtype=np.float64).astype(np.int64)
+    return cast(np.ndarray, np.asarray(raw, dtype=np.float64).astype(np.int64))
 
 
 def convert_for_field(values, field: pa.Field) -> np.ndarray:

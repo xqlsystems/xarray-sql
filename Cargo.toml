@@ -24,11 +24,12 @@ async-trait = "0.1"
 datafusion = { version = "54.0.0" }
 datafusion-ffi = { version = "54.0.0" }
 futures = { version = "0.3" }
+half = "2.7"
 # `abi3-py310` builds against CPython's stable ABI, so a single wheel per
-# platform works on all CPython >= 3.10 (matching `requires-python`). This
-# lets the release workflow ship pre-built wheels for every interpreter
-# without compiling per-version, avoiding local rebuilds on install.
-pyo3 = { version = "0.28.0", features = ["extension-module", "abi3-py310"] }
+# platform works on all CPython >= 3.10 (matching `requires-python`). Maturin
+# enables `pyo3/extension-module` through pyproject.toml for wheel builds; it
+# must stay disabled for ordinary Cargo test binaries so they link libpython.
+pyo3 = { version = "0.28.0", features = ["abi3-py310"] }
 tokio = { version = "1.46.1", features = ["rt"] }
 
 

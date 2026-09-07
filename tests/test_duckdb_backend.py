@@ -359,7 +359,7 @@ def test_nan_coordinate_chunk_is_not_pruned():
 
 
 def test_cftime_dataset_aggregates_under_projection():
-    cftime = pytest.importorskip("cftime")
+    pytest.importorskip("cftime")
 
     times = xr.date_range(
         "2000-01-01", periods=6, calendar="360_day", use_cftime=True

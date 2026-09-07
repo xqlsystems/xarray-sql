@@ -47,7 +47,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use arrow::array::RecordBatch;
-use arrow::datatypes::{DataType, Schema, SchemaRef, TimeUnit};
+use arrow::datatypes::{DataType, IntervalMonthDayNano, IntervalUnit, Schema, SchemaRef, TimeUnit};
 use arrow::pyarrow::{FromPyArrow, ToPyArrow};
 use async_stream::try_stream;
 use async_trait::async_trait;
@@ -70,6 +70,7 @@ use datafusion::physical_plan::{
 };
 use datafusion_ffi::proto::logical_extension_codec::FFI_LogicalExtensionCodec;
 use datafusion_ffi::table_provider::FFI_TableProvider;
+use half::f16;
 use pyo3::prelude::*;
 use pyo3::types::{PyCapsule, PyList};
 
@@ -77,50 +78,218 @@ use pyo3::types::{PyCapsule, PyList};
 // Partition Metadata Types for Filter Pushdown
 // ============================================================================
 
-// TODO(alxmrs, Claude): Support every valid xarray coordinate type.
-/// Scalar value for dimension bounds, supporting common xarray coordinate types.
+/// Scalar value for orderable xarray dimension bounds.
 #[derive(Clone, Debug)]
 pub enum ScalarBound {
-    /// 64-bit integer (for integer coordinates)
+    Boolean(bool),
+    Int8(i8),
+    Int16(i16),
+    Int32(i32),
     Int64(i64),
-    /// 64-bit float (for lat/lon coordinates)
+    UInt8(u8),
+    UInt16(u16),
+    UInt32(u32),
+    UInt64(u64),
+    Float16(f16),
+    Float32(f32),
     Float64(f64),
-    /// Nanoseconds since Unix epoch (for datetime64[ns] coordinates)
+    Utf8(String),
+    Binary(Vec<u8>),
+    TimestampSecond(i64),
+    TimestampMillisecond(i64),
+    TimestampMicrosecond(i64),
     TimestampNanos(i64),
+    DurationSecond(i64),
+    DurationMillisecond(i64),
+    DurationMicrosecond(i64),
+    DurationNanosecond(i64),
 }
 
 impl ScalarBound {
     /// Compare this bound with a DataFusion ScalarValue.
     /// Returns None if types are incompatible.
     fn compare_to_scalar(&self, scalar: &ScalarValue) -> Option<std::cmp::Ordering> {
+        if let (Some(a), Some(b)) = (integer_bound(self), integer_scalar(scalar)) {
+            return Some(compare_integers(a, b));
+        }
+        if let (Some(a), Some(b)) = (float_bound(self), float_scalar(scalar)) {
+            return a.partial_cmp(&b);
+        }
+        if let (Some(a), Some(b)) = (timestamp_bound(self), timestamp_scalar(scalar)) {
+            return Some(a.cmp(&b));
+        }
+        if let (Some(a), ScalarValue::IntervalMonthDayNano(Some(b))) =
+            (duration_bound(self), scalar)
+        {
+            if b.months != 0 {
+                return None;
+            }
+            let a = i64::try_from(a).ok()?;
+            return Some(IntervalMonthDayNano::new(0, 0, a).cmp(b));
+        }
+        if let (Some(a), Some(b)) = (duration_bound(self), duration_scalar(scalar)) {
+            return Some(a.cmp(&b));
+        }
+
         match (self, scalar) {
-            // Integer comparisons
-            (ScalarBound::Int64(a), ScalarValue::Int64(Some(b))) => Some(a.cmp(b)),
-            (ScalarBound::Int64(a), ScalarValue::Int32(Some(b))) => Some(a.cmp(&(*b as i64))),
-
-            // Float comparisons
-            (ScalarBound::Float64(a), ScalarValue::Float64(Some(b))) => a.partial_cmp(b),
-            (ScalarBound::Float64(a), ScalarValue::Float32(Some(b))) => a.partial_cmp(&(*b as f64)),
-
-            // Timestamp comparisons - convert to nanoseconds.
-            // Use checked_mul to avoid silent overflow in release builds;
-            // on overflow return None (conservative: include the partition).
-            (ScalarBound::TimestampNanos(a), ScalarValue::TimestampNanosecond(Some(b), _)) => {
-                Some(a.cmp(b))
-            }
-            (ScalarBound::TimestampNanos(a), ScalarValue::TimestampMicrosecond(Some(b), _)) => {
-                b.checked_mul(1_000).map(|b_ns| a.cmp(&b_ns))
-            }
-            (ScalarBound::TimestampNanos(a), ScalarValue::TimestampMillisecond(Some(b), _)) => {
-                b.checked_mul(1_000_000).map(|b_ns| a.cmp(&b_ns))
-            }
-            (ScalarBound::TimestampNanos(a), ScalarValue::TimestampSecond(Some(b), _)) => {
-                b.checked_mul(1_000_000_000).map(|b_ns| a.cmp(&b_ns))
-            }
-
-            // Incompatible types
+            (ScalarBound::Boolean(a), ScalarValue::Boolean(Some(b))) => Some(a.cmp(b)),
+            (ScalarBound::Utf8(a), ScalarValue::Utf8(Some(b)))
+            | (ScalarBound::Utf8(a), ScalarValue::Utf8View(Some(b)))
+            | (ScalarBound::Utf8(a), ScalarValue::LargeUtf8(Some(b))) => Some(a.cmp(b)),
+            (ScalarBound::Binary(a), ScalarValue::Binary(Some(b)))
+            | (ScalarBound::Binary(a), ScalarValue::BinaryView(Some(b)))
+            | (ScalarBound::Binary(a), ScalarValue::LargeBinary(Some(b)))
+            | (ScalarBound::Binary(a), ScalarValue::FixedSizeBinary(_, Some(b))) => Some(a.cmp(b)),
             _ => None,
         }
+    }
+
+    fn compare_to_bound(&self, other: &ScalarBound) -> Option<std::cmp::Ordering> {
+        if let (Some(a), Some(b)) = (integer_bound(self), integer_bound(other)) {
+            return Some(compare_integers(a, b));
+        }
+        if let (Some(a), Some(b)) = (float_bound(self), float_bound(other)) {
+            return a.partial_cmp(&b);
+        }
+        if let (Some(a), Some(b)) = (timestamp_bound(self), timestamp_bound(other)) {
+            return Some(a.cmp(&b));
+        }
+        if let (Some(a), Some(b)) = (duration_bound(self), duration_bound(other)) {
+            return Some(a.cmp(&b));
+        }
+        match (self, other) {
+            (ScalarBound::Boolean(a), ScalarBound::Boolean(b)) => Some(a.cmp(b)),
+            (ScalarBound::Utf8(a), ScalarBound::Utf8(b)) => Some(a.cmp(b)),
+            (ScalarBound::Binary(a), ScalarBound::Binary(b)) => Some(a.cmp(b)),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum IntegerBound {
+    Signed(i128),
+    Unsigned(u128),
+}
+
+fn compare_integers(a: IntegerBound, b: IntegerBound) -> std::cmp::Ordering {
+    match (a, b) {
+        (IntegerBound::Signed(a), IntegerBound::Signed(b)) => a.cmp(&b),
+        (IntegerBound::Unsigned(a), IntegerBound::Unsigned(b)) => a.cmp(&b),
+        (IntegerBound::Signed(a), IntegerBound::Unsigned(b)) => {
+            if a < 0 {
+                std::cmp::Ordering::Less
+            } else {
+                (a as u128).cmp(&b)
+            }
+        }
+        (IntegerBound::Unsigned(a), IntegerBound::Signed(b)) => {
+            if b < 0 {
+                std::cmp::Ordering::Greater
+            } else {
+                a.cmp(&(b as u128))
+            }
+        }
+    }
+}
+
+fn integer_bound(bound: &ScalarBound) -> Option<IntegerBound> {
+    Some(match bound {
+        ScalarBound::Int8(v) => IntegerBound::Signed(*v as i128),
+        ScalarBound::Int16(v) => IntegerBound::Signed(*v as i128),
+        ScalarBound::Int32(v) => IntegerBound::Signed(*v as i128),
+        ScalarBound::Int64(v) => IntegerBound::Signed(*v as i128),
+        ScalarBound::UInt8(v) => IntegerBound::Unsigned(*v as u128),
+        ScalarBound::UInt16(v) => IntegerBound::Unsigned(*v as u128),
+        ScalarBound::UInt32(v) => IntegerBound::Unsigned(*v as u128),
+        ScalarBound::UInt64(v) => IntegerBound::Unsigned(*v as u128),
+        _ => return None,
+    })
+}
+
+fn integer_scalar(scalar: &ScalarValue) -> Option<IntegerBound> {
+    Some(match scalar {
+        ScalarValue::Int8(Some(v)) => IntegerBound::Signed(*v as i128),
+        ScalarValue::Int16(Some(v)) => IntegerBound::Signed(*v as i128),
+        ScalarValue::Int32(Some(v)) => IntegerBound::Signed(*v as i128),
+        ScalarValue::Int64(Some(v)) => IntegerBound::Signed(*v as i128),
+        ScalarValue::UInt8(Some(v)) => IntegerBound::Unsigned(*v as u128),
+        ScalarValue::UInt16(Some(v)) => IntegerBound::Unsigned(*v as u128),
+        ScalarValue::UInt32(Some(v)) => IntegerBound::Unsigned(*v as u128),
+        ScalarValue::UInt64(Some(v)) => IntegerBound::Unsigned(*v as u128),
+        _ => return None,
+    })
+}
+
+fn float_bound(bound: &ScalarBound) -> Option<f64> {
+    match bound {
+        ScalarBound::Float16(v) => Some(v.to_f64()),
+        ScalarBound::Float32(v) => Some(*v as f64),
+        ScalarBound::Float64(v) => Some(*v),
+        _ => None,
+    }
+}
+
+fn float_scalar(scalar: &ScalarValue) -> Option<f64> {
+    match scalar {
+        ScalarValue::Float16(Some(v)) => Some(v.to_f64()),
+        ScalarValue::Float32(Some(v)) => Some(*v as f64),
+        ScalarValue::Float64(Some(v)) => Some(*v),
+        _ => None,
+    }
+}
+
+fn temporal_nanos(value: i64, unit: TimeUnit) -> i128 {
+    let factor = match unit {
+        TimeUnit::Second => 1_000_000_000,
+        TimeUnit::Millisecond => 1_000_000,
+        TimeUnit::Microsecond => 1_000,
+        TimeUnit::Nanosecond => 1,
+    };
+    i128::from(value) * factor
+}
+
+fn timestamp_bound(bound: &ScalarBound) -> Option<i128> {
+    Some(match bound {
+        ScalarBound::TimestampSecond(v) => temporal_nanos(*v, TimeUnit::Second),
+        ScalarBound::TimestampMillisecond(v) => temporal_nanos(*v, TimeUnit::Millisecond),
+        ScalarBound::TimestampMicrosecond(v) => temporal_nanos(*v, TimeUnit::Microsecond),
+        ScalarBound::TimestampNanos(v) => temporal_nanos(*v, TimeUnit::Nanosecond),
+        _ => return None,
+    })
+}
+
+fn timestamp_scalar(scalar: &ScalarValue) -> Option<i128> {
+    Some(match scalar {
+        ScalarValue::TimestampSecond(Some(v), _) => temporal_nanos(*v, TimeUnit::Second),
+        ScalarValue::TimestampMillisecond(Some(v), _) => temporal_nanos(*v, TimeUnit::Millisecond),
+        ScalarValue::TimestampMicrosecond(Some(v), _) => temporal_nanos(*v, TimeUnit::Microsecond),
+        ScalarValue::TimestampNanosecond(Some(v), _) => temporal_nanos(*v, TimeUnit::Nanosecond),
+        _ => return None,
+    })
+}
+
+fn duration_bound(bound: &ScalarBound) -> Option<i128> {
+    Some(match bound {
+        ScalarBound::DurationSecond(v) => temporal_nanos(*v, TimeUnit::Second),
+        ScalarBound::DurationMillisecond(v) => temporal_nanos(*v, TimeUnit::Millisecond),
+        ScalarBound::DurationMicrosecond(v) => temporal_nanos(*v, TimeUnit::Microsecond),
+        ScalarBound::DurationNanosecond(v) => temporal_nanos(*v, TimeUnit::Nanosecond),
+        _ => return None,
+    })
+}
+
+fn duration_scalar(scalar: &ScalarValue) -> Option<i128> {
+    match scalar {
+        ScalarValue::DurationSecond(Some(v)) => Some(temporal_nanos(*v, TimeUnit::Second)),
+        ScalarValue::DurationMillisecond(Some(v)) => {
+            Some(temporal_nanos(*v, TimeUnit::Millisecond))
+        }
+        ScalarValue::DurationMicrosecond(Some(v)) => {
+            Some(temporal_nanos(*v, TimeUnit::Microsecond))
+        }
+        ScalarValue::DurationNanosecond(Some(v)) => Some(temporal_nanos(*v, TimeUnit::Nanosecond)),
+        _ => None,
     }
 }
 
@@ -129,9 +298,9 @@ impl ScalarBound {
 pub struct DimensionRange {
     /// The column name (dimension name from xarray)
     pub column_name: String,
-    /// Minimum value (inclusive) - first coordinate value in this partition
+    /// Minimum coordinate value in this partition (inclusive).
     pub min: ScalarBound,
-    /// Maximum value (inclusive) - last coordinate value in this partition
+    /// Maximum coordinate value in this partition (inclusive).
     pub max: ScalarBound,
 }
 
@@ -223,6 +392,13 @@ impl PrunableStreamingTable {
     /// Conservative: returns false (include) if uncertain.
     fn filter_excludes_partition(&self, expr: &Expr, meta: &PartitionMetadata) -> bool {
         match expr {
+            Expr::Column(_) => self.boolean_filter_excludes(expr, true, meta),
+            Expr::IsTrue(inner) | Expr::IsNotFalse(inner) => {
+                self.boolean_filter_excludes(inner, true, meta)
+            }
+            Expr::IsFalse(inner) | Expr::IsNotTrue(inner) => {
+                self.boolean_filter_excludes(inner, false, meta)
+            }
             Expr::BinaryExpr(BinaryExpr { left, op, right }) => {
                 // Handle AND/OR logic
                 match op {
@@ -240,7 +416,10 @@ impl PrunableStreamingTable {
                     _ => self.comparison_excludes(left, op, right, meta),
                 }
             }
-            Expr::Not(_) => {
+            Expr::Not(inner) => {
+                if self.pruning_column_name(inner).is_some() {
+                    return self.boolean_filter_excludes(inner, false, meta);
+                }
                 // NOT inverts the predicate. We cannot safely derive exclusion
                 // from the inner result: if inner returns false (uncertain),
                 // !false = true would incorrectly exclude the partition.
@@ -266,10 +445,16 @@ impl PrunableStreamingTable {
         meta: &PartitionMetadata,
     ) -> bool {
         // Try to extract column and literal from either side
-        let (col_name, scalar, flipped) = match (left, right) {
-            (Expr::Column(c), Expr::Literal(s, _)) => (c.name.clone(), s, false),
-            (Expr::Literal(s, _), Expr::Column(c)) => (c.name.clone(), s, true),
-            _ => return false, // Not a simple column-literal comparison
+        let (col_name, scalar, flipped) = if let (Some(column), Expr::Literal(scalar, _)) =
+            (self.pruning_column_name(left), right)
+        {
+            (column, scalar, false)
+        } else if let (Expr::Literal(scalar, _), Some(column)) =
+            (left, self.pruning_column_name(right))
+        {
+            (column, scalar, true)
+        } else {
+            return false;
         };
 
         // Get the dimension range for this column
@@ -277,6 +462,9 @@ impl PrunableStreamingTable {
             Some(r) => r,
             None => return false, // Not a dimension column, can't prune
         };
+        if !range_can_compare_scalar(range, scalar) {
+            return false;
+        }
 
         // Flip operator if literal was on left side
         let effective_op = if flipped { flip_operator(op) } else { *op };
@@ -349,9 +537,9 @@ impl PrunableStreamingTable {
         }
 
         // Extract column name
-        let col_name = match between.expr.as_ref() {
-            Expr::Column(c) => c.name.clone(),
-            _ => return false,
+        let col_name = match self.pruning_column_name(&between.expr) {
+            Some(name) => name,
+            None => return false,
         };
 
         // Get dimension range
@@ -365,6 +553,9 @@ impl PrunableStreamingTable {
             (Expr::Literal(l, _), Expr::Literal(h, _)) => (l, h),
             _ => return false,
         };
+        if !range_can_compare_scalar(range, low) || !range_can_compare_scalar(range, high) {
+            return false;
+        }
 
         // Exclude if partition range doesn't overlap with [low, high]
         // No overlap if: partition.max < low OR partition.min > high
@@ -388,9 +579,9 @@ impl PrunableStreamingTable {
         }
 
         // Extract column name
-        let col_name = match in_list.expr.as_ref() {
-            Expr::Column(c) => c.name.clone(),
-            _ => return false,
+        let col_name = match self.pruning_column_name(&in_list.expr) {
+            Some(name) => name,
+            None => return false,
         };
 
         // Get dimension range
@@ -402,16 +593,20 @@ impl PrunableStreamingTable {
         // Check if any value in the list could be in this partition's range
         let any_in_range = in_list.list.iter().any(|expr| {
             if let Expr::Literal(scalar, _) = expr {
+                if !range_can_compare_scalar(range, scalar) {
+                    return true;
+                }
                 // Value is in range if: min <= value <= max
-                let above_min = matches!(
+                match (
                     range.min.compare_to_scalar(scalar),
-                    Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
-                );
-                let below_max = matches!(
                     range.max.compare_to_scalar(scalar),
-                    Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
-                );
-                above_min && below_max
+                ) {
+                    (Some(min_cmp), Some(max_cmp)) => {
+                        min_cmp != std::cmp::Ordering::Greater
+                            && max_cmp != std::cmp::Ordering::Less
+                    }
+                    _ => true,
+                }
             } else {
                 // Non-literal in list, be conservative
                 true
@@ -425,6 +620,11 @@ impl PrunableStreamingTable {
     /// Check if an expression is a filter on a dimension column.
     fn is_dimension_filter(&self, expr: &Expr) -> bool {
         match expr {
+            Expr::Column(_) => self.pruning_column_name(expr).is_some(),
+            Expr::IsTrue(inner)
+            | Expr::IsFalse(inner)
+            | Expr::IsNotTrue(inner)
+            | Expr::IsNotFalse(inner) => self.expr_references_dimension(inner),
             Expr::BinaryExpr(BinaryExpr { left, op, right }) => match op {
                 Operator::And | Operator::Or => {
                     self.is_dimension_filter(left) || self.is_dimension_filter(right)
@@ -440,10 +640,123 @@ impl PrunableStreamingTable {
 
     /// Check if an expression references a dimension column.
     fn expr_references_dimension(&self, expr: &Expr) -> bool {
+        self.pruning_column_name(expr).is_some()
+    }
+
+    /// Return the dimension column behind an order-preserving expression.
+    fn pruning_column_name(&self, expr: &Expr) -> Option<String> {
         match expr {
-            Expr::Column(c) => self.dimension_columns.contains(&c.name),
-            _ => false,
+            Expr::Column(column) if self.dimension_columns.contains(&column.name) => {
+                Some(column.name.clone())
+            }
+            Expr::Cast(cast) => {
+                let column = self.pruning_column_name(&cast.expr)?;
+                let source = self.schema.field_with_name(&column).ok()?.data_type();
+                order_preserving_cast(source, cast.field.data_type()).then_some(column)
+            }
+            Expr::TryCast(cast) => {
+                let column = self.pruning_column_name(&cast.expr)?;
+                let source = self.schema.field_with_name(&column).ok()?.data_type();
+                order_preserving_cast(source, cast.field.data_type()).then_some(column)
+            }
+            _ => None,
         }
+    }
+
+    /// A bare boolean column means `column = TRUE`; `NOT column` is handled
+    /// by the caller as `column = FALSE`.
+    fn boolean_filter_excludes(
+        &self,
+        expr: &Expr,
+        expected: bool,
+        meta: &PartitionMetadata,
+    ) -> bool {
+        let Some(column) = self.pruning_column_name(expr) else {
+            return false;
+        };
+        let Some(range) = meta.get_range(&column) else {
+            return false;
+        };
+        let literal = ScalarValue::Boolean(Some(expected));
+        if expected {
+            matches!(
+                range.max.compare_to_scalar(&literal),
+                Some(std::cmp::Ordering::Less)
+            )
+        } else {
+            matches!(
+                range.min.compare_to_scalar(&literal),
+                Some(std::cmp::Ordering::Greater)
+            )
+        }
+    }
+}
+
+fn signed_integer_width(dtype: &DataType) -> Option<u8> {
+    match dtype {
+        DataType::Int8 => Some(8),
+        DataType::Int16 => Some(16),
+        DataType::Int32 => Some(32),
+        DataType::Int64 => Some(64),
+        _ => None,
+    }
+}
+
+fn unsigned_integer_width(dtype: &DataType) -> Option<u8> {
+    match dtype {
+        DataType::UInt8 => Some(8),
+        DataType::UInt16 => Some(16),
+        DataType::UInt32 => Some(32),
+        DataType::UInt64 => Some(64),
+        _ => None,
+    }
+}
+
+/// Whether a cast preserves ordering and every source value exactly.
+fn order_preserving_cast(source: &DataType, target: &DataType) -> bool {
+    if source == target {
+        return true;
+    }
+    if let (Some(source_width), Some(target_width)) =
+        (signed_integer_width(source), signed_integer_width(target))
+    {
+        return target_width >= source_width;
+    }
+    if let (Some(source_width), Some(target_width)) = (
+        unsigned_integer_width(source),
+        unsigned_integer_width(target),
+    ) {
+        return target_width >= source_width;
+    }
+    if let (Some(source_width), Some(target_width)) =
+        (unsigned_integer_width(source), signed_integer_width(target))
+    {
+        return target_width > source_width;
+    }
+    matches!(
+        (source, target),
+        (DataType::Float16, DataType::Float32 | DataType::Float64)
+            | (DataType::Float32, DataType::Float64)
+            | (
+                DataType::Duration(_),
+                DataType::Interval(IntervalUnit::MonthDayNano)
+            )
+    )
+}
+
+/// Duration-to-interval casts use an i64 nanosecond field in Arrow. If either
+/// endpoint overflows it, retaining the partition is required: pruning it could
+/// otherwise hide a row-level cast error (or a null from TRY_CAST).
+fn range_can_compare_scalar(range: &DimensionRange, scalar: &ScalarValue) -> bool {
+    let ScalarValue::IntervalMonthDayNano(Some(interval)) = scalar else {
+        return true;
+    };
+    if interval.months != 0 {
+        return false;
+    }
+    match (duration_bound(&range.min), duration_bound(&range.max)) {
+        (Some(min), Some(max)) => i64::try_from(min).is_ok() && i64::try_from(max).is_ok(),
+        _ => true,
     }
 }
 
@@ -479,18 +792,28 @@ fn flip_operator(op: &Operator) -> Operator {
 /// Convert a Python object to a ScalarBound using an explicit dtype tag.
 fn python_to_scalar_bound(obj: &Bound<'_, PyAny>, dtype_tag: &str) -> PyResult<ScalarBound> {
     match dtype_tag {
-        "timestamp_ns" => {
-            let val = obj.extract::<i64>()?;
-            Ok(ScalarBound::TimestampNanos(val))
-        }
-        "float64" => {
-            let val = obj.extract::<f64>()?;
-            Ok(ScalarBound::Float64(val))
-        }
-        "int64" => {
-            let val = obj.extract::<i64>()?;
-            Ok(ScalarBound::Int64(val))
-        }
+        "bool" => Ok(ScalarBound::Boolean(obj.extract::<bool>()?)),
+        "int8" => Ok(ScalarBound::Int8(obj.extract::<i8>()?)),
+        "int16" => Ok(ScalarBound::Int16(obj.extract::<i16>()?)),
+        "int32" => Ok(ScalarBound::Int32(obj.extract::<i32>()?)),
+        "int64" => Ok(ScalarBound::Int64(obj.extract::<i64>()?)),
+        "uint8" => Ok(ScalarBound::UInt8(obj.extract::<u8>()?)),
+        "uint16" => Ok(ScalarBound::UInt16(obj.extract::<u16>()?)),
+        "uint32" => Ok(ScalarBound::UInt32(obj.extract::<u32>()?)),
+        "uint64" => Ok(ScalarBound::UInt64(obj.extract::<u64>()?)),
+        "float16" => Ok(ScalarBound::Float16(f16::from_f64(obj.extract::<f64>()?))),
+        "float32" => Ok(ScalarBound::Float32(obj.extract::<f32>()?)),
+        "float64" => Ok(ScalarBound::Float64(obj.extract::<f64>()?)),
+        "utf8" => Ok(ScalarBound::Utf8(obj.extract::<String>()?)),
+        "binary" => Ok(ScalarBound::Binary(obj.extract::<Vec<u8>>()?)),
+        "timestamp_s" => Ok(ScalarBound::TimestampSecond(obj.extract::<i64>()?)),
+        "timestamp_ms" => Ok(ScalarBound::TimestampMillisecond(obj.extract::<i64>()?)),
+        "timestamp_us" => Ok(ScalarBound::TimestampMicrosecond(obj.extract::<i64>()?)),
+        "timestamp_ns" => Ok(ScalarBound::TimestampNanos(obj.extract::<i64>()?)),
+        "duration_s" => Ok(ScalarBound::DurationSecond(obj.extract::<i64>()?)),
+        "duration_ms" => Ok(ScalarBound::DurationMillisecond(obj.extract::<i64>()?)),
+        "duration_us" => Ok(ScalarBound::DurationMicrosecond(obj.extract::<i64>()?)),
+        "duration_ns" => Ok(ScalarBound::DurationNanosecond(obj.extract::<i64>()?)),
         _ => Err(pyo3::exceptions::PyTypeError::new_err(format!(
             "Unsupported dtype tag for partition bound: {dtype_tag}"
         ))),
@@ -682,12 +1005,7 @@ fn sum_row_counts<'a>(metas: impl Iterator<Item = &'a PartitionMetadata>) -> Pre
 /// larger one. Returns `None` if the variants differ (never expected within a
 /// single dimension) so the caller can fall back to unknown.
 fn fold_bound(a: &ScalarBound, b: &ScalarBound, keep_min: bool) -> Option<ScalarBound> {
-    let ord = match (a, b) {
-        (ScalarBound::Int64(x), ScalarBound::Int64(y)) => x.partial_cmp(y),
-        (ScalarBound::Float64(x), ScalarBound::Float64(y)) => x.partial_cmp(y),
-        (ScalarBound::TimestampNanos(x), ScalarBound::TimestampNanos(y)) => x.partial_cmp(y),
-        _ => return None,
-    }?;
+    let ord = a.compare_to_bound(b)?;
     let take_a = if keep_min {
         ord != std::cmp::Ordering::Greater
     } else {
@@ -703,24 +1021,37 @@ fn fold_bound(a: &ScalarBound, b: &ScalarBound, keep_min: bool) -> Option<Scalar
 /// min/max rather than risk a wrong value.
 fn bound_to_scalar(bound: &ScalarBound, dtype: &DataType) -> Option<ScalarValue> {
     match (bound, dtype) {
+        (ScalarBound::Boolean(v), DataType::Boolean) => Some(ScalarValue::Boolean(Some(*v))),
+        (ScalarBound::Int8(v), DataType::Int8) => Some(ScalarValue::Int8(Some(*v))),
+        (ScalarBound::Int16(v), DataType::Int16) => Some(ScalarValue::Int16(Some(*v))),
+        (ScalarBound::Int32(v), DataType::Int32) => Some(ScalarValue::Int32(Some(*v))),
         (ScalarBound::Int64(v), DataType::Int64) => Some(ScalarValue::Int64(Some(*v))),
-        (ScalarBound::Int64(v), DataType::Int32) => {
-            i32::try_from(*v).ok().map(|x| ScalarValue::Int32(Some(x)))
-        }
+        (ScalarBound::UInt8(v), DataType::UInt8) => Some(ScalarValue::UInt8(Some(*v))),
+        (ScalarBound::UInt16(v), DataType::UInt16) => Some(ScalarValue::UInt16(Some(*v))),
+        (ScalarBound::UInt32(v), DataType::UInt32) => Some(ScalarValue::UInt32(Some(*v))),
+        (ScalarBound::UInt64(v), DataType::UInt64) => Some(ScalarValue::UInt64(Some(*v))),
+        (ScalarBound::Float16(v), DataType::Float16) => Some(ScalarValue::Float16(Some(*v))),
+        (ScalarBound::Float32(v), DataType::Float32) => Some(ScalarValue::Float32(Some(*v))),
         (ScalarBound::Float64(v), DataType::Float64) => Some(ScalarValue::Float64(Some(*v))),
-        (ScalarBound::Float64(v), DataType::Float32) => Some(ScalarValue::Float32(Some(*v as f32))),
-        // Datetime coordinates arrive as nanoseconds (see `cftime.partition_bounds`
-        // and the datetime64[ns] path in `_block_metadata`). Map them onto the
-        // column's own timestamp unit, but only when the scaling is exact so a
-        // reported bound is never a rounded value.
-        (ScalarBound::TimestampNanos(v), DataType::Timestamp(unit, tz)) => {
-            let scaled = match unit {
-                TimeUnit::Nanosecond => Some(*v),
-                TimeUnit::Microsecond if v % 1_000 == 0 => Some(v / 1_000),
-                TimeUnit::Millisecond if v % 1_000_000 == 0 => Some(v / 1_000_000),
-                TimeUnit::Second if v % 1_000_000_000 == 0 => Some(v / 1_000_000_000),
-                _ => None,
-            }?;
+        (ScalarBound::Utf8(v), DataType::Utf8) => Some(ScalarValue::Utf8(Some(v.clone()))),
+        (ScalarBound::Utf8(v), DataType::Utf8View) => Some(ScalarValue::Utf8View(Some(v.clone()))),
+        (ScalarBound::Utf8(v), DataType::LargeUtf8) => {
+            Some(ScalarValue::LargeUtf8(Some(v.clone())))
+        }
+        (ScalarBound::Binary(v), DataType::Binary) => Some(ScalarValue::Binary(Some(v.clone()))),
+        (ScalarBound::Binary(v), DataType::BinaryView) => {
+            Some(ScalarValue::BinaryView(Some(v.clone())))
+        }
+        (ScalarBound::Binary(v), DataType::LargeBinary) => {
+            Some(ScalarValue::LargeBinary(Some(v.clone())))
+        }
+        (ScalarBound::Binary(v), DataType::FixedSizeBinary(size))
+            if usize::try_from(*size).ok() == Some(v.len()) =>
+        {
+            Some(ScalarValue::FixedSizeBinary(*size, Some(v.clone())))
+        }
+        (bound, DataType::Timestamp(unit, tz)) if timestamp_bound(bound).is_some() => {
+            let scaled = temporal_bound_in_unit(timestamp_bound(bound)?, unit)?;
             Some(match unit {
                 TimeUnit::Nanosecond => ScalarValue::TimestampNanosecond(Some(scaled), tz.clone()),
                 TimeUnit::Microsecond => {
@@ -732,8 +1063,30 @@ fn bound_to_scalar(bound: &ScalarBound, dtype: &DataType) -> Option<ScalarValue>
                 TimeUnit::Second => ScalarValue::TimestampSecond(Some(scaled), tz.clone()),
             })
         }
+        (bound, DataType::Duration(unit)) if duration_bound(bound).is_some() => {
+            let scaled = temporal_bound_in_unit(duration_bound(bound)?, unit)?;
+            Some(match unit {
+                TimeUnit::Second => ScalarValue::DurationSecond(Some(scaled)),
+                TimeUnit::Millisecond => ScalarValue::DurationMillisecond(Some(scaled)),
+                TimeUnit::Microsecond => ScalarValue::DurationMicrosecond(Some(scaled)),
+                TimeUnit::Nanosecond => ScalarValue::DurationNanosecond(Some(scaled)),
+            })
+        }
         _ => None,
     }
+}
+
+fn temporal_bound_in_unit(nanoseconds: i128, unit: &TimeUnit) -> Option<i64> {
+    let divisor = match unit {
+        TimeUnit::Second => 1_000_000_000,
+        TimeUnit::Millisecond => 1_000_000,
+        TimeUnit::Microsecond => 1_000,
+        TimeUnit::Nanosecond => 1,
+    };
+    if nanoseconds % divisor != 0 {
+        return None;
+    }
+    i64::try_from(nanoseconds / divisor).ok()
 }
 
 /// Exact in-memory byte size of `num_rows` rows of `schema`, or `Absent` if any
@@ -777,18 +1130,31 @@ fn build_scan_statistics(output_schema: &Schema, metas: &[&PartitionMetadata]) -
         // with a representable bound; all such partitions share the same bound
         // variant, so the fold is well-defined.
         let mut folded: Option<(ScalarBound, ScalarBound)> = None;
+        let mut complete = !metas.is_empty();
         for meta in metas {
-            if let Some(range) = meta.ranges.get(field.name()) {
-                folded = Some(match folded {
-                    None => (range.min.clone(), range.max.clone()),
-                    Some((lo, hi)) => (
-                        fold_bound(&lo, &range.min, true).unwrap_or(lo),
-                        fold_bound(&hi, &range.max, false).unwrap_or(hi),
-                    ),
-                });
-            }
+            let Some(range) = meta.ranges.get(field.name()) else {
+                complete = false;
+                break;
+            };
+            folded = match folded.take() {
+                None => Some((range.min.clone(), range.max.clone())),
+                Some((lo, hi)) => {
+                    let Some(lo) = fold_bound(&lo, &range.min, true) else {
+                        complete = false;
+                        break;
+                    };
+                    let Some(hi) = fold_bound(&hi, &range.max, false) else {
+                        complete = false;
+                        break;
+                    };
+                    Some((lo, hi))
+                }
+            };
         }
 
+        if !complete {
+            continue;
+        }
         let Some((lo, hi)) = folded else { continue };
         // This column is a coordinate axis: never null, so the null count is
         // exactly zero regardless of whether the bound maps to a ScalarValue.
@@ -1173,6 +1539,12 @@ impl LazyArrowStreamTable {
     ///             - ``metadata_dict`` is a ``dict[str, tuple[Any, Any, str]]``
     ///               mapping dimension name to ``(min, max, dtype_str)``; pass
     ///               ``{}`` to skip pruning for a partition.
+    ///               Supported tags are ``bool``, exact-width ``int*``,
+    ///               ``uint*``, and ``float*`` tags, ``utf8``, ``binary``,
+    ///               ``timestamp_s|ms|us|ns``, and
+    ///               ``duration_s|ms|us|ns``. Temporal bounds are signed
+    ///               integer counts in the tagged unit. Invalid tags are a
+    ///               protocol error and raise ``TypeError``.
     ///             - ``num_rows`` is the exact row count for the partition, so
     ///               the scan reports exact ``Statistics`` to the optimizer.
     ///             Generators are accepted, so partition state can be produced

@@ -19,6 +19,37 @@ def test_sanity(air_dataset_small):
     assert all(col in result.columns for col in ["lat", "lon", "time", "air"])
 
 
+def test_timedelta_microseconds_register_filter_and_prune(monkeypatch):
+    """Duration coordinates use integer bounds and prune through interval SQL."""
+    from xarray_sql import sql as sql_module
+
+    blocks_seen = []
+    original = sql_module.read_xarray_table
+
+    def tracking_reader(ds, chunks=None, **kwargs):
+        kwargs["_iteration_callback"] = lambda block, projection_names: (
+            blocks_seen.append(block)
+        )
+        return original(ds, chunks, **kwargs)
+
+    monkeypatch.setattr(sql_module, "read_xarray_table", tracking_reader)
+    lead_time = np.arange(-2, 6).astype("timedelta64[us]")
+    ds = xr.Dataset(
+        {"value": (["lead_time"], np.arange(8))},
+        coords={"lead_time": lead_time},
+    )
+    ctx = XarrayContext()
+
+    ctx.from_dataset("forecast", ds, chunks={"lead_time": 2})
+    result = ctx.sql(
+        "SELECT value FROM forecast "
+        "WHERE lead_time >= INTERVAL '4 microseconds' ORDER BY value"
+    ).to_pandas()
+
+    assert result["value"].tolist() == [6, 7]
+    assert len(blocks_seen) == 1
+
+
 def test_aggregation_small(air_dataset_small):
     ctx = XarrayContext()
     ctx.from_dataset("air", air_dataset_small)

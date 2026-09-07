@@ -1,4 +1,5 @@
 import tracemalloc
+from decimal import Decimal
 
 import numpy as np
 import pandas as pd
@@ -612,11 +613,95 @@ def test_parse_schema_maps_object_string_coord_to_string():
     assert _field_type(schema, "station") == pa.string()
 
 
-def test_partition_metadata_skips_out_of_ns_datetime():
-    # datetime64 coordinates outside the datetime64[ns] range (pre-1678 /
-    # post-2262) cannot be represented as int64 nanoseconds, so partition
-    # pruning must be skipped for that dimension rather than raising
-    # OverflowError. Registration must still succeed.
+@pytest.mark.parametrize(
+    ("dtype", "values", "expected"),
+    [
+        ("bool", [True, False, True], (False, True, "bool")),
+        ("int8", [-2, 3, 1], (-2, 3, "int8")),
+        ("int16", [-2, 3, 1], (-2, 3, "int16")),
+        ("int32", [-2, 3, 1], (-2, 3, "int32")),
+        ("int64", [-2, 3, 1], (-2, 3, "int64")),
+        ("uint8", [3, 0, 2], (0, 3, "uint8")),
+        ("uint16", [3, 0, 2], (0, 3, "uint16")),
+        ("uint32", [3, 0, 2], (0, 3, "uint32")),
+        (
+            "uint64",
+            [2**63 + 1, 2**63 + 3, 2**63 + 2],
+            (2**63 + 1, 2**63 + 3, "uint64"),
+        ),
+        ("float16", [3.5, -1.5, 2.0], (-1.5, 3.5, "float16")),
+        ("float32", [3.5, -1.5, 2.0], (-1.5, 3.5, "float32")),
+        ("float64", [3.5, -1.5, 2.0], (-1.5, 3.5, "float64")),
+        ("U8", ["zulu", "alpha", "echo"], ("alpha", "zulu", "utf8")),
+        ("S8", [b"zulu", b"alpha", b"echo"], (b"alpha", b"zulu", "binary")),
+    ],
+)
+def test_partition_metadata_preserves_coordinate_dtype(dtype, values, expected):
+    coord = np.asarray(values, dtype=dtype)
+    ds = xr.Dataset({"v": (["x"], np.arange(len(coord)))}, coords={"x": coord})
+    blocks = list(block_slices(ds, chunks={"x": len(coord)}))
+
+    assert partition_metadata(ds, blocks)[0]["x"] == expected
+
+
+@pytest.mark.parametrize("kind", ["datetime64", "timedelta64"])
+@pytest.mark.parametrize("unit", ["s", "ms", "us", "ns"])
+def test_partition_metadata_preserves_temporal_unit(kind, unit):
+    coord = np.asarray([-2, 3, 1], dtype=f"{kind}[{unit}]")
+    ds = xr.Dataset({"v": (["x"], np.arange(len(coord)))}, coords={"x": coord})
+    blocks = list(block_slices(ds, chunks={"x": len(coord)}))
+    prefix = "timestamp" if kind == "datetime64" else "duration"
+
+    assert partition_metadata(ds, blocks)[0]["x"] == (
+        -2,
+        3,
+        f"{prefix}_{unit}",
+    )
+
+
+@pytest.mark.parametrize(
+    ("categories", "arrow_type", "bounds"),
+    [
+        (["zulu", "alpha", "echo"], pa.string(), ("alpha", "zulu", "utf8")),
+        ([30, 10, 20], pa.int64(), (10, 30, "int64")),
+    ],
+)
+def test_categorical_coordinate_uses_emitted_value_type(
+    categories, arrow_type, bounds
+):
+    coord = pd.CategoricalIndex(categories, ordered=True, name="category")
+    ds = xr.Dataset(
+        {"v": (["category"], np.arange(len(coord)))},
+        coords={"category": coord},
+    )
+    blocks = list(block_slices(ds, chunks={"category": len(coord)}))
+
+    assert _field_type(_parse_schema(ds), "category") == arrow_type
+    assert partition_metadata(ds, blocks)[0]["category"] == bounds
+
+
+@pytest.mark.parametrize(
+    "coord",
+    [
+        np.asarray([1.0, np.nan]),
+        np.asarray(["valid", None], dtype=object),
+        np.asarray([Decimal("1.0"), Decimal("2.0")], dtype=object),
+        np.asarray(
+            [np.datetime64("NaT"), np.datetime64("2000-01-01")],
+            dtype="datetime64[ns]",
+        ),
+    ],
+)
+def test_partition_metadata_omits_unsafe_coordinate_bounds(coord):
+    ds = xr.Dataset({"v": (["x"], np.arange(len(coord)))}, coords={"x": coord})
+    blocks = list(block_slices(ds, chunks={"x": len(coord)}))
+
+    assert "x" not in partition_metadata(ds, blocks)[0]
+
+
+def test_partition_metadata_preserves_out_of_ns_datetime_unit():
+    # A microsecond coordinate outside the datetime64[ns] range remains
+    # representable and prunable when metadata retains its original unit.
     times = xr.date_range(
         "0001-01-01", periods=3, freq="100YS", use_cftime=True
     ).to_datetimeindex(time_unit="us", unsafe=True)
@@ -625,11 +710,10 @@ def test_partition_metadata_skips_out_of_ns_datetime():
     )
     blocks = list(block_slices(ds, chunks={"time": 2}))
 
-    meta = partition_metadata(ds, blocks)  # must not raise
+    meta = partition_metadata(ds, blocks)
 
     assert len(meta) == len(blocks)
-    # "time" is unpruneable here, so it is omitted from every partition.
-    assert all("time" not in m for m in meta)
+    assert all(m["time"][2] == "timestamp_us" for m in meta)
 
 
 def test_parse_schema_all_null_object_var_stays_null():
@@ -703,8 +787,8 @@ def test_string_dataset_round_trips_through_record_batch():
 
 
 def test_partition_metadata_in_range_datetime_still_pruned():
-    # Regression guard: ordinary datetimes must keep producing timestamp_ns
-    # bounds so filter pushdown still works after the overflow fix.
+    # Regression guard: ordinary datetimes retain their source unit and keep
+    # producing bounds so filter pushdown still works.
     times = pd.date_range("2000-01-01", periods=4, freq="D")
     ds = _ensure_default_indexes(
         xr.Dataset({"v": (["time"], np.arange(4.0))}, coords={"time": times})
@@ -714,9 +798,8 @@ def test_partition_metadata_in_range_datetime_still_pruned():
     meta = partition_metadata(ds, blocks)
 
     assert all("time" in m for m in meta)
-    for m in meta:
-        _, _, tag = m["time"]
-        assert tag == "timestamp_ns"
+    expected_unit = np.datetime_data(ds.coords["time"].dtype)[0]
+    assert all(m["time"][2] == f"timestamp_{expected_unit}" for m in meta)
 
 
 class TestGroupVarsByDims:

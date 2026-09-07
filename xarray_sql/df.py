@@ -431,7 +431,7 @@ def iter_record_batches(
             if name in ds.coords and name in ds.dims:
                 k = dim_names.index(name)
                 outer = int(np.prod(shape[:k]))
-                col = np.repeat(coord_values[name], strides[k])
+                col: np.ndarray = np.repeat(coord_values[name], strides[k])
                 if outer > 1:
                     col = np.tile(col, outer)
                 full_arrays.append(_as_single_array(col, field.type))
@@ -487,6 +487,20 @@ def _arrow_type_for_object(values: np.ndarray) -> pa.DataType:
     return pa.array(np.asarray(values).ravel()).type
 
 
+def _arrow_type_for_categorical(values: np.ndarray) -> pa.DataType:
+    """Return the Arrow value type emitted for a categorical coordinate.
+
+    xarray preserves a pandas ``CategoricalDtype`` on the coordinate variable,
+    but ``.values`` exposes the category labels that are actually written to
+    Arrow. Infer from those labels so string categories become UTF-8 and
+    numeric categories retain their numeric width.
+    """
+    values = np.asarray(values)
+    if values.dtype == np.dtype("O"):
+        return _arrow_type_for_object(values)
+    return pa.from_numpy_dtype(values.dtype)
+
+
 def _parse_schema(ds: xr.Dataset) -> pa.Schema:
     """Extracts a `pa.Schema` from the Dataset, treating dims and data_vars as columns.
 
@@ -515,6 +529,13 @@ def _parse_schema(ds: xr.Dataset) -> pa.Schema:
             if cft.is_cftime_index(ds, coord_name):
                 units, calendar = cft.encoding(ds, coord_name)
                 columns.append(cft.arrow_field(coord_name, units, calendar))
+            elif isinstance(coord_var.dtype, pd.CategoricalDtype):
+                columns.append(
+                    pa.field(
+                        coord_name,
+                        _arrow_type_for_categorical(coord_var.values),
+                    )
+                )
             elif coord_var.dtype == np.dtype("O"):
                 # Object dtype that isn't cftime (e.g. string station names).
                 arrow_type = _arrow_type_for_object(coord_var.values)
@@ -547,6 +568,70 @@ def _parse_schema(ds: xr.Dataset) -> pa.Schema:
 
 # Type alias for partition metadata: maps dimension name to (min, max, dtype_str) values
 PartitionBounds = dict[str, tuple[Any, Any, str]]
+
+
+_INTEGER_BOUND_TAGS = {
+    ("i", 1): "int8",
+    ("i", 2): "int16",
+    ("i", 4): "int32",
+    ("i", 8): "int64",
+    ("u", 1): "uint8",
+    ("u", 2): "uint16",
+    ("u", 4): "uint32",
+    ("u", 8): "uint64",
+}
+_FLOAT_BOUND_TAGS = {2: "float16", 4: "float32", 8: "float64"}
+_TEMPORAL_BOUND_UNITS = {"s", "ms", "us", "ns"}
+
+
+def _coordinate_partition_bound(
+    coord_values: np.ndarray,
+) -> tuple[Any, Any, str] | None:
+    """Return an exact, Rust-compatible bound for one coordinate slice.
+
+    Unsupported, null-tainted, or unordered values return ``None``. Partition
+    pruning is optional, so omitting unsafe metadata is always preferable to
+    coercing a value or failing dataset registration.
+    """
+    values = np.asarray(coord_values)
+    if values.size == 0:
+        return None
+
+    kind = values.dtype.kind
+
+    if kind in ("M", "m"):
+        if np.isnat(values).any():
+            return None
+        unit, step = np.datetime_data(values.dtype)
+        if unit not in _TEMPORAL_BOUND_UNITS or step != 1:
+            return None
+        raw = values.astype(np.int64, copy=False)
+        prefix = "timestamp" if kind == "M" else "duration"
+        return int(raw.min()), int(raw.max()), f"{prefix}_{unit}"
+
+    if kind == "b":
+        return bool(values.min()), bool(values.max()), "bool"
+
+    if kind in ("i", "u"):
+        tag = _INTEGER_BOUND_TAGS.get((kind, values.dtype.itemsize))
+        if tag is None:
+            return None
+        return int(values.min()), int(values.max()), tag
+
+    if kind == "f":
+        tag = _FLOAT_BOUND_TAGS.get(values.dtype.itemsize)
+        if tag is None or np.isnan(values).any():
+            return None
+        return float(values.min()), float(values.max()), tag
+
+    if kind in ("U", "S", "O"):
+        python_values = values.ravel().tolist()
+        if all(isinstance(value, str) for value in python_values):
+            return min(python_values), max(python_values), "utf8"
+        if all(isinstance(value, bytes) for value in python_values):
+            return min(python_values), max(python_values), "binary"
+
+    return None
 
 
 def _block_metadata(
@@ -586,39 +671,15 @@ def _block_metadata(
             if bounds is not None:
                 ranges[str(dim)] = bounds
             continue
-        # String/object dtypes are not representable as ScalarBound
-        # (Int64/Float64/TimestampNanos) and numpy min/max ufuncs do not
-        # support them.  Skip so pruning treats the dimension conservatively.
-        if coord_values.dtype.kind in ("U", "S", "O"):
-            continue
-
-        # Use actual min/max rather than first/last so that non-monotonic
-        # coordinate axes (e.g. descending latitude 90→-90) are handled
-        # correctly.  np.min/max work for both numeric and datetime64 arrays.
-        min_val = coord_values.min()
-        max_val = coord_values.max()
-
-        if isinstance(min_val, (np.datetime64, pd.Timestamp)):
-            # The Rust pruning layer only accepts int64 nanosecond bounds
-            # (ScalarBound::TimestampNanos).  Dates outside the
-            # datetime64[ns] range (pre-1678 / post-2262) cannot be
-            # represented, so skip pruning for this dimension rather than
-            # raising -- registration still succeeds and the Rust pruner
-            # treats a missing dimension conservatively (never prunes on it).
-            try:
-                min_ns = int(pd.Timestamp(min_val).value)
-                max_ns = int(pd.Timestamp(max_val).value)
-            except (OverflowError, pd.errors.OutOfBoundsDatetime):
-                continue
-            ranges[str(dim)] = (min_ns, max_ns, "timestamp_ns")
-        elif hasattr(min_val, "item"):
-            min_val = min_val.item()
-            max_val = max_val.item()
-            dtype = "float64" if isinstance(min_val, float) else "int64"
-            ranges[str(dim)] = (min_val, max_val, dtype)
-        else:
-            dtype = "float64" if isinstance(min_val, float) else "int64"
-            ranges[str(dim)] = (min_val, max_val, dtype)
+        # Use actual min/max rather than first/last so non-monotonic axes are
+        # safe. Expected dtype/conversion failures disable pruning only for
+        # this dimension; they must not make table registration fail.
+        try:
+            bounds = _coordinate_partition_bound(coord_values)
+        except (OverflowError, TypeError, ValueError):
+            bounds = None
+        if bounds is not None:
+            ranges[str(dim)] = bounds
     return ranges
 
 
@@ -638,10 +699,10 @@ def partition_metadata(
         List of dicts mapping dimension name to
         (min_value, max_value, dtype_str) tuples.
 
-            - For datetime64, values are nanoseconds since Unix epoch
-              (int64), dtype_str is "timestamp_ns"
-            - For numeric types, values are Python int or float,
-              dtype_str is "int64" or "float64"
+        Values preserve the coordinate's logical type and width. Temporal
+        values are signed integer counts in their Arrow unit; strings and
+        bytes use lexical bounds. Unsupported or null-tainted dimensions
+        are omitted so the Rust layer retains their partitions.
 
     Note:
         If a partition has an empty slice for a dimension, that dimension is
