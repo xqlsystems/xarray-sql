@@ -158,6 +158,13 @@ connection therefore warns and leaves the flat `name_group` tables,
 which are always registered and always work; the dotted spelling is
 only mirrored on in-memory connections.
 
+This is about *DuckDB's own* database file (`duckdb.connect("x.db")`
+vs. `duckdb.connect()`), checked via `PRAGMA database_list` — not
+about where the xarray Dataset's data lives. A Dataset backed by local
+NetCDF, remote Zarr, or plain in-memory arrays is all the same
+`con.register`-ed Python object either way; only the *connection's*
+catalog file, if any, decides whether the view would dangle.
+
 ### `geometry=` on a mixed-dimension Dataset skips groups without those dims
 
 `arrow_datasets(ds, table_names=..., geometry=(x_dim, y_dim))` forwards

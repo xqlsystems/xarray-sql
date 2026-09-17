@@ -193,7 +193,7 @@ def resolve_table_names(
     """
     overrides = table_names or {}
     names = {
-        dims: overrides.get(dims) or default_table_name(dims)
+        dims: overrides.get(dims, default_table_name(dims))
         for dims in group_vars_by_dims(ds)
     }
     taken: dict[str, tuple[tuple[str, ...], str]] = {}
