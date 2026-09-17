@@ -1194,9 +1194,13 @@ def arrow_datasets(
             (``time_latitude_longitude``); the group holding scalar
             variables, if any, takes ``scalar``.
         **kwargs: Forwarded to
-            [arrow_dataset][xarray_sql.backends.pyarrow.arrow_dataset]
-            (``batch_size``, ``prefetch``, ``geometry``, ...), applied to
-            every returned table.
+            [XarrayPushdownDataset][xarray_sql.backends.pyarrow.XarrayPushdownDataset]
+            (``batch_size``, ``prefetch``, ...), applied to every
+            returned table. ``geometry=(x_dim, y_dim)`` only reaches the
+            groups whose dimensions include both — a mixed-dimension
+            Dataset otherwise has groups the geometry dims are not
+            columns of; those groups come back without a geometry
+            column rather than raising.
 
     Returns:
         Table name to
@@ -1213,14 +1217,23 @@ def arrow_datasets(
 
     if len(groups) <= 1:
         # One group is one table, named `name` — there is no group to
-        # tell apart. Without a `name`, it takes the group's own.
+        # tell apart. Without a `name`, it takes the group's own. Built
+        # directly (not via arrow_dataset(), whose signature is a fixed
+        # subset) so every kwarg XarrayPushdownDataset accepts works
+        # here exactly as it does in the multi-group branch below.
         only = name if name else next(iter(names.values()), "scalar")
-        return {only: arrow_dataset(ds, chunks, **kwargs)}
+        return {only: XarrayPushdownDataset(ds, chunks, **kwargs)}
 
+    geometry = kwargs.pop("geometry", None)
     coord_arrays = shared_coord_arrays(ds)
-    return {
-        table_name(dims): XarrayPushdownDataset(
-            ds[var_names], chunks, coord_arrays=coord_arrays, **kwargs
+    tables = {}
+    for dims, var_names in groups.items():
+        group_kwargs = dict(kwargs)
+        if geometry is not None:
+            group_kwargs["geometry"] = (
+                geometry if set(geometry).issubset(dims) else None
+            )
+        tables[table_name(dims)] = XarrayPushdownDataset(
+            ds[var_names], chunks, coord_arrays=coord_arrays, **group_kwargs
         )
-        for dims, var_names in groups.items()
-    }
+    return tables

@@ -159,7 +159,10 @@ def default_table_name(dims: tuple[str, ...]) -> str:
 
 
 def resolve_table_names(
-    ds: xr.Dataset, table_names: TableNames = None
+    ds: xr.Dataset,
+    table_names: TableNames = None,
+    *,
+    case_insensitive: bool = False,
 ) -> dict[tuple[str, ...], str]:
     """Name every dimension group of ``ds``, honouring user overrides.
 
@@ -173,24 +176,42 @@ def resolve_table_names(
     ``table_names={('time', 'lat', 'lon'): 'surface'}`` mean the same
     thing on DataFusion, DuckDB, and the pyarrow-dataset engines.
 
+    Args:
+        ds: The Dataset whose dimension groups are being named.
+        table_names: User overrides; see above.
+        case_insensitive: Fold names before comparing them for
+            collisions — DuckDB identifiers are case-insensitive even
+            quoted, so ``'surface'`` and ``'SURFACE'`` name the same
+            table there even though they are distinct strings. Other
+            engines compare case-sensitively.
+
     Raises:
-        ValueError: if two groups would end up with the same name, which
-            would silently register one table over the other.
+        ValueError: if two groups would end up with the same name (or,
+            with ``case_insensitive=True``, names differing only in
+            case), which would silently register one table over the
+            other.
     """
     overrides = table_names or {}
     names = {
         dims: overrides.get(dims) or default_table_name(dims)
         for dims in group_vars_by_dims(ds)
     }
-    taken: dict[str, tuple[str, ...]] = {}
+    taken: dict[str, tuple[tuple[str, ...], str]] = {}
     for dims, name in names.items():
-        if name in taken:
-            raise ValueError(
-                f"table_names maps two dimension groups to the same table "
-                f"name {name!r}: {taken[name]} and {dims}. Give each group "
-                f"a distinct name."
+        key = name.casefold() if case_insensitive else name
+        if key in taken:
+            other_dims, other_name = taken[key]
+            detail = (
+                f"the same table name {name!r}"
+                if other_name == name
+                else f"names that collide under DuckDB's case-insensitive "
+                f"identifiers: {other_name!r} and {name!r}"
             )
-        taken[name] = dims
+            raise ValueError(
+                f"table_names maps two dimension groups to {detail}: "
+                f"{other_dims} and {dims}. Give each group a distinct name."
+            )
+        taken[key] = (dims, name)
     return names
 
 

@@ -48,6 +48,24 @@ def _quote(identifier: str) -> str:
     return f'"{escaped}"'
 
 
+def _is_in_memory(con: duckdb.DuckDBPyConnection) -> bool:
+    """Whether every database attached to *con* is memory-backed.
+
+    ``con.register`` binds a Python object to the connection only for
+    its lifetime — never to the catalog on disk. A view created over
+    that binding is ordinary catalog DDL, so on a file-backed database
+    it persists after the flat table it selects from is gone, and a
+    later connection resolves it into "Table ... does not exist".
+    In-memory databases have nothing to outlive, so mirroring there is
+    safe.
+    """
+    try:
+        rows = con.execute("PRAGMA database_list").fetchall()
+    except Exception:  # noqa: BLE001 — conservative: assume persistent
+        return False
+    return all(path is None for _, _, path in rows)
+
+
 def _mirror_as_schema(
     con: duckdb.DuckDBPyConnection, name: str, tables: dict[str, str]
 ) -> None:
@@ -59,17 +77,46 @@ def _mirror_as_schema(
     *tables* maps each group's table name to the flat name it was
     registered under.
     """
+    if not _is_in_memory(con):
+        warnings.warn(
+            f"Registered the dimension groups of {name!r} as "
+            f"{', '.join(sorted(tables.values()))}, but skipped mirroring "
+            f"them as the {name!r} schema: this is a file-backed "
+            f"connection, and {name}.<group> views would persist in it "
+            f"after the flat tables they select from — registered only "
+            f"for this connection — are gone. Query the flat table names "
+            f"instead, or use an in-memory connection for the dotted "
+            f"spelling.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+        return
     try:
         con.execute(f"CREATE SCHEMA IF NOT EXISTS {_quote(name)}")
+        existing = {
+            row[0]
+            for row in con.execute(
+                "SELECT table_name FROM duckdb_tables() "
+                "WHERE schema_name = ? AND NOT internal",
+                [name],
+            ).fetchall()
+        }
+        conflicts = set(tables) & existing
+        if conflicts:
+            raise ValueError(
+                f"the {name!r} schema already has real tables named "
+                f"{sorted(conflicts)} that were not registered by "
+                f"xarray-sql; refusing to replace them with views"
+            )
         for group, flat in tables.items():
             con.execute(
                 f"CREATE OR REPLACE VIEW {_quote(name)}.{_quote(group)} "
                 f"AS SELECT * FROM {_quote(flat)}"
             )
     except Exception as exc:  # noqa: BLE001 — degrade, don't fail the register
-        # Creating a schema needs a writable catalog; a read-only
-        # connection (or a name already taken by something else) is not a
-        # reason to lose the registration.
+        # Creating a schema needs a writable catalog, and the conflict
+        # check above can itself raise; either is not a reason to lose
+        # the registration.
         warnings.warn(
             f"Registered the dimension groups of {name!r} as "
             f"{', '.join(sorted(tables.values()))}, but could not create "
@@ -123,7 +170,7 @@ class DuckDBAdapter:
         [XarrayPushdownDataset][xarray_sql.backends.pyarrow.XarrayPushdownDataset].
         """
         groups = group_vars_by_dims(ds)
-        names = resolve_table_names(ds, table_names)
+        names = resolve_table_names(ds, table_names, case_insensitive=True)
         if len(groups) <= 1:
             con.register(name, XarrayPushdownDataset(ds, chunks, **kwargs))
             return con

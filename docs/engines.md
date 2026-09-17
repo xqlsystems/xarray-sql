@@ -103,13 +103,16 @@ con.sql("SELECT AVG(temperature) FROM era5.atmosphere WHERE level = 500")
 ```
 
 Mixed-dimension Datasets split as they do everywhere else, with one
-DuckDB-specific wrinkle: `con.register` can only place an object in
-DuckDB's temporary namespace, so each group is registered flat as
-`era5_surface` and mirrored as a view `era5.surface` in a schema of its
-own. Both spellings hit the same scan — pushdown and projection travel
-through the view — and the dotted one is what keeps the SQL portable.
-A read-only connection cannot create the schema; registration then
-warns and leaves the flat tables.
+DuckDB-specific wrinkle: `con.register` binds each flat table
+(`era5_surface`) only for the connection's lifetime, never to the
+catalog on disk, so it is mirrored as a view `era5.surface` in a schema
+of its own only on **in-memory** connections. Both spellings hit the
+same scan — pushdown and projection travel through the view — and the
+dotted one is what keeps the SQL portable. On a file-backed connection
+that view would either fail to create (read-only) or persist after its
+flat table is gone (writable, once the connection is reopened), so
+registration there warns and leaves the flat tables, which always work
+either way.
 
 Details that matter in production:
 

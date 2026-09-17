@@ -86,6 +86,20 @@ def test_plain_session_context_splits_and_names(ds):
     assert result == pytest.approx(expected_avg(ds))
 
 
+def test_plain_session_context_no_longer_flattens_mixed_dims(ds):
+    # Pinning the break: the old single-table registration broadcast
+    # `t2m` (3D) against `temperature` (4D) into one nonsensical table
+    # (a real query against it returned a plausible-looking but wrong
+    # row count). `era5` is now a schema, not a table — querying it
+    # directly as one is the visible signal that the broadcast is gone,
+    # not silently wrong.
+    con = SessionContext()
+    xql.register(con, "era5", ds)
+
+    with pytest.raises(Exception):
+        con.sql("SELECT COUNT(*) FROM era5").to_pandas()
+
+
 def test_duckdb_names_tables(ds):
     con = duckdb.connect()
     xql.register(con, "era5", ds, table_names=NAMES)
@@ -104,6 +118,44 @@ def test_arrow_datasets_names_each_group(ds):
         "lon",
         "t2m",
     }
+
+
+def test_arrow_datasets_accepts_the_same_kwargs_either_shape(ds):
+    # The single-group branch used to go through arrow_dataset(), whose
+    # signature is a fixed subset of what XarrayPushdownDataset accepts;
+    # a kwarg the multi-group branch forwards fine (constructed
+    # directly) would raise only when the Dataset happened to be
+    # uniform.
+    calls: list = []
+
+    def record(block, columns) -> None:
+        calls.append((block, columns))
+
+    uniform = ds[["t2m"]]
+    xql.arrow_datasets(uniform, "x", _iteration_callback=record)["x"].to_table()
+    assert calls  # single-group branch actually took the callback
+
+    calls.clear()
+    tables = xql.arrow_datasets(
+        ds, "x", table_names=NAMES, _iteration_callback=record
+    )
+    tables["x_surface"].to_table()
+    assert calls  # multi-group branch already did; pinning it stays so
+
+
+def test_arrow_datasets_geometry_skips_groups_without_the_dims(ds):
+    # geometry=(x, y) is forwarded to every returned table; a
+    # mixed-dimension Dataset has groups (here, the scalar `meta`
+    # group) that don't have those dims at all.
+    from xarray_sql.geometry import GEOMETRY_COLUMN
+
+    tables = xql.arrow_datasets(
+        ds, "era5", table_names=NAMES, geometry=("lat", "lon")
+    )
+
+    assert GEOMETRY_COLUMN in tables["era5_surface"].schema.names
+    assert GEOMETRY_COLUMN in tables["era5_atmosphere"].schema.names
+    assert GEOMETRY_COLUMN not in tables["era5_meta"].schema.names
 
 
 def test_polars_queries_named_tables(ds):
@@ -254,9 +306,63 @@ def test_read_only_duckdb_warns_but_still_registers(ds, tmp_path):
     duckdb.connect(str(path)).close()
     con = duckdb.connect(str(path), read_only=True)
 
-    with pytest.warns(RuntimeWarning, match="could not create the 'era5'"):
+    with pytest.warns(RuntimeWarning, match="file-backed connection"):
         xql.register(con, "era5", ds, table_names=NAMES)
 
+    assert con.sql("SELECT COUNT(*) FROM era5_surface").fetchone()[0] == (
+        6 * 3 * 4
+    )
+
+
+def test_file_backed_duckdb_warns_and_skips_the_dangling_mirror(ds, tmp_path):
+    # A writable file-backed connection *can* create the `era5.<group>`
+    # views (unlike the read-only case above) — but the views are
+    # catalog DDL that persists, while `con.register` only binds the
+    # flat tables they select from for this connection's lifetime.
+    # Left unchecked, that would leave a view dangling (and erroring
+    # with "Table ... does not exist") the moment the database is
+    # reopened; the adapter now skips creating it up front instead.
+    path = tmp_path / "rw.db"
+    con = duckdb.connect(str(path))
+
+    with pytest.warns(RuntimeWarning, match="file-backed connection"):
+        xql.register(con, "era5", ds, table_names=NAMES)
+
+    assert con.sql("SELECT COUNT(*) FROM era5_surface").fetchone()[0] == (
+        6 * 3 * 4
+    )
+    views = con.sql("SELECT view_name FROM duckdb_views()").fetchall()
+    assert not {row[0] for row in views} & {"surface", "atmosphere", "meta"}
+
+    # Nothing was left in the on-disk catalog for a later connection to
+    # trip over — reopening the (still empty) database succeeds cleanly.
+    con.close()
+    duckdb.connect(str(path)).close()
+
+
+def test_duckdb_rejects_case_insensitive_name_collision(ds):
+    # DuckDB folds identifier case even when quoted, so 'surface' and
+    # 'SURFACE' would silently collide there even though
+    # resolve_table_names sees two distinct strings.
+    collides = {**NAMES, ("time", "level", "lat", "lon"): "SURFACE"}
+    con = duckdb.connect()
+
+    with pytest.raises(ValueError, match="case-insensitive"):
+        xql.register(con, "era5", ds, table_names=collides)
+
+
+def test_duckdb_refuses_to_mirror_over_a_real_table(ds):
+    # `CREATE OR REPLACE VIEW` would otherwise silently take over a
+    # table the caller created for their own purposes.
+    con = duckdb.connect()
+    con.execute("CREATE SCHEMA era5")
+    con.execute("CREATE TABLE era5.surface AS SELECT 1 AS mine")
+
+    with pytest.warns(RuntimeWarning, match="real tables"):
+        xql.register(con, "era5", ds, table_names=NAMES)
+
+    # The caller's table survives untouched; the flat tables still work.
+    assert con.sql("SELECT * FROM era5.surface").fetchall() == [(1,)]
     assert con.sql("SELECT COUNT(*) FROM era5_surface").fetchone()[0] == (
         6 * 3 * 4
     )
