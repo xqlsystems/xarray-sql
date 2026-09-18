@@ -1032,6 +1032,26 @@ deletes them from its own plan), so the scanner always applies the
 exact expression via pyarrow — pruning is only an optimization on top.
 <code>XarrayArrowStream</code>, the dependency-light re-scannable C-stream wrapper
 without pushdown, remains available as a fallback.</p>
+<p>As is standard in for all Xarray-SQL engines, users may provide a mapping of
+groups of dimensions to their preferred table names, like so:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">xql</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">con</span><span class="p">,</span> <span class="s2">"era5"</span><span class="p">,</span> <span class="n">ds</span><span class="p">,</span> <span class="n">table_names</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  <span class="p">(</span><span class="s2">"time"</span><span class="p">,</span> <span class="s2">"latitude"</span><span class="p">,</span> <span class="s2">"longitude"</span><span class="p">):</span> <span class="s2">"surface"</span><span class="p">,</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  <span class="p">(</span><span class="s2">"time"</span><span class="p">,</span> <span class="s2">"level"</span><span class="p">,</span> <span class="s2">"latitude"</span><span class="p">,</span> <span class="s2">"longitude"</span><span class="p">):</span> <span class="s2">"atmosphere"</span><span class="p">,</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="p">})</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">con</span><span class="o">.</span><span class="n">sql</span><span class="p">(</span><span class="s2">"SELECT AVG(temperature) FROM era5.atmosphere WHERE level = 500"</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Mixed-dimension Datasets split as they do everywhere else, with one
+DuckDB-specific wrinkle: <code>con.register</code> binds each flat table
+(<code>era5_surface</code>) only for the connection's lifetime, never to the
+catalog on disk, so it is mirrored as a view <code>era5.surface</code> in a schema
+of its own only on <strong>in-memory</strong> connections. Both spellings hit the
+same scan — pushdown and projection travel through the view — and the
+dotted one is what keeps the SQL portable. On a file-backed connection
+that view would either fail to create (read-only) or persist after its
+flat table is gone (writable, once the connection is reopened), so
+registration there warns and leaves the flat tables, which always work
+either way.</p>
 <p>Details that matter in production:</p>
 <ul>
 <li><strong>Finely partitioned axes</strong> (e.g. hourly-chunked reanalysis time with
@@ -1061,23 +1081,33 @@ adapter. The adapter's role is complementary: anything xarray can open
 in-memory arrays), and the round-trip from a DuckDB result back to a
 labeled Dataset, which no engine extension provides.</p>
 <h2 id="polars-via-the-pyarrow-dataset-protocol">Polars (via the pyarrow dataset protocol)<a class="headerlink" href="#polars-via-the-pyarrow-dataset-protocol" title="Permanent link">&para;</a></h2>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'xarray-sql[polars]'</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'xarray-sql[polars]'</span>
 </span></code></pre></div>
 <p><code>xql.arrow_dataset(ds)</code> returns a real <code>pyarrow.dataset.Dataset</code>, so
 any engine that consumes that protocol gets the same lazy scan with
 projection pushdown and coordinate-range chunk pruning — no adapter
 code at all. Polars works today:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">polars</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pl</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">xarray_sql</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xql</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">lf</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">scan_pyarrow_dataset</span><span class="p">(</span><span class="n">xql</span><span class="o">.</span><span class="n">arrow_dataset</span><span class="p">(</span><span class="n">ds</span><span class="p">))</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">out</span> <span class="o">=</span> <span class="p">(</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">"lat"</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">"time"</span><span class="p">)</span>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">"t2m"</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="o">.</span><span class="n">collect</span><span class="p">()</span>
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="p">)</span>
-</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="n">xql</span><span class="o">.</span><span class="n">to_dataset</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">template</span><span class="o">=</span><span class="n">ds</span><span class="p">)</span>   <span class="c1"># polars frames speak Arrow PyCapsule</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">polars</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pl</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">xarray_sql</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xql</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">lf</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">scan_pyarrow_dataset</span><span class="p">(</span><span class="n">xql</span><span class="o">.</span><span class="n">arrow_dataset</span><span class="p">(</span><span class="n">ds</span><span class="p">))</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">out</span> <span class="o">=</span> <span class="p">(</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">"lat"</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">"time"</span><span class="p">)</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">"t2m"</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="p">)</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="n">xql</span><span class="o">.</span><span class="n">to_dataset</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">template</span><span class="o">=</span><span class="n">ds</span><span class="p">)</span>   <span class="c1"># polars frames speak Arrow PyCapsule</span>
+</span></code></pre></div>
+<p><code>arrow_dataset</code> wants a Dataset whose variables share one set of
+dimensions; <code>xql.arrow_datasets(ds, "era5", table_names=...)</code> splits a
+mixed-dimension one and hands back the tables named, reading the shared
+dimension coordinates once for all of them.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">tables</span> <span class="o">=</span> <span class="n">xql</span><span class="o">.</span><span class="n">arrow_datasets</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="s2">"era5"</span><span class="p">,</span> <span class="n">table_names</span><span class="o">=</span><span class="p">{</span><span class="o">...</span><span class="p">})</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">ctx</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">SQLContext</span><span class="p">()</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">for</span> <span class="n">table</span><span class="p">,</span> <span class="n">dataset</span> <span class="ow">in</span> <span class="n">tables</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>     <span class="c1"># 'era5_surface', ...</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>  <span class="n">ctx</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">scan_pyarrow_dataset</span><span class="p">(</span><span class="n">dataset</span><span class="p">))</span>
 </span></code></pre></div>
 <p>Polars pushes its predicate and column selection into the dataset scan
 (verified: a filtered group-by read 1 of 20 chunks and 3 of 5 columns),
@@ -1136,8 +1166,14 @@ streaming engine.</p>
 <tr>
 <td>Mixed-dimension datasets</td>
 <td>one schema, <code>name.group</code> tables</td>
-<td><code>&lt;name&gt;_&lt;dims&gt;</code> tables</td>
-<td>filter <code>data_vars</code> before <code>arrow_dataset</code></td>
+<td><code>name.group</code> views over <code>name_group</code> tables</td>
+<td><code>xql.arrow_datasets(ds, name)</code>, one per group</td>
+</tr>
+<tr>
+<td>Naming those tables (<code>table_names=</code>)</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
 </tr>
 <tr>
 <td>Version floor</td>
@@ -1196,23 +1232,23 @@ Arrow C streams are the common wire; pushdown quality is where adapters
 differ. The round-trip needs no per-engine work as long as the engine
 can hand back Arrow.</p>
 <p>A complete adapter, modeled on the DuckDB one:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">register_adapter</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.pyarrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">XarrayPushdownDataset</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="nd">@register_adapter</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">AcmeAdapter</span><span class="p">:</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="sd">"""Registers Datasets on acme.Connection objects."""</span>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="nd">@staticmethod</span>
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">matches</span><span class="p">(</span><span class="n">con</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>        <span class="c1"># type inspection only, so `acme` stays an optional dependency</span>
-</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>        <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="n">con</span><span class="p">)</span><span class="o">.</span><span class="vm">__module__</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"."</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"acme"</span>
-</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>
-</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>    <span class="nd">@staticmethod</span>
-</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="n">con</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ds</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>        <span class="n">dataset</span> <span class="o">=</span> <span class="n">XarrayPushdownDataset</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>        <span class="n">con</span><span class="o">.</span><span class="n">register_arrow</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">dataset</span><span class="p">)</span>  <span class="c1"># the engine's own API</span>
-</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>        <span class="k">return</span> <span class="n">con</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">register_adapter</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.pyarrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">XarrayPushdownDataset</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="nd">@register_adapter</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">AcmeAdapter</span><span class="p">:</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span><span class="sd">"""Registers Datasets on acme.Connection objects."""</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="nd">@staticmethod</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">matches</span><span class="p">(</span><span class="n">con</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>        <span class="c1"># type inspection only, so `acme` stays an optional dependency</span>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>        <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="n">con</span><span class="p">)</span><span class="o">.</span><span class="vm">__module__</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"."</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"acme"</span>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>    <span class="nd">@staticmethod</span>
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="n">con</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ds</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>        <span class="n">dataset</span> <span class="o">=</span> <span class="n">XarrayPushdownDataset</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>        <span class="n">con</span><span class="o">.</span><span class="n">register_arrow</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">dataset</span><span class="p">)</span>  <span class="c1"># the engine's own API</span>
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>        <span class="k">return</span> <span class="n">con</span>
 </span></code></pre></div>
 <p><code>xql.register(con, "t", ds)</code> then dispatches here whenever <code>matches</code>
 recognizes the connection. Engines that consume the pyarrow dataset

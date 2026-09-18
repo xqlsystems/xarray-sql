@@ -924,7 +924,11 @@ the <code>table_names</code> kwarg to give each dimension group a friendly name:
 </span></code></pre></div>
 <p>If you omit <code>table_names</code>, each table is named by joining its dimension names
 with underscores, e.g. <code>era5.time_latitude_longitude</code> and
-<code>era5.time_level_latitude_longitude</code>.</p>
+<code>era5.time_level_latitude_longitude</code>. Keys naming a dimension group the Dataset
+does not have are ignored, so one naming map can be reused across Datasets
+holding different subsets of the same variables. The keyword is not
+DataFusion-only — <code>xql.register</code> takes it on every engine (see
+<a href="#the-same-tables-on-duckdb-and-polars">the same tables on DuckDB and Polars</a>).</p>
 <h2 id="goes-satellite-imagery-scalar-variables">GOES satellite imagery (scalar variables)<a class="headerlink" href="#goes-satellite-imagery-scalar-variables" title="Permanent link">&para;</a></h2>
 <p>Real-world stores often mix gridded data with scalar (0-dimensional) metadata.
 GOES satellite imagery, for example, pairs <code>(y, x)</code> image bands with dozens of
@@ -960,8 +964,40 @@ not DataFusion-specific: <code>xql.register(con, name, ds)</code> attaches the s
 pushdown-scanned table to a DuckDB connection, and
 <code>pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))</code> serves Polars — same
 splitting rules for mixed-dimension Datasets, same round-trip through
-<code>xql.to_dataset(result, template=ds)</code>. See <a href="../engines/">Engines</a> for the
-support matrix and per-engine details.</p>
+<code>xql.to_dataset(result, template=ds)</code>.</p>
+<p><code>table_names</code> travels with them, so the ERA5 example above changes engine
+without changing a word of its SQL:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">duckdb</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">con</span> <span class="o">=</span> <span class="n">duckdb</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">xql</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">con</span><span class="p">,</span> <span class="s1">'era5'</span><span class="p">,</span> <span class="n">ds</span><span class="p">,</span> <span class="n">table_names</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="p">(</span><span class="s1">'time'</span><span class="p">,</span> <span class="s1">'latitude'</span><span class="p">,</span> <span class="s1">'longitude'</span><span class="p">):</span> <span class="s1">'surface'</span><span class="p">,</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="p">(</span><span class="s1">'time'</span><span class="p">,</span> <span class="s1">'level'</span><span class="p">,</span> <span class="s1">'latitude'</span><span class="p">,</span> <span class="s1">'longitude'</span><span class="p">):</span> <span class="s1">'atmosphere'</span><span class="p">,</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="p">})</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="n">rel</span> <span class="o">=</span> <span class="n">con</span><span class="o">.</span><span class="n">sql</span><span class="p">(</span><span class="s1">'''</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="s1">  SELECT level, AVG(temperature) - 273.15 AS avg_c</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="s1">  FROM era5.atmosphere</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="s1">  WHERE time BETWEEN TIMESTAMP '2020-01-01'</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="s1">                 AND TIMESTAMP '2020-01-01 05:00:00'</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="s1">  GROUP BY level</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="s1">  ORDER BY level DESC</span>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="s1">'''</span><span class="p">)</span>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="n">xql</span><span class="o">.</span><span class="n">to_dataset</span><span class="p">(</span><span class="n">rel</span><span class="p">,</span> <span class="n">template</span><span class="o">=</span><span class="n">ds</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s1">'level'</span><span class="p">])</span>
+</span></code></pre></div>
+<p>Polars registers table by table, so it takes the split datasets by name:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">polars</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pl</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">tables</span> <span class="o">=</span> <span class="n">xql</span><span class="o">.</span><span class="n">arrow_datasets</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="s1">'era5'</span><span class="p">,</span> <span class="n">table_names</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="p">(</span><span class="s1">'time'</span><span class="p">,</span> <span class="s1">'latitude'</span><span class="p">,</span> <span class="s1">'longitude'</span><span class="p">):</span> <span class="s1">'surface'</span><span class="p">,</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="p">(</span><span class="s1">'time'</span><span class="p">,</span> <span class="s1">'level'</span><span class="p">,</span> <span class="s1">'latitude'</span><span class="p">,</span> <span class="s1">'longitude'</span><span class="p">):</span> <span class="s1">'atmosphere'</span><span class="p">,</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="p">})</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">ctx</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">SQLContext</span><span class="p">()</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="k">for</span> <span class="n">table</span><span class="p">,</span> <span class="n">dataset</span> <span class="ow">in</span> <span class="n">tables</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>   <span class="c1"># 'era5_surface', 'era5_atmosphere'</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="n">ctx</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">scan_pyarrow_dataset</span><span class="p">(</span><span class="n">dataset</span><span class="p">))</span>
+</span></code></pre></div>
+<p>See <a href="../engines/">Engines</a> for the support matrix and per-engine details.</p>
 
 
 

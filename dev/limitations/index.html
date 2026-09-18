@@ -745,10 +745,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mixed-dimension-datasets-split-into-one-duckdb-table-per-dim-group" class="md-nav__link">
+  <a href="#a-file-backed-duckdb-connection-loses-the-dotted-table-names" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Mixed-dimension datasets split into one DuckDB table per dim group
+        A file-backed DuckDB connection loses the dotted table names
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#geometry-on-a-mixed-dimension-dataset-skips-groups-without-those-dims" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>geometry=</code> on a mixed-dimension Dataset skips groups without those dims
       </span>
     </span>
   </a>
@@ -955,10 +966,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mixed-dimension-datasets-split-into-one-duckdb-table-per-dim-group" class="md-nav__link">
+  <a href="#a-file-backed-duckdb-connection-loses-the-dotted-table-names" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Mixed-dimension datasets split into one DuckDB table per dim group
+        A file-backed DuckDB connection loses the dotted table names
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#geometry-on-a-mixed-dimension-dataset-skips-groups-without-those-dims" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>geometry=</code> on a mixed-dimension Dataset skips groups without those dims
       </span>
     </span>
   </a>
@@ -1139,11 +1161,31 @@ by default.</p>
 <p>A materialized table or bare C-stream has no query behind it, so the
 re-execution form of <code>chunks=</code> cannot serve it — <code>spill=True</code> (one
 pass to a temporary Parquet file) is the chunked path for these.</p>
-<h3 id="mixed-dimension-datasets-split-into-one-duckdb-table-per-dim-group">Mixed-dimension datasets split into one DuckDB table per dim group<a class="headerlink" href="#mixed-dimension-datasets-split-into-one-duckdb-table-per-dim-group" title="Permanent link">&para;</a></h3>
-<p>DuckDB registration has no schema namespace, so variables with
-different dims land in suffixed tables (<code>&lt;name&gt;_&lt;dims&gt;</code>), sharing one
-set of coordinate reads. DataFusion registers the same layout as
-<code>name.group</code> tables inside one schema.</p>
+<h3 id="a-file-backed-duckdb-connection-loses-the-dotted-table-names">A file-backed DuckDB connection loses the dotted table names<a class="headerlink" href="#a-file-backed-duckdb-connection-loses-the-dotted-table-names" title="Permanent link">&para;</a></h3>
+<p>Mixed-dimension Datasets split into one table per dimension group on
+every engine, addressed as <code>name.group</code>. On DuckDB that dotted spelling
+is a view in a schema, because <code>con.register</code> binds the flat tables it
+selects from only for the connection's lifetime, never to the catalog
+on disk. Creating the view still needs a writable catalog (a read-only
+connection can't), and even on a writable one the view would persist
+after those flat tables are gone — a later connection would resolve it
+into "Table ... does not exist". Registering on any file-backed
+connection therefore warns and leaves the flat <code>name_group</code> tables,
+which are always registered and always work; the dotted spelling is
+only mirrored on in-memory connections.</p>
+<p>This is about <em>DuckDB's own</em> database file (<code>duckdb.connect("x.db")</code>
+vs. <code>duckdb.connect()</code>), checked via <code>PRAGMA database_list</code> — not
+about where the xarray Dataset's data lives. A Dataset backed by local
+NetCDF, remote Zarr, or plain in-memory arrays is all the same
+<code>con.register</code>-ed Python object either way; only the <em>connection's</em>
+catalog file, if any, decides whether the view would dangle.</p>
+<h3 id="geometry-on-a-mixed-dimension-dataset-skips-groups-without-those-dims"><code>geometry=</code> on a mixed-dimension Dataset skips groups without those dims<a class="headerlink" href="#geometry-on-a-mixed-dimension-dataset-skips-groups-without-those-dims" title="Permanent link">&para;</a></h3>
+<p><code>arrow_datasets(ds, table_names=..., geometry=(x_dim, y_dim))</code> forwards
+<code>geometry</code> to every returned table, but a mixed-dimension Dataset can
+have groups the geometry dims aren't columns of (a scalar metadata
+group, or a group on an entirely different grid). Those groups come
+back without a <code>geometry</code> column rather than raising; only the groups
+that have both dims get one.</p>
 <h3 id="pointwise-indexers-on-lazy-round-trip-arrays-are-slower">Pointwise indexers on lazy round-trip arrays are slower<a class="headerlink" href="#pointwise-indexers-on-lazy-round-trip-arrays-are-slower" title="Permanent link">&para;</a></h3>
 <p>Vectorized (pointwise) selection goes through xarray's
 outer-then-gather fallback — correct, but slower than slice windows.</p>
