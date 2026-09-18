@@ -13,6 +13,8 @@ from . import cftime as cft
 
 Block = dict[Hashable, slice]
 Chunks = dict[str, int] | None
+TableNames = Mapping[tuple[str, ...], str] | None
+"""Maps a dimension group's exact dim tuple to the table name it takes."""
 
 
 # Borrowed from Xarray
@@ -147,6 +149,80 @@ def group_vars_by_dims(ds: xr.Dataset) -> dict[tuple[str, ...], list[str]]:
         dims = var.dims
         groups[dims].append(var_name)
     return groups
+
+
+def default_table_name(dims: tuple[str, ...]) -> str:
+    """The table name a dimension group gets when the user names none."""
+    # Scalar variables group under empty dims, where "_".join(()) is the
+    # empty string; fall back to a valid default table name.
+    return "_".join(dims) or "scalar"
+
+
+def resolve_table_names(
+    ds: xr.Dataset,
+    table_names: TableNames = None,
+    *,
+    case_insensitive: bool = False,
+) -> dict[tuple[str, ...], str]:
+    """Name every dimension group of ``ds``, honouring user overrides.
+
+    ``table_names`` maps a group's exact dimension tuple to the name its
+    table should carry; groups it does not mention keep
+    [default_table_name][xarray_sql.df.default_table_name]. Keys that
+    match no group in ``ds`` are ignored, so one naming map can be reused
+    across Datasets that hold different subsets of the same variables.
+
+    Every engine adapter routes through here, which is what makes
+    ``table_names={('time', 'lat', 'lon'): 'surface'}`` mean the same
+    thing on DataFusion, DuckDB, and the pyarrow-dataset engines.
+
+    Args:
+        ds: The Dataset whose dimension groups are being named.
+        table_names: User overrides; see above.
+        case_insensitive: Fold names before comparing them for
+            collisions — DuckDB identifiers are case-insensitive even
+            quoted, so ``'surface'`` and ``'SURFACE'`` name the same
+            table there even though they are distinct strings. Other
+            engines compare case-sensitively.
+
+    Raises:
+        ValueError: if two groups would end up with the same name (or,
+            with ``case_insensitive=True``, names differing only in
+            case), which would silently register one table over the
+            other.
+    """
+    overrides = table_names or {}
+    names = {
+        dims: overrides.get(dims, default_table_name(dims))
+        for dims in group_vars_by_dims(ds)
+    }
+    taken: dict[str, tuple[tuple[str, ...], str]] = {}
+    for dims, name in names.items():
+        key = name.casefold() if case_insensitive else name
+        if key in taken:
+            other_dims, other_name = taken[key]
+            detail = (
+                f"the same table name {name!r}"
+                if other_name == name
+                else f"names that collide under DuckDB's case-insensitive "
+                f"identifiers: {other_name!r} and {name!r}"
+            )
+            raise ValueError(
+                f"table_names maps two dimension groups to {detail}: "
+                f"{other_dims} and {dims}. Give each group a distinct name."
+            )
+        taken[key] = (dims, name)
+    return names
+
+
+def shared_coord_arrays(ds: xr.Dataset) -> dict[str, np.ndarray]:
+    """Materialise ``ds``'s dimension coordinates once, to share.
+
+    Splitting a Dataset into per-dimension-group tables otherwise reads
+    every shared dim coordinate once per table — a network round-trip
+    apiece for Zarr-backed parents like ARCO-ERA5.
+    """
+    return {str(dim): ds.coords[dim].values for dim in ds.dims}
 
 
 def _block_len(block: Block) -> int:

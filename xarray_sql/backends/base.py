@@ -18,7 +18,7 @@ from typing import Any, Protocol, TypeGuard, TypeVar, cast
 
 import xarray as xr
 
-from ..df import Chunks
+from ..df import Chunks, TableNames
 
 ConT = TypeVar("ConT")
 """An engine's native connection type (e.g. ``duckdb.DuckDBPyConnection``)."""
@@ -39,6 +39,7 @@ class EngineAdapter(Protocol[ConT]):
         ds: xr.Dataset,
         *,
         chunks: Chunks = None,
+        table_names: TableNames = None,
         **kwargs: Any,
     ) -> ConT:
         """Register *ds* as table *name* on *con*; returns *con*."""
@@ -74,6 +75,7 @@ def register(
     ds: xr.Dataset,
     *,
     chunks: Chunks = None,
+    table_names: TableNames = None,
     **kwargs: Any,
 ) -> ConT:
     """Register a lazy xarray Dataset as a table on an engine connection.
@@ -94,20 +96,37 @@ def register(
         rel = con.sql("SELECT time, AVG(t2m) AS t2m FROM era5 GROUP BY time")
         result = xql.to_dataset(rel, template=ds)
 
+    A Dataset whose variables sit on different dimensions is split into
+    one table per dimension group. Name those tables with
+    ``table_names``, and the same SQL runs on every engine::
+
+        xql.register(con, "era5", ds, table_names={
+            ("time", "latitude", "longitude"): "surface",
+            ("time", "level", "latitude", "longitude"): "atmosphere",
+        })
+        con.sql("SELECT AVG(temperature) FROM era5.atmosphere")
+
     Args:
         con: An engine connection: a ``datafusion.SessionContext`` (or
             [xarray_sql.XarrayContext][]) or a
             ``duckdb.DuckDBPyConnection``.
         name: The table name to register the Dataset under. Datasets
             whose variables have differing dimensions are split into one
-            table per dimension group (a SQL schema ``name.group`` on
-            DataFusion; ``name_group`` tables on DuckDB).
+            table per dimension group, addressed as ``name.group`` on
+            every engine (DuckDB also keeps the flat ``name_group``
+            spelling, since its registration namespace is flat).
         ds: An xarray Dataset.
         chunks: Xarray-like chunks specification controlling partition
             granularity. Defaults to the Dataset's existing chunks.
+        table_names: Maps a dimension group's exact dim tuple to the name
+            its table takes. Groups left unnamed take their dimensions
+            joined by underscores (``time_latitude_longitude``); the
+            group holding scalar variables, if any, takes ``scalar``.
+            Keys matching no group in ``ds`` are ignored, so one naming
+            map can be reused across Datasets holding different subsets
+            of the same variables.
         **kwargs: Adapter-specific options, forwarded as-is — e.g.
-            ``table_names`` on DataFusion, ``batch_size`` / ``prefetch``
-            on DuckDB.
+            ``batch_size`` / ``prefetch`` on DuckDB.
 
     Returns:
         The connection, to allow chaining.
@@ -115,4 +134,9 @@ def register(
     # The connection type is erased by the runtime dispatch; every adapter
     # returns the connection it was given.
     adapter: Any = get_adapter(con)
-    return cast(ConT, adapter.register(con, name, ds, chunks=chunks, **kwargs))
+    return cast(
+        ConT,
+        adapter.register(
+            con, name, ds, chunks=chunks, table_names=table_names, **kwargs
+        ),
+    )

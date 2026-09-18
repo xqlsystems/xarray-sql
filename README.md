@@ -77,6 +77,9 @@ rel = con.sql('SELECT time, AVG("air") AS air FROM air GROUP BY time ORDER BY ti
 xql.to_dataset(rel, template=ds)   # any engine's Arrow result round-trips
 ```
 
+`table_names` (below) works the same way on every engine, so a query written
+against `era5.surface` is not tied to the engine it was written for.
+
 See [Engines](https://xqlsystems.github.io/xarray-sql/latest/engines/) for the support matrix, DuckDB/Polars details,
 and the lazy chunked round-trip.
 

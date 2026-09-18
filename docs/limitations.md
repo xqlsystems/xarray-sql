@@ -144,12 +144,35 @@ A materialized table or bare C-stream has no query behind it, so the
 re-execution form of `chunks=` cannot serve it — `spill=True` (one
 pass to a temporary Parquet file) is the chunked path for these.
 
-### Mixed-dimension datasets split into one DuckDB table per dim group
+### A file-backed DuckDB connection loses the dotted table names
 
-DuckDB registration has no schema namespace, so variables with
-different dims land in suffixed tables (`<name>_<dims>`), sharing one
-set of coordinate reads. DataFusion registers the same layout as
-`name.group` tables inside one schema.
+Mixed-dimension Datasets split into one table per dimension group on
+every engine, addressed as `name.group`. On DuckDB that dotted spelling
+is a view in a schema, because `con.register` binds the flat tables it
+selects from only for the connection's lifetime, never to the catalog
+on disk. Creating the view still needs a writable catalog (a read-only
+connection can't), and even on a writable one the view would persist
+after those flat tables are gone — a later connection would resolve it
+into "Table ... does not exist". Registering on any file-backed
+connection therefore warns and leaves the flat `name_group` tables,
+which are always registered and always work; the dotted spelling is
+only mirrored on in-memory connections.
+
+This is about *DuckDB's own* database file (`duckdb.connect("x.db")`
+vs. `duckdb.connect()`), checked via `PRAGMA database_list` — not
+about where the xarray Dataset's data lives. A Dataset backed by local
+NetCDF, remote Zarr, or plain in-memory arrays is all the same
+`con.register`-ed Python object either way; only the *connection's*
+catalog file, if any, decides whether the view would dangle.
+
+### `geometry=` on a mixed-dimension Dataset skips groups without those dims
+
+`arrow_datasets(ds, table_names=..., geometry=(x_dim, y_dim))` forwards
+`geometry` to every returned table, but a mixed-dimension Dataset can
+have groups the geometry dims aren't columns of (a scalar metadata
+group, or a group on an entirely different grid). Those groups come
+back without a `geometry` column rather than raising; only the groups
+that have both dims get one.
 
 ### Pointwise indexers on lazy round-trip arrays are slower
 
