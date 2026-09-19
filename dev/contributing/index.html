@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.62">
+      <meta name="generator" content="zensical-0.0.63">
     
     
       
@@ -34,7 +34,7 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.ce62732f.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.10763589.min.css">
       
         
           
@@ -329,18 +329,19 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3">
-            <span class="md-nav__icon md-icon"></span>
-            
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+            <label class="md-nav__title" for="__nav_3">
+              <span class="md-nav__icon md-icon"></span>
+              
   
   Concepts
 
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
               
                 
+                  
   
   
   
@@ -364,10 +365,11 @@
     </li>
   
 
+                
               
-            
-          </ul>
-        </nav>
+            </ul>
+          </nav>
+        
       
     </li>
   
@@ -419,18 +421,19 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4">
-            <span class="md-nav__icon md-icon"></span>
-            
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+            <label class="md-nav__title" for="__nav_4">
+              <span class="md-nav__icon md-icon"></span>
+              
   
   Guides
 
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
               
                 
+                  
   
   
   
@@ -454,10 +457,10 @@
     </li>
   
 
-              
-            
+                
               
                 
+                  
   
   
   
@@ -481,10 +484,11 @@
     </li>
   
 
+                
               
-            
-          </ul>
-        </nav>
+            </ul>
+          </nav>
+        
       
     </li>
   
@@ -540,18 +544,19 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_5">
-            <span class="md-nav__icon md-icon"></span>
-            
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+            <label class="md-nav__title" for="__nav_5">
+              <span class="md-nav__icon md-icon"></span>
+              
   
   Reference
 
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
               
                 
+                  
   
   
   
@@ -575,10 +580,10 @@
     </li>
   
 
-              
-            
+                
               
                 
+                  
   
   
   
@@ -602,10 +607,10 @@
     </li>
   
 
-              
-            
+                
               
                 
+                  
   
   
     
@@ -759,10 +764,11 @@
     </li>
   
 
+                
               
-            
-          </ul>
-        </nav>
+            </ul>
+          </nav>
+        
       
     </li>
   
@@ -934,6 +940,25 @@ reading <a href="https://docs.xarray.dev/en/stable/contributing.html">Xarray's c
 <p>We use <a href="https://docs.astral.sh/uv/">uv</a> to manage the project. This project
 also contains a Rust extension (built with <a href="https://www.maturin.rs/">maturin</a>),
 so a Rust toolchain is required.</p>
+<details>
+<summary>NixOS user?</summary>
+
+This repo ships a `flake.nix` that provides uv, a matching Python
+interpreter, and a Rust toolchain, plus the shared libraries that compiled
+Python wheels (pyarrow, duckdb, polars, ...) expect to find at runtime —
+none of which NixOS provides by default. It's scoped to this project only;
+it doesn't touch anything outside this directory.
+
+- With [direnv](https://direnv.net/) installed, run `direnv allow` once in
+  the project root and the shell loads automatically whenever you `cd` in
+  (and unloads when you leave).
+- Without direnv, run `nix develop` manually to enter the shell.
+
+Either way, once you're in the shell, skip steps 0-1 below (Rust and uv are
+already on `PATH`) and start at step 2.
+
+</details>
+
 <ol>
 <li>Install Rust: https://rustup.rs/</li>
 <li>Install uv: https://docs.astral.sh/uv/getting-started/installation/</li>
