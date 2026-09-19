@@ -14,3 +14,4 @@ test_data
 CHANGELOG.md
 *.ipynb
 /site
+.direnv
