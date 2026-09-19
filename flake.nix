@@ -31,13 +31,12 @@
             pkg-config
           ];
 
-          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath runtimeLibs;
-
           # Use the Nix-provided interpreter above instead of having uv
           # download its own Python build.
           UV_PYTHON_PREFERENCE = "only-system";
 
           shellHook = ''
+            export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibs}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
             echo "xarray-sql dev shell: $(python3 --version), $(rustc --version)"
           '';
         };
