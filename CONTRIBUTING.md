@@ -16,13 +16,14 @@ We use [uv](https://docs.astral.sh/uv/) to manage the project. This project
 also contains a Rust extension (built with [maturin](https://www.maturin.rs/)),
 so a Rust toolchain is required.
 
-### NixOS / Nix
+<details>
+<summary>NixOS user?</summary>
 
-If you use Nix, this repo ships a `flake.nix` that provides uv, a matching
-Python interpreter, and a Rust toolchain, plus the shared libraries that
-compiled Python wheels (pyarrow, duckdb, polars, ...) expect to find at
-runtime — none of which NixOS provides by default. It's scoped to this
-project only; it doesn't touch anything outside this directory.
+This repo ships a `flake.nix` that provides uv, a matching Python
+interpreter, and a Rust toolchain, plus the shared libraries that compiled
+Python wheels (pyarrow, duckdb, polars, ...) expect to find at runtime —
+none of which NixOS provides by default. It's scoped to this project only;
+it doesn't touch anything outside this directory.
 
 - With [direnv](https://direnv.net/) installed, run `direnv allow` once in
   the project root and the shell loads automatically whenever you `cd` in
@@ -31,6 +32,8 @@ project only; it doesn't touch anything outside this directory.
 
 Either way, once you're in the shell, skip steps 0-1 below (Rust and uv are
 already on `PATH`) and start at step 2.
+
+</details>
 
 0. Install Rust: https://rustup.rs/
 1. Install uv: https://docs.astral.sh/uv/getting-started/installation/

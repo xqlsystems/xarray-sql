@@ -25,7 +25,7 @@
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             uv
-            python311
+            python312
             rustc
             cargo
             pkg-config
