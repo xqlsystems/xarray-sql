@@ -236,3 +236,64 @@ def test_clickhouse_reads_through_arrow_flight(server, ds):
         avg = float(response.read().decode())
 
     assert avg == pytest.approx(float(ds.temperature.mean()))
+
+
+@pytest.fixture(scope="module")
+def spark():
+    jar = os.environ.get("XARRAY_SQL_TEST_FLIGHT_SQL_JDBC_JAR")
+    if not jar:
+        pytest.skip(
+            "set XARRAY_SQL_TEST_FLIGHT_SQL_JDBC_JAR to the Arrow Flight SQL "
+            "JDBC driver jar to run against Spark"
+        )
+    pyspark_sql = pytest.importorskip("pyspark.sql")
+    # The JVM's zone applies to timestamps read over JDBC, so it must be
+    # UTC for xarray's (UTC) times to arrive unshifted.
+    session = (
+        pyspark_sql.SparkSession.builder.master("local[1]")
+        .config("spark.jars", jar)
+        .config("spark.sql.session.timeZone", "UTC")
+        .config("spark.driver.extraJavaOptions", "-Duser.timezone=UTC")
+        .config("spark.ui.enabled", "false")
+        .getOrCreate()
+    )
+    yield session
+    session.stop()
+
+
+def _spark_read(spark, server, dbtable):
+    return (
+        spark.read.format("jdbc")
+        .option(
+            "url",
+            f"jdbc:arrow-flight-sql://127.0.0.1:{server.port}"
+            "/?useEncryption=false",
+        )
+        .option("driver", "org.apache.arrow.driver.jdbc.ArrowFlightJdbcDriver")
+        .option("dbtable", dbtable)
+        .load()
+    )
+
+
+def test_spark_reads_over_jdbc(spark, server, ds):
+    frame = _spark_read(spark, server, "weather").orderBy("time", "lat", "lon")
+    out = xql.to_dataset(frame.toArrow(), template=ds)
+
+    xr.testing.assert_allclose(out, ds.compute())
+
+
+def test_spark_pushes_filters_to_the_server(spark, server, ds):
+    frame = (
+        _spark_read(spark, server, "weather")
+        .where("time >= TIMESTAMP '2021-01-01 04:00:00' AND lat > 0")
+        .select("time", "lat", "lon", "temperature")
+        .orderBy("time", "lat", "lon")
+    )
+    plan = frame._jdf.queryExecution().executedPlan().toString()
+    out = xql.to_dataset(frame.toArrow(), template=ds)
+
+    assert "*GreaterThanOrEqual(time," in plan
+    expected = ds.temperature.isel(time=slice(4, None)).where(
+        ds.lat > 0, drop=True
+    )
+    xr.testing.assert_allclose(out.temperature, expected.compute())

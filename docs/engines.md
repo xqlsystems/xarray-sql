@@ -391,6 +391,52 @@ serves. Mixed-dimension Datasets are served as `name.group` tables, and
 clients can list tables with the standard Flight SQL metadata calls
 (e.g. ADBC's `adbc_get_objects`).
 
+### Tested clients
+
+**Spark** reads through the
+[Arrow Flight SQL JDBC driver](https://arrow.apache.org/docs/java/flight_sql_jdbc_driver.html)
+and pushes its column selection and filters into the SQL it sends, so
+they reach the server's chunk pruning:
+
+```python
+spark = (
+    SparkSession.builder
+    .config("spark.jars", "flight-sql-jdbc-driver-19.0.0.jar")
+    .config("spark.driver.extraJavaOptions", "-Duser.timezone=UTC")
+    .config("spark.sql.session.timeZone", "UTC")
+    .getOrCreate()
+)
+era5 = (
+    spark.read.format("jdbc")
+    .option("url", "jdbc:arrow-flight-sql://server-host:8815/?useEncryption=false")
+    .option("driver", "org.apache.arrow.driver.jdbc.ArrowFlightJdbcDriver")
+    .option("dbtable", "era5")        # or "era5.surface", or "(SELECT ...) AS t"
+    .load()
+)
+xql.to_dataset(era5.where("lat > 40").toArrow(), template=ds)
+```
+
+Run Spark's JVM in UTC (`-Duser.timezone=UTC`, as above). The JDBC
+path shifts timestamps by the JVM's zone otherwise; the session time
+zone alone does not prevent it.
+
+**ClickHouse** (25.8+) reads through its `arrowFlight` table function,
+which speaks plain Arrow Flight rather than Flight SQL. The dataset name
+is a table, or a query that runs on the server:
+
+```sql
+SELECT avg(temperature) FROM arrowFlight('server-host:8815', 'era5.surface');
+
+-- ClickHouse does not push filters into arrowFlight; put them in the
+-- name to get the server's chunk pruning:
+SELECT * FROM arrowFlight('server-host:8815',
+    'SELECT time, t2m FROM era5.surface WHERE lat BETWEEN 40 AND 41');
+```
+
+Times arrive without a zone, so ClickHouse parses literals compared
+with them in its server zone. Add `SETTINGS session_timezone = 'UTC'`
+to queries that filter on time.
+
 Things to know before exposing a server:
 
 - **No authentication or TLS.** The server binds to `127.0.0.1` by
