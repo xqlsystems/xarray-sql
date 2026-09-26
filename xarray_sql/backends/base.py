@@ -65,8 +65,8 @@ def get_adapter(con: object) -> type[EngineAdapter[Any]]:
     raise TypeError(
         f"No xarray-sql engine adapter for connection of type "
         f"{type(con).__module__}.{type(con).__qualname__}. "
-        f"Supported: DataFusion SessionContext, DuckDB, and ADBC DBAPI "
-        "connections."
+        f"Supported: DataFusion SessionContext, DuckDB, ADBC DBAPI "
+        "connections, and xarray_sql.FlightSQLServer."
     )
 
 

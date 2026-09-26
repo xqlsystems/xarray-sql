@@ -18,6 +18,7 @@ from .base import EngineAdapter, get_adapter, register, register_adapter
 from . import adbc as _adbc  # noqa: F401  (self-registers)
 from . import datafusion as _datafusion  # noqa: F401  (self-registers)
 from . import duckdb as _duckdb  # noqa: F401  (self-registers)
+from .flight import FlightSQLServer, serve  # also self-registers
 from .pyarrow import (
     XarrayArrowStream,
     XarrayPushdownDataset,
@@ -27,6 +28,7 @@ from .pyarrow import (
 
 __all__ = [
     "EngineAdapter",
+    "FlightSQLServer",
     "XarrayArrowStream",
     "XarrayPushdownDataset",
     "arrow_dataset",
@@ -34,4 +36,5 @@ __all__ = [
     "get_adapter",
     "register",
     "register_adapter",
+    "serve",
 ]

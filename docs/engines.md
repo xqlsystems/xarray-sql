@@ -344,6 +344,69 @@ keep the result's type.
 The cursor is a one-shot Arrow stream: `xql.to_dataset(cur, ...)`
 round-trips eagerly, and `chunks=` needs `spill=True`.
 
+## Serving over Flight SQL (no copy)
+
+The adapters above bring an engine to the data. `xql.serve` does the
+reverse and brings the data to remote clients: it starts an
+[Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html)
+server over the same lazy tables `XarrayContext` uses.
+
+```python
+import xarray_sql as xql
+
+server = xql.serve({"era5": ds}, host="0.0.0.0", port=8815)
+server.wait()   # in a script: block until Ctrl+C
+```
+
+Any Flight SQL client can then query `era5` from another process or
+machine: ADBC's Flight SQL driver (Python, R, Go, Java), the Flight SQL
+JDBC and ODBC drivers, and the SQL tools built on them. From Python:
+
+```sh
+pip install adbc-driver-flightsql
+```
+
+```python
+import adbc_driver_flightsql.dbapi as flight_sql
+
+con = flight_sql.connect("grpc://server-host:8815")
+cur = con.cursor()
+cur.execute("""
+    SELECT time, AVG(t2m) AS t2m FROM era5
+    WHERE lat BETWEEN 40 AND 41
+    GROUP BY time ORDER BY time
+""")
+out = xql.to_dataset(cur, template=ds)   # template: the same Dataset, opened client-side
+```
+
+Nothing is copied. Each query is planned by DataFusion on the server
+against lazy tables, so partition pruning on dimension predicates and
+projection pushdown work exactly as they do in process: only the chunks
+and variables a query touches are read from the source, only while the
+query runs, and results stream back as Arrow record batches.
+
+`xql.register(server, name, ds, table_names=...)` works on a
+`xql.FlightSQLServer()` like on any other engine, including while it
+serves. Mixed-dimension Datasets are served as `name.group` tables, and
+clients can list tables with the standard Flight SQL metadata calls
+(e.g. ADBC's `adbc_get_objects`).
+
+Things to know before exposing a server:
+
+- **No authentication or TLS.** The server binds to `127.0.0.1` by
+  default. To accept remote connections, bind `0.0.0.0` inside a
+  trusted network, or put it behind a proxy that authenticates and
+  terminates TLS.
+- **Read-only SQL.** DDL, DML, and other statements (`CREATE EXTERNAL
+  TABLE`, `COPY`, `SET`, ...) are rejected, so clients cannot read or
+  write the server's filesystem.
+- **DataFusion's SQL, without xarray-sql's Python UDFs.** The
+  `cftime()` and `reproject()` functions `XarrayContext` registers are
+  not available on the server.
+- **One process serves every query.** Chunk reads happen in the server
+  process, so size it (and `chunks=`) for the concurrent load you
+  expect.
+
 ## Engine support matrix
 
 What each integration provides. Known issues and constraints live on

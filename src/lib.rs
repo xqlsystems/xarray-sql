@@ -41,6 +41,8 @@
 //! Will skip loading partitions whose time ranges are entirely before 2020-02-01.
 //! Supported operators: `=`, `<`, `>`, `<=`, `>=`, `BETWEEN`, `IN`, `AND`, `OR`.
 
+mod flight;
+
 use std::collections::{HashMap, HashSet};
 use std::ffi::CString;
 use std::fmt::Debug;
@@ -1522,9 +1524,9 @@ fn ffi_logical_codec_from_pycapsule(
 /// ```
 
 #[pyclass(name = "LazyArrowStreamTable")]
-struct LazyArrowStreamTable {
+pub(crate) struct LazyArrowStreamTable {
     /// The underlying table provider with pruning support
-    table: Arc<PrunableStreamingTable>,
+    pub(crate) table: Arc<PrunableStreamingTable>,
 }
 
 #[pymethods]
@@ -1643,5 +1645,6 @@ impl LazyArrowStreamTable {
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<LazyArrowStreamTable>()?;
+    m.add_class::<flight::FlightSqlServer>()?;
     Ok(())
 }
