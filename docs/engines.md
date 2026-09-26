@@ -255,6 +255,28 @@ transaction (PostgreSQL without the `CREATE` privilege), registration
 raises instead: call `con.rollback()`, then create the schema
 beforehand or pass `temporary=True`.
 
+**ClickHouse.** ClickHouse's
+[ADBC driver](https://adbc-drivers.org/drivers/clickhouse/) (a preview
+at the time of writing) can only append, so on ClickHouse the adapter
+creates each table itself and then appends to it:
+
+```python
+from adbc_driver_manager import dbapi
+
+con = dbapi.connect(driver="clickhouse", db_kwargs={"uri": "http://localhost:8123/"})
+xql.register(con, "era5", ds)
+```
+
+Tables are `MergeTree` sorted by their dimensions
+(`ORDER BY (time, latitude, longitude)`), so ClickHouse's primary index
+skips data on dimension filters much as chunk pruning does elsewhere.
+Timestamps are declared `DateTime64(9, 'UTC')`, so a literal like
+`time >= '2020-01-01'` means UTC rather than the server's local zone.
+Mixed-dimension Datasets go into a ClickHouse *database* named after
+the Dataset (`era5.surface`), and `temporary=True` creates `Memory`
+tables. To choose the engine or sort key yourself, create the table
+first and register with `mode="append"`.
+
 The cursor is a one-shot Arrow stream: `xql.to_dataset(cur, ...)`
 round-trips eagerly, and `chunks=` needs `spill=True`.
 
@@ -273,7 +295,7 @@ What each integration provides. Known issues and constraints live on
 | `geometry` column ([geospatial](geospatial.md#geoarrow-point-geometry-columns)) | annotated WKB passes through | native `GEOMETRY` (`"wkb"` encoding) | plain binary/struct | driver-dependent |
 | Mixed-dimension datasets | one schema, `name.group` tables | `name.group` views over `name_group` tables | `xql.arrow_datasets(ds, name)`, one per group | `name.group` tables in a schema; `name_group` without schemas |
 | Naming those tables (`table_names=`) | yes | yes | yes | yes |
-| Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` | `adbc-driver-manager >= 1.0` (tested on 1.12 with SQLite and DuckDB drivers) |
+| Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` | `adbc-driver-manager >= 1.0` (tested on 1.12 with SQLite, DuckDB, PostgreSQL 18, and ClickHouse 26.8 drivers) |
 
 [^spill-only]: Why DuckDB relations do not re-execute — and two other
     engine-specific issues worth knowing — is explained on
