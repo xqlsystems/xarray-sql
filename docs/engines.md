@@ -190,22 +190,85 @@ chunked round-trip is fully supported: windows re-execute on Polars'
 streaming engine.
 
 
+## ADBC (adapter; any database with a driver)
+
+```sh
+pip install 'xarray-sql[adbc]' adbc-driver-postgresql   # or -sqlite, -snowflake, ...
+```
+
+[ADBC](https://arrow.apache.org/adbc/) is a database-neutral API whose
+drivers speak Arrow natively. `xql.register` accepts any ADBC DBAPI
+connection, so PostgreSQL, SQLite, Snowflake, BigQuery, Flight SQL,
+DuckDB, and every other database with an ADBC driver share one code
+path:
+
+```python
+import adbc_driver_postgresql.dbapi
+import xarray_sql as xql
+
+con = adbc_driver_postgresql.dbapi.connect("postgresql://localhost/weather")
+xql.register(con, "era5", ds)                       # seam 1: ingest
+con.commit()
+
+cur = con.cursor()
+cur.execute("""
+    SELECT time, lat, lon, AVG(t2m) AS t2m
+    FROM era5
+    WHERE lat BETWEEN 40 AND 41
+    GROUP BY time, lat, lon
+    ORDER BY time, lat, lon
+""")
+out = xql.to_dataset(cur, template=ds)              # seam 2
+```
+
+**Registration copies the data.** An ADBC database usually runs in
+another process or on another machine, so it cannot call back into
+Python to scan a lazy Dataset while a query runs. The adapter instead
+streams the Dataset into a new table with ADBC's bulk ingest: chunks
+are read on the same prefetching scan the DuckDB adapter uses
+(`batch_size`, `prefetch`, `prefetch_bytes`, `coalesce_rows` tune it),
+so memory stays bounded while the driver writes, and queries afterwards
+run entirely in the database. Ingest what you intend to query —
+`ds.sel(...)` a region or `ds[[...]]` a few variables first — rather
+than a whole archive.
+
+Options specific to this adapter:
+
+- `mode="create"` (default) raises if the table exists; `"replace"`
+  drops and recreates it; `"append"` and `"create_append"` add rows,
+  which is how to load a long time series in slices.
+- `temporary=True` creates temporary tables that the database drops
+  when the connection closes — the closest match to the other
+  engines' register-for-this-session behavior.
+- Ingest runs inside the connection's current transaction. The tables
+  are visible to this connection at once; call `con.commit()` for
+  other connections to see them.
+
+Mixed-dimension Datasets are ingested into a database schema named
+after the Dataset, so `era5.surface` is the same SQL here as on
+DataFusion and DuckDB. On databases without schemas (SQLite), and for
+temporary tables, the groups are created as flat `era5_surface` tables
+instead (with a warning in the first case).
+
+The cursor is a one-shot Arrow stream: `xql.to_dataset(cur, ...)`
+round-trips eagerly, and `chunks=` needs `spill=True`.
+
 ## Engine support matrix
 
 What each integration provides. Known issues and constraints live on
 [Known issues & limitations](limitations.md).
 
-| | DataFusion | DuckDB | Polars |
-|---|---|---|---|
-| Register | `XarrayContext` / any `SessionContext` | `xql.register(con, name, ds)` | `pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))` |
-| Projection pushdown | yes | yes | yes |
-| Chunk pruning on dim predicates | yes | yes | yes |
-| Eager round-trip (`xql.to_dataset`) | yes | yes | yes |
-| Chunked round-trip (`chunks=`) | re-execution | `spill=True` [^spill-only] | re-execution (streaming engine) |
-| `geometry` column ([geospatial](geospatial.md#geoarrow-point-geometry-columns)) | annotated WKB passes through | native `GEOMETRY` (`"wkb"` encoding) | plain binary/struct |
-| Mixed-dimension datasets | one schema, `name.group` tables | `name.group` views over `name_group` tables | `xql.arrow_datasets(ds, name)`, one per group |
-| Naming those tables (`table_names=`) | yes | yes | yes |
-| Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` |
+| | DataFusion | DuckDB | Polars | ADBC |
+|---|---|---|---|---|
+| Register | `XarrayContext` / any `SessionContext` | `xql.register(con, name, ds)` | `pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))` | `xql.register(con, name, ds)` (copies into the database) |
+| Projection pushdown | yes | yes | yes | n/a (the database's own tables) |
+| Chunk pruning on dim predicates | yes | yes | yes | n/a (the database's own indexes) |
+| Eager round-trip (`xql.to_dataset`) | yes | yes | yes | yes (pass the cursor) |
+| Chunked round-trip (`chunks=`) | re-execution | `spill=True` [^spill-only] | re-execution (streaming engine) | `spill=True` |
+| `geometry` column ([geospatial](geospatial.md#geoarrow-point-geometry-columns)) | annotated WKB passes through | native `GEOMETRY` (`"wkb"` encoding) | plain binary/struct | driver-dependent |
+| Mixed-dimension datasets | one schema, `name.group` tables | `name.group` views over `name_group` tables | `xql.arrow_datasets(ds, name)`, one per group | `name.group` tables in a schema; `name_group` without schemas |
+| Naming those tables (`table_names=`) | yes | yes | yes | yes |
+| Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` | `adbc-driver-manager >= 1.0` (tested on 1.12 with SQLite and DuckDB drivers) |
 
 [^spill-only]: Why DuckDB relations do not re-execute — and two other
     engine-specific issues worth knowing — is explained on

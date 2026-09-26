@@ -82,6 +82,27 @@ Pick your engine:
     not from the consumer. Not a bug — worth knowing when sizing
     scans.
 
+=== "ADBC"
+
+    **Registration is a copy, not a lazy view.**
+
+    - *Symptom:* registering a large Dataset takes as long as reading
+      all of it, and the database holds a full copy.
+    - *Why:* an ADBC database cannot call back into Python while a
+      query runs, so there is no lazy scan to push predicates into.
+    - *What to do:* select the region and variables you will query
+      before registering; use `mode="append"` to load in slices.
+
+    **SQLite has no timestamp type.**
+
+    - *Symptom:* a datetime dimension comes back from SQLite as text.
+      The eager round-trip recovers it from the template, but the
+      chunked round-trip (`chunks=..., spill=True`) cannot build its
+      window predicates against a text column and fails.
+    - *What to do:* use the eager round-trip with SQLite, or a database
+      with native timestamps (PostgreSQL, DuckDB, Snowflake, ...) for
+      the chunked one. SQLite also widens `float32` to `float64`.
+
 ## Constraints in any engine
 
 These follow from the data model — no engine or configuration avoids

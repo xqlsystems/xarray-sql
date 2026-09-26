@@ -15,6 +15,7 @@ type.
 """
 
 from .base import EngineAdapter, get_adapter, register, register_adapter
+from . import adbc as _adbc  # noqa: F401  (self-registers)
 from . import datafusion as _datafusion  # noqa: F401  (self-registers)
 from . import duckdb as _duckdb  # noqa: F401  (self-registers)
 from .pyarrow import (
