@@ -12,10 +12,12 @@ import os
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 import xarray as xr
 
 import xarray_sql as xql
+from xarray_sql.backends.adbc import _clickhouse_ddl
 
 dbapi = pytest.importorskip("adbc_driver_manager.dbapi")
 sqlite_dbapi = pytest.importorskip("adbc_driver_sqlite.dbapi")
@@ -226,6 +228,30 @@ def test_temporary_mixed_dimensions_use_flat_names(duckdb_con, mixed_ds):
     assert count.fetchone()[0] == 6 * 3 * 4
 
 
+def test_clickhouse_float_columns_are_nullable():
+    # The scan writes NaN as an Arrow null, so aggregates skip it; a plain
+    # Float64 column would store that null as 0.
+    schema = pa.schema(
+        [
+            pa.field("time", pa.timestamp("ns")),
+            pa.field("lat", pa.float64()),
+            pa.field("t2m", pa.float64()),
+            pa.field("sst", pa.float32()),
+        ]
+    )
+    [ddl] = _clickhouse_ddl(
+        "weather",
+        schema,
+        ("time", "lat"),
+        mode="create",
+        temporary=False,
+        database=None,
+    )
+    assert '"t2m" Nullable(Float64)' in ddl
+    assert '"sst" Nullable(Float32)' in ddl
+    assert '"lat" Float64,' in ddl  # sort keys stay non-Nullable
+
+
 @pytest.fixture
 def postgres_con():
     uri = os.environ.get("XARRAY_SQL_TEST_POSTGRES_URI")
@@ -339,3 +365,20 @@ def test_clickhouse_mixed_dimensions_register_in_a_database(
     )
     out = xql.to_dataset(cur, template=mixed_ds[["temperature"]])
     xr.testing.assert_allclose(out.temperature, mixed_ds.temperature.compute())
+
+
+def test_clickhouse_keeps_missing_values(clickhouse_con, ds):
+    holed = ds.copy(deep=True)
+    holed["temperature"][0, 0, 0] = np.nan
+    xql.register(clickhouse_con, "weather", holed)
+
+    with _query(clickhouse_con, "SELECT AVG(temperature) FROM weather") as avg:
+        mean = avg.fetchone()[0]
+    assert mean == pytest.approx(float(holed.temperature.mean()))
+    cur = _query(
+        clickhouse_con,
+        "SELECT time, lat, lon, temperature FROM weather "
+        "ORDER BY time, lat, lon",
+    )
+    out = xql.to_dataset(cur, template=holed)
+    xr.testing.assert_allclose(out.temperature, holed.temperature.compute())
