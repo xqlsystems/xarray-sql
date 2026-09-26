@@ -5,10 +5,13 @@ is ADBC's Flight SQL driver, the same one remote users would connect
 with, so the tests exercise the real wire protocol end to end.
 """
 
+import os
 import threading
+import urllib.request
 
 import numpy as np
 import pandas as pd
+import pyarrow.flight as flight
 import pytest
 import xarray as xr
 
@@ -178,3 +181,58 @@ def test_shutdown_does_not_wait_forever_on_an_unread_result():
 
     assert done.is_set()
     assert not server.is_running
+
+
+def _read_path(server, *path):
+    client = flight.FlightClient(server.uri)
+    info = client.get_flight_info(flight.FlightDescriptor.for_path(*path))
+    return client.do_get(info.endpoints[0].ticket).read_all()
+
+
+def test_plain_flight_path_names_a_table(server, ds):
+    table = _read_path(server, "weather")
+    out = xql.to_dataset(table.sort_by([("time", "ascending")]), template=ds)
+
+    xr.testing.assert_allclose(out, ds.compute())
+
+
+def test_plain_flight_path_can_be_a_query(server, ds):
+    table = _read_path(
+        server,
+        "SELECT lat, lon, AVG(temperature) AS temperature FROM weather "
+        "GROUP BY lat, lon ORDER BY lat, lon",
+    )
+    out = xql.to_dataset(table, template=ds)
+
+    expected = ds.temperature.mean("time")
+    xr.testing.assert_allclose(out.temperature, expected.compute())
+
+
+def test_plain_flight_schema_of_a_path(server):
+    client = flight.FlightClient(server.uri)
+    result = client.get_schema(flight.FlightDescriptor.for_path("weather"))
+
+    assert result.schema.names == [
+        "time",
+        "lat",
+        "lon",
+        "temperature",
+        "precipitation",
+    ]
+
+
+def test_clickhouse_reads_through_arrow_flight(server, ds):
+    uri = os.environ.get("XARRAY_SQL_TEST_CLICKHOUSE_URI")
+    if not uri:
+        pytest.skip(
+            "set XARRAY_SQL_TEST_CLICKHOUSE_URI to run against ClickHouse"
+        )
+    sql = (
+        "SELECT round(avg(temperature), 9) "
+        f"FROM arrowFlight('127.0.0.1:{server.port}', 'weather')"
+    )
+    request = urllib.request.Request(uri, data=sql.encode())
+    with urllib.request.urlopen(request, timeout=60) as response:
+        avg = float(response.read().decode())
+
+    assert avg == pytest.approx(float(ds.temperature.mean()))
