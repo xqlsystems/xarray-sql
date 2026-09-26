@@ -160,9 +160,16 @@ class FlightSQLServer:
         except KeyboardInterrupt:
             self.shutdown()
 
-    def shutdown(self) -> None:
-        """Stop accepting connections and let in-flight queries finish."""
-        self._native.shutdown()
+    def shutdown(self, timeout: float = 5.0) -> None:
+        """Stop accepting connections.
+
+        Args:
+            timeout: Seconds in-flight queries may keep running, after
+                which their connections are closed. A client that stops
+                reading a result partway otherwise holds its stream open
+                indefinitely.
+        """
+        self._native.shutdown(timeout)
 
     def __enter__(self) -> FlightSQLServer:
         return self

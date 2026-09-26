@@ -18,6 +18,7 @@ use std::net::TcpListener;
 use std::pin::Pin;
 use std::sync::{Arc, LazyLock};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use arrow::datatypes::Schema;
 use arrow::ipc::writer::IpcWriteOptions;
@@ -43,7 +44,7 @@ use datafusion::execution::context::SQLOptions;
 use datafusion::prelude::{DataFrame, SessionContext};
 use futures::{stream, Stream, TryStreamExt};
 use prost::Message;
-use pyo3::exceptions::PyRuntimeError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use tokio::sync::oneshot;
 use tonic::transport::server::TcpIncoming;
@@ -332,9 +333,13 @@ impl FlightSqlService for XarrayFlightSql {
     async fn register_sql_info(&self, _id: i32, _result: &SqlInfo) {}
 }
 
+/// How long in-flight queries may run once a dropped server stops.
+const DROP_GRACE_PERIOD: Duration = Duration::from_secs(5);
+
 /// Handles of a server that is accepting connections.
 struct Running {
-    shutdown: oneshot::Sender<()>,
+    /// Starts shutdown; carries how long in-flight queries may run on.
+    shutdown: oneshot::Sender<Duration>,
     thread: JoinHandle<()>,
 }
 
@@ -412,7 +417,7 @@ impl FlightSqlServer {
         let service = XarrayFlightSql {
             ctx: self.ctx.clone(),
         };
-        let (shutdown, shutdown_rx) = oneshot::channel::<()>();
+        let (shutdown, shutdown_rx) = oneshot::channel::<Duration>();
         let (ready, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
         let thread = std::thread::Builder::new()
             .name("xarray-sql-flight-sql".to_string())
@@ -437,13 +442,30 @@ impl FlightSqlServer {
                     };
                     let incoming = TcpIncoming::from(listener).with_nodelay(Some(true));
                     let _ = ready.send(Ok(()));
-                    let _ = Server::builder()
+                    // Graceful shutdown waits for every open response
+                    // stream, including ones a client stopped reading, so
+                    // it gets a deadline after which the server is dropped.
+                    let (grace, grace_rx) = oneshot::channel::<Duration>();
+                    let server = Server::builder()
                         .add_service(FlightServiceServer::new(service))
-                        .serve_with_incoming_shutdown(incoming, async {
-                            let _ = shutdown_rx.await;
-                        })
-                        .await;
+                        .serve_with_incoming_shutdown(incoming, async move {
+                            let period = shutdown_rx.await.unwrap_or(Duration::ZERO);
+                            let _ = grace.send(period);
+                        });
+                    let deadline = async move {
+                        match grace_rx.await {
+                            Ok(period) => tokio::time::sleep(period).await,
+                            Err(_) => std::future::pending::<()>().await,
+                        }
+                    };
+                    tokio::select! {
+                        _ = server => {}
+                        _ = deadline => {}
+                    }
                 });
+                // Cancels whatever the deadline cut off, closing its
+                // connections, without waiting on it.
+                runtime.shutdown_background();
             })?;
 
         match ready_rx.recv() {
@@ -462,10 +484,14 @@ impl FlightSqlServer {
             .is_some_and(|running| !running.thread.is_finished())
     }
 
-    /// Stop accepting connections and wait for in-flight queries to end.
-    fn shutdown(&mut self, py: Python<'_>) -> PyResult<()> {
+    /// Stop accepting connections, give in-flight queries up to
+    /// ``timeout`` seconds to finish, then close the remaining connections.
+    #[pyo3(signature = (timeout=5.0))]
+    fn shutdown(&mut self, py: Python<'_>, timeout: f64) -> PyResult<()> {
+        let grace = Duration::try_from_secs_f64(timeout)
+            .map_err(|e| PyValueError::new_err(format!("invalid timeout {timeout}: {e}")))?;
         if let Some(running) = self.running.take() {
-            let _ = running.shutdown.send(());
+            let _ = running.shutdown.send(grace);
             // In-flight partitions may need the GIL to finish.
             py.detach(|| running.thread.join())
                 .map_err(|_| runtime_error("the server thread panicked"))?;
@@ -478,7 +504,7 @@ impl Drop for FlightSqlServer {
     fn drop(&mut self) {
         // Signal only: joining here could wait on the GIL this thread holds.
         if let Some(running) = self.running.take() {
-            let _ = running.shutdown.send(());
+            let _ = running.shutdown.send(DROP_GRACE_PERIOD);
         }
     }
 }

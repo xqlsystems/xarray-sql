@@ -5,6 +5,8 @@ is ADBC's Flight SQL driver, the same one remote users would connect
 with, so the tests exercise the real wire protocol end to end.
 """
 
+import threading
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -153,4 +155,26 @@ def test_shutdown_stops_the_server(ds):
         assert server.is_running
         assert server.uri == f"grpc://127.0.0.1:{server.port}"
 
+    assert not server.is_running
+
+
+def test_shutdown_does_not_wait_forever_on_an_unread_result():
+    big = xr.Dataset(
+        {"v": (["time", "x"], np.zeros((2_000, 1_000)))},
+        coords={"time": np.arange(2_000), "x": np.arange(1_000)},
+    ).chunk({"time": 100})
+    server = xql.serve({"big": big})
+    con = flight_sql.connect(server.uri)
+    cur = _query(con, "SELECT * FROM big")
+    cur.fetchone()  # leave the rest of the stream unread
+
+    done = threading.Event()
+    stopper = threading.Thread(
+        target=lambda: (server.shutdown(timeout=0.5), done.set()),
+        daemon=True,
+    )
+    stopper.start()
+    stopper.join(timeout=30)
+
+    assert done.is_set()
     assert not server.is_running
