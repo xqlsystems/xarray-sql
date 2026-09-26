@@ -246,9 +246,14 @@ Options specific to this adapter:
 
 Mixed-dimension Datasets are ingested into a database schema named
 after the Dataset, so `era5.surface` is the same SQL here as on
-DataFusion and DuckDB. On databases without schemas (SQLite), and for
-temporary tables, the groups are created as flat `era5_surface` tables
-instead (with a warning in the first case).
+DataFusion and DuckDB. An existing schema is used as is, so a role
+granted only that schema can register into it. On databases without
+schemas (SQLite), and for temporary tables, the groups are created as
+flat `era5_surface` tables instead (with a warning in the first case).
+Where creating the schema fails *and* the failure aborts the
+transaction (PostgreSQL without the `CREATE` privilege), registration
+raises instead: call `con.rollback()`, then create the schema
+beforehand or pass `temporary=True`.
 
 The cursor is a one-shot Arrow stream: `xql.to_dataset(cur, ...)`
 round-trips eagerly, and `chunks=` needs `spill=True`.

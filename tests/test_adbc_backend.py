@@ -8,6 +8,7 @@ built-in ADBC driver, which has schemas and native temporal types.
 """
 
 import importlib.util
+import os
 
 import numpy as np
 import pandas as pd
@@ -222,4 +223,37 @@ def test_temporary_mixed_dimensions_use_flat_names(duckdb_con, mixed_ds):
     )
 
     count = _query(duckdb_con, "SELECT COUNT(*) FROM era5_surface")
+    assert count.fetchone()[0] == 6 * 3 * 4
+
+
+@pytest.fixture
+def postgres_con():
+    uri = os.environ.get("XARRAY_SQL_TEST_POSTGRES_URI")
+    if not uri:
+        pytest.skip(
+            "set XARRAY_SQL_TEST_POSTGRES_URI to run against PostgreSQL"
+        )
+    postgres = pytest.importorskip("adbc_driver_postgresql.dbapi")
+    connection = postgres.connect(uri)
+    yield connection
+    connection.rollback()
+    connection.close()
+
+
+def test_postgres_schema_failure_explains_the_aborted_transaction(
+    postgres_con, mixed_ds
+):
+    # PostgreSQL rejects schema names starting with `pg_`, so CREATE SCHEMA
+    # fails here for any user, and a failed statement aborts the
+    # transaction: no fallback ingest could run after it.
+    with pytest.raises(RuntimeError, match="rollback"):
+        xql.register(postgres_con, "pg_era5", mixed_ds, table_names=NAMES)
+
+
+def test_postgres_uses_an_existing_schema(postgres_con, mixed_ds):
+    with postgres_con.cursor() as cur:
+        cur.execute("CREATE SCHEMA IF NOT EXISTS era5")
+    xql.register(postgres_con, "era5", mixed_ds, table_names=NAMES)
+
+    count = _query(postgres_con, "SELECT COUNT(*) FROM era5.surface")
     assert count.fetchone()[0] == 6 * 3 * 4

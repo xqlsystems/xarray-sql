@@ -86,16 +86,60 @@ def _ingest(
         )
 
 
+def _schema_exists(con: dbapi.Connection, name: str) -> bool:
+    """Whether the database already has a schema named exactly *name*."""
+    try:
+        objects = con.adbc_get_objects(
+            depth="db_schemas", db_schema_filter=name
+        ).read_all()
+    except Exception:  # noqa: BLE001 — metadata unsupported; assume not
+        return False
+    return any(
+        schema["db_schema_name"] == name
+        for catalog in objects.to_pylist()
+        for schema in catalog["catalog_db_schemas"] or []
+    )
+
+
+def _connection_usable(con: dbapi.Connection) -> bool:
+    """Whether *con* still runs statements after one of them failed."""
+    try:
+        with con.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchall()
+    except Exception:  # noqa: BLE001
+        return False
+    return True
+
+
 def _create_schema(con: dbapi.Connection, name: str) -> bool:
-    """Create the database schema *name*; whether that succeeded.
+    """Ensure the database schema *name* exists; whether it does.
+
+    An existing schema is used as is: creating it can need privileges on
+    the whole database (PostgreSQL checks them even for ``IF NOT
+    EXISTS``) that a role granted only that schema lacks.
 
     Not every ADBC database has schemas (SQLite does not), and creating
-    one can need privileges the connection lacks.
+    one can fail for lack of privileges. When the connection survives the
+    failure, the caller falls back to flat table names. On databases
+    where a failed statement aborts the transaction (PostgreSQL), nothing
+    after it could run, so this raises instead of falling back.
     """
+    if _schema_exists(con, name):
+        return True
     try:
         with con.cursor() as cur:
             cur.execute(f"CREATE SCHEMA IF NOT EXISTS {_quote(name)}")
-    except Exception as exc:  # noqa: BLE001 — fall back to flat names
+    except Exception as exc:
+        if not _connection_usable(con):
+            raise RuntimeError(
+                f"Could not create the {name!r} schema to hold the dimension "
+                f"groups of {name!r} ({exc}). The failure aborted the "
+                f"connection's transaction, so call con.rollback() before "
+                f"using it again. Create the schema beforehand (or grant "
+                f"the privilege to), or pass temporary=True to register "
+                f"flat {name}_<group> tables instead."
+            ) from exc
         warnings.warn(
             f"Could not create the {name!r} schema to hold the dimension "
             f"groups of {name!r} ({exc}); registering them as flat "
@@ -147,9 +191,13 @@ class ADBCAdapter:
             })
             cur.execute('SELECT ... FROM era5.surface')
 
-        On databases without schemas (SQLite), and for temporary tables,
-        which most drivers cannot place in a schema, the groups are
-        created as flat ``name_group`` tables instead.
+        An existing schema is used as is. On databases without schemas
+        (SQLite), and for temporary tables, which most drivers cannot
+        place in a schema, the groups are created as flat
+        ``name_group`` tables instead. If creating the schema fails in a
+        way that aborts the transaction (PostgreSQL without the
+        ``CREATE`` privilege), this raises ``RuntimeError``; roll back,
+        then create the schema beforehand or pass ``temporary=True``.
 
         Registration runs inside the connection's current transaction:
         the tables are visible to this connection immediately, and to
