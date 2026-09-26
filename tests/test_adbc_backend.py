@@ -257,3 +257,85 @@ def test_postgres_uses_an_existing_schema(postgres_con, mixed_ds):
 
     count = _query(postgres_con, "SELECT COUNT(*) FROM era5.surface")
     assert count.fetchone()[0] == 6 * 3 * 4
+
+
+@pytest.fixture
+def clickhouse_con():
+    uri = os.environ.get("XARRAY_SQL_TEST_CLICKHOUSE_URI")
+    driver = os.environ.get("XARRAY_SQL_TEST_CLICKHOUSE_DRIVER")
+    if not (uri and driver):
+        pytest.skip(
+            "set XARRAY_SQL_TEST_CLICKHOUSE_URI and "
+            "XARRAY_SQL_TEST_CLICKHOUSE_DRIVER to run against ClickHouse"
+        )
+    connection = dbapi.connect(driver=driver, db_kwargs={"uri": uri})
+    for statement in [
+        "DROP TABLE IF EXISTS weather",
+        "DROP DATABASE IF EXISTS era5",
+    ]:
+        _query(connection, statement).close()
+    yield connection
+    connection.close()
+
+
+def test_clickhouse_round_trips(clickhouse_con, ds):
+    xql.register(clickhouse_con, "weather", ds)
+
+    cur = _query(
+        clickhouse_con,
+        "SELECT time, lat, lon, temperature, precipitation FROM weather "
+        "ORDER BY time, lat, lon",
+    )
+    xr.testing.assert_allclose(xql.to_dataset(cur, template=ds), ds.compute())
+
+
+def test_clickhouse_time_literals_mean_utc(clickhouse_con, ds):
+    xql.register(clickhouse_con, "weather", ds)
+
+    cur = _query(
+        clickhouse_con,
+        "SELECT time, lat, lon, temperature FROM weather "
+        "WHERE time >= '2021-01-01 04:00:00' ORDER BY time, lat, lon",
+    )
+    out = xql.to_dataset(cur, template=ds)
+
+    expected = ds.temperature.isel(time=slice(4, None))
+    xr.testing.assert_allclose(out.temperature, expected.compute())
+
+
+def test_clickhouse_replace_then_append(clickhouse_con, ds):
+    xql.register(clickhouse_con, "weather", ds)
+    xql.register(
+        clickhouse_con, "weather", ds.isel(time=slice(0, 4)), mode="replace"
+    )
+    xql.register(
+        clickhouse_con, "weather", ds.isel(time=slice(4, 8)), mode="append"
+    )
+
+    cur = _query(
+        clickhouse_con,
+        "SELECT time, lat, lon, temperature, precipitation FROM weather "
+        "ORDER BY time, lat, lon",
+    )
+    xr.testing.assert_allclose(xql.to_dataset(cur, template=ds), ds.compute())
+
+
+def test_clickhouse_temporary_table_is_queryable(clickhouse_con, ds):
+    xql.register(clickhouse_con, "weather", ds, temporary=True)
+
+    count = _query(clickhouse_con, "SELECT COUNT(*) FROM weather")
+    assert count.fetchone()[0] == 8 * 5 * 6
+
+
+def test_clickhouse_mixed_dimensions_register_in_a_database(
+    clickhouse_con, mixed_ds
+):
+    xql.register(clickhouse_con, "era5", mixed_ds, table_names=NAMES)
+
+    cur = _query(
+        clickhouse_con,
+        "SELECT time, level, lat, lon, temperature FROM era5.atmosphere "
+        "ORDER BY time, level, lat, lon",
+    )
+    out = xql.to_dataset(cur, template=mixed_ds[["temperature"]])
+    xr.testing.assert_allclose(out.temperature, mixed_ds.temperature.compute())

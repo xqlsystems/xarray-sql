@@ -31,6 +31,7 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING, Any, Literal, TypeGuard
 
+import pyarrow as pa
 import xarray as xr
 
 from ..df import (
@@ -57,14 +58,127 @@ def _quote(identifier: str) -> str:
     return f'"{escaped}"'
 
 
+def _is_clickhouse(con: dbapi.Connection) -> bool:
+    """Whether *con* is connected to ClickHouse.
+
+    Drivers name their database in ``adbc_get_info``. The ClickHouse
+    driver does not implement it, so only a driver without it is probed
+    with a query against ClickHouse's ``system.one`` table.
+    """
+    try:
+        info = con.adbc_get_info()
+    except Exception:  # noqa: BLE001 — unimplemented; probe instead
+        pass
+    else:
+        return str(info.get("vendor_name", "")).lower() == "clickhouse"
+    try:
+        with con.cursor() as cur:
+            cur.execute("SELECT 1 FROM system.one")
+            cur.fetchall()
+    except Exception:  # noqa: BLE001
+        return False
+    return True
+
+
+_CLICKHOUSE_TYPES = {
+    pa.bool_(): "Bool",
+    pa.int8(): "Int8",
+    pa.int16(): "Int16",
+    pa.int32(): "Int32",
+    pa.int64(): "Int64",
+    pa.uint8(): "UInt8",
+    pa.uint16(): "UInt16",
+    pa.uint32(): "UInt32",
+    pa.uint64(): "UInt64",
+    pa.float16(): "Float32",
+    pa.float32(): "Float32",
+    pa.float64(): "Float64",
+    pa.string(): "String",
+    pa.large_string(): "String",
+    pa.binary(): "String",
+    pa.large_binary(): "String",
+    pa.date32(): "Date32",
+}
+
+_TIMESTAMP_PRECISION = {"s": 0, "ms": 3, "us": 6, "ns": 9}
+
+
+def _clickhouse_type(field: pa.Field, key: bool) -> str:
+    """The ClickHouse column type for an Arrow field.
+
+    Timestamps without a zone are declared UTC, which is what their
+    values mean; ClickHouse also parses string literals compared with a
+    column in that column's zone, so ``time >= '2020-01-01'`` means UTC
+    rather than the server's local time. Sort-key columns and floats
+    (which carry NaN) are not ``Nullable``.
+    """
+    arrow_type = field.type
+    if pa.types.is_timestamp(arrow_type):
+        precision = _TIMESTAMP_PRECISION[arrow_type.unit]
+        zone = arrow_type.tz or "UTC"
+        name = f"DateTime64({precision}, '{zone}')"
+    elif arrow_type in _CLICKHOUSE_TYPES:
+        name = _CLICKHOUSE_TYPES[arrow_type]
+    else:
+        raise TypeError(
+            f"no ClickHouse column type for {field.name!r} of Arrow type "
+            f"{arrow_type}; create the table yourself and register with "
+            f'mode="append"'
+        )
+    if key or pa.types.is_floating(arrow_type) or not field.nullable:
+        return name
+    return f"Nullable({name})"
+
+
+def _clickhouse_ddl(
+    table: str,
+    schema: pa.Schema,
+    dims: tuple[str, ...],
+    *,
+    mode: IngestMode,
+    temporary: bool,
+    database: str | None,
+) -> list[str]:
+    """Statements that prepare *table* for an append-mode ingest.
+
+    ClickHouse's ADBC driver only appends, so the table is created here
+    for every other mode. Tables are sorted by their dimensions, so
+    ClickHouse's primary index skips data on dimension predicates the
+    way chunk pruning does in the other engines.
+    """
+    if mode == "append":
+        return []
+    target = _quote(table)
+    if database is not None:
+        target = f"{_quote(database)}.{target}"
+    columns = ", ".join(
+        f"{_quote(field.name)} {_clickhouse_type(field, field.name in dims)}"
+        for field in schema
+    )
+    kind = "TEMPORARY TABLE" if temporary else "TABLE"
+    if temporary:
+        engine = "ENGINE = Memory"
+    else:
+        order = ", ".join(_quote(dim) for dim in dims) or "tuple()"
+        engine = f"ENGINE = MergeTree ORDER BY ({order})"
+    statements = []
+    if mode == "replace":
+        statements.append(f"DROP {kind} IF EXISTS {target}")
+    exists = " IF NOT EXISTS" if mode == "create_append" else ""
+    statements.append(f"CREATE {kind}{exists} {target} ({columns}) {engine}")
+    return statements
+
+
 def _ingest(
     con: dbapi.Connection,
     table: str,
     ds: xr.Dataset,
     chunks: Chunks,
     *,
+    dims: tuple[str, ...],
     mode: IngestMode,
     temporary: bool,
+    clickhouse: bool,
     db_schema_name: str | None = None,
     **kwargs: Any,
 ) -> None:
@@ -75,7 +189,20 @@ def _ingest(
     prefetches chunks on a thread pool while the driver writes earlier
     batches, so the source read and the database write overlap.
     """
-    reader = XarrayPushdownDataset(ds, chunks, **kwargs).scanner().to_reader()
+    dataset = XarrayPushdownDataset(ds, chunks, **kwargs)
+    if clickhouse:
+        for statement in _clickhouse_ddl(
+            table,
+            dataset.schema,
+            dims,
+            mode=mode,
+            temporary=temporary,
+            database=db_schema_name,
+        ):
+            with con.cursor() as cur:
+                cur.execute(statement)
+        mode, temporary = "append", False
+    reader = dataset.scanner().to_reader()
     with con.cursor() as cur:
         cur.adbc_ingest(
             table,
@@ -112,7 +239,9 @@ def _connection_usable(con: dbapi.Connection) -> bool:
     return True
 
 
-def _create_schema(con: dbapi.Connection, name: str) -> bool:
+def _create_schema(
+    con: dbapi.Connection, name: str, *, clickhouse: bool = False
+) -> bool:
     """Ensure the database schema *name* exists; whether it does.
 
     An existing schema is used as is: creating it can need privileges on
@@ -123,13 +252,15 @@ def _create_schema(con: dbapi.Connection, name: str) -> bool:
     one can fail for lack of privileges. When the connection survives the
     failure, the caller falls back to flat table names. On databases
     where a failed statement aborts the transaction (PostgreSQL), nothing
-    after it could run, so this raises instead of falling back.
+    after it could run, so this raises instead of falling back. In
+    ClickHouse, a database plays the role of a schema.
     """
     if _schema_exists(con, name):
         return True
+    kind = "DATABASE" if clickhouse else "SCHEMA"
     try:
         with con.cursor() as cur:
-            cur.execute(f"CREATE SCHEMA IF NOT EXISTS {_quote(name)}")
+            cur.execute(f"CREATE {kind} IF NOT EXISTS {_quote(name)}")
     except Exception as exc:
         if not _connection_usable(con):
             raise RuntimeError(
@@ -199,6 +330,12 @@ class ADBCAdapter:
         ``CREATE`` privilege), this raises ``RuntimeError``; roll back,
         then create the schema beforehand or pass ``temporary=True``.
 
+        On ClickHouse, whose driver can only append, the adapter creates
+        the tables itself: ``MergeTree`` tables sorted by their
+        dimensions (``Memory`` for temporary ones), in a ClickHouse
+        database named ``name`` for a mixed-dimension Dataset, with
+        timestamps declared ``DateTime64(9, 'UTC')``.
+
         Registration runs inside the connection's current transaction:
         the tables are visible to this connection immediately, and to
         others once you call ``con.commit()`` (unless the connection is
@@ -218,19 +355,24 @@ class ADBCAdapter:
         """
         groups = group_vars_by_dims(ds)
         names = resolve_table_names(ds, table_names, case_insensitive=True)
+        clickhouse = _is_clickhouse(con)
         if len(groups) <= 1:
             _ingest(
                 con,
                 name,
                 ds,
                 chunks,
+                dims=next(iter(groups), ()),
                 mode=mode,
                 temporary=temporary,
+                clickhouse=clickhouse,
                 **kwargs,
             )
             return con
 
-        in_schema = not temporary and _create_schema(con, name)
+        in_schema = not temporary and _create_schema(
+            con, name, clickhouse=clickhouse
+        )
         coord_arrays = shared_coord_arrays(ds)
         for dims, var_names in groups.items():
             group = names[dims]
@@ -239,8 +381,10 @@ class ADBCAdapter:
                 group if in_schema else f"{name}_{group}",
                 ds[var_names],
                 chunks,
+                dims=dims,
                 mode=mode,
                 temporary=temporary,
+                clickhouse=clickhouse,
                 db_schema_name=name if in_schema else None,
                 coord_arrays=coord_arrays,
                 **kwargs,
