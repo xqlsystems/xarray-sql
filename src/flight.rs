@@ -236,7 +236,7 @@ impl FlightSqlService for XarrayFlightSql {
         query: CommandGetCatalogs,
         request: Request<FlightDescriptor>,
     ) -> Result<Response<FlightInfo>, Status> {
-        let schema = query.clone().into_builder().schema();
+        let schema = query.into_builder().schema();
         flight_info(&schema, query, request.into_inner())
     }
 
