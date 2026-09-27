@@ -430,6 +430,8 @@ def _pack_src() -> bytes:
             for p in sorted((repo / rel).rglob("*.py"))
             if "__pycache__" not in p.parts
         ]
+    # The ADBC backend table, which ``adbc-*`` engines connect through.
+    paths += [repo / "tests" / "__init__.py", repo / "tests" / "_adbc.py"]
     # The crate sources, so `datafusion` cells can build the native
     # module where it is not already importable (see _ensure_native).
     for rel in [
@@ -567,13 +569,15 @@ def _markdown(results: list[dict]) -> str:
         if not rows:
             continue
         cases = list(dict.fromkeys(r["case"] for r in rows))
+        # The engines this run used, in the order they were asked for.
+        engines = list(dict.fromkeys(r["engine"] for r in rows))
         out.append(f"\n### {vm}\n")
-        out.append("| Case | " + " | ".join(ENGINES) + " | xarray reference |")
-        out.append("|---|" + "---|" * (len(ENGINES) + 1))
+        out.append("| Case | " + " | ".join(engines) + " | xarray reference |")
+        out.append("|---|" + "---|" * (len(engines) + 1))
         by = {(r["case"], r["engine"]): r for r in rows}
         for case in cases:
             cells = []
-            for engine in ENGINES:
+            for engine in engines:
                 r = by.get((case, engine))
                 if r is None:
                     cells.append("-")
