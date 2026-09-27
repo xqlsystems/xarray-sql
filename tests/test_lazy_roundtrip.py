@@ -375,3 +375,29 @@ def test_polars_spill_uses_streaming_sink(source, tmp_path):
         lf, template=source, chunks={"time": 20}, spill=tmp_path
     )
     xr.testing.assert_allclose(out.compute(), source)
+
+
+@pytest.mark.parametrize("zone", ["UTC", "Asia/Tokyo"])
+def test_chunked_round_trip_of_zone_aware_times(zone):
+    # Databases such as ClickHouse and PostgreSQL return times labeled
+    # with a zone; the template's numpy times are plain UTC instants.
+    ds = xr.Dataset(
+        {"temperature": (["time", "lat"], np.random.rand(8, 3))},
+        coords={
+            "time": pd.date_range("2021-01-01", periods=8, freq="h"),
+            "lat": [1.0, 2.0, 3.0],
+        },
+    )
+    result = pa.table(
+        {
+            "time": pa.array(np.repeat(ds.time.values, 3)).cast(
+                pa.timestamp("us", tz=zone)
+            ),
+            "lat": np.tile(ds.lat.values, 8),
+            "temperature": ds.temperature.values.ravel(),
+        }
+    )
+
+    out = xql.to_dataset(result, template=ds, chunks={"time": 2}, spill=True)
+
+    xr.testing.assert_allclose(out.compute(), ds)
