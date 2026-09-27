@@ -407,7 +407,8 @@ class ADBCAdapter:
         the tables itself: ``MergeTree`` tables sorted by their
         dimensions (``Memory`` for temporary ones), in a ClickHouse
         database named ``name`` for a mixed-dimension Dataset, with
-        timestamps declared ``DateTime64(9, 'UTC')``.
+        timestamps declared ``DateTime64(p, 'UTC')`` at the coordinate's
+        precision (``p`` is 9 for ``datetime64[ns]``).
 
         Registration runs inside the connection's current transaction:
         the tables are visible to this connection immediately, and to

@@ -263,19 +263,42 @@ creates each table itself and then appends to it:
 ```python
 from adbc_driver_manager import dbapi
 
-con = dbapi.connect(driver="clickhouse", db_kwargs={"uri": "http://localhost:8123/"})
+# dbc install clickhouse
+con = dbapi.connect(
+    driver="clickhouse",
+    db_kwargs={"uri": "http://localhost:8123/?user=default&password=..."},
+)
 xql.register(con, "era5", ds)
 ```
+
+Pass credentials as URI query parameters, as above; credentials in the
+URI's user-info part are not used. Driver 0.1.1 works with ClickHouse
+26.8 but fails every query against 26.9 (`decompression error: incorrect
+magic number`). [chDB](https://clickhouse.com/docs/chdb), ClickHouse
+embedded in-process, takes the same path with no server:
+`dbc install chdb`, then `driver="chdb"` and `uri="chdb://"`.
 
 Tables are `MergeTree` sorted by their dimensions
 (`ORDER BY (time, latitude, longitude)`), so ClickHouse's primary index
 skips data on dimension filters much as chunk pruning does elsewhere.
-Timestamps are declared `DateTime64(9, 'UTC')`, so a literal like
-`time >= '2020-01-01'` means UTC rather than the server's local zone.
+Timestamps are declared `DateTime64(p, 'UTC')`, with the precision `p`
+following the coordinate's resolution (9 for `datetime64[ns]`, 6 for
+`datetime64[us]`), so a literal like `time >= '2020-01-01'` means UTC
+rather than the server's local zone.
 Mixed-dimension Datasets go into a ClickHouse *database* named after
 the Dataset (`era5.surface`), and `temporary=True` creates `Memory`
 tables. To choose the engine or sort key yourself, create the table
 first and register with `mode="append"`.
+
+**MySQL.** Mixed-dimension Datasets go into a MySQL database named
+after the Dataset, queried as `era5.surface`; identifiers are quoted
+with backticks there (and on BigQuery), as those dialects require.
+
+**Durations.** A `timedelta64` coordinate (a forecast step, say)
+round-trips everywhere, however the database stores it: as a duration
+where one exists, as an integer count of its unit on SQLite and
+ClickHouse, and as intervals (DuckDB, PostgreSQL) or text (MySQL) that
+`to_dataset` converts back using the template.
 
 The cursor is a one-shot Arrow stream: `xql.to_dataset(cur, ...)`
 round-trips eagerly, and `chunks=` needs `spill=True`.
@@ -295,7 +318,7 @@ What each integration provides. Known issues and constraints live on
 | `geometry` column ([geospatial](geospatial.md#geoarrow-point-geometry-columns)) | annotated WKB passes through | native `GEOMETRY` (`"wkb"` encoding) | plain binary/struct | driver-dependent |
 | Mixed-dimension datasets | one schema, `name.group` tables | `name.group` views over `name_group` tables | `xql.arrow_datasets(ds, name)`, one per group | `name.group` tables in a schema; `name_group` without schemas |
 | Naming those tables (`table_names=`) | yes | yes | yes | yes |
-| Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` | `adbc-driver-manager >= 1.0` (tested on 1.12 with SQLite, DuckDB, PostgreSQL 18, and ClickHouse 26.8 drivers) |
+| Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` | `adbc-driver-manager >= 1.0` (tested on 1.12 with SQLite, DuckDB, PostgreSQL 18, MySQL 8.4, ClickHouse 26.8, and chDB 26.7 drivers) |
 
 [^spill-only]: Why DuckDB relations do not re-execute — and two other
     engine-specific issues worth knowing — is explained on
