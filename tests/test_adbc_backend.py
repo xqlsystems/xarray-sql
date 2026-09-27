@@ -70,6 +70,10 @@ class Backend:
     """How a temporary table's name is prefixed in queries."""
     drop_schema: str = "DROP SCHEMA IF EXISTS {} CASCADE"
     quote: str = '"'
+    time_literal: str = "'{}'"
+    """How a timestamp literal is written in a comparison."""
+    microseconds: bool = False
+    """Whether the database stores times only to the microsecond."""
     needs_uri: bool = False
 
     def connect(self):
@@ -107,6 +111,7 @@ BACKENDS = [
         "postgresql",
         _module_driver("adbc_driver_postgresql") or "postgresql",
         uri=_env("postgresql"),
+        microseconds=True,
         needs_uri=True,
     ),
     Backend(
@@ -115,6 +120,7 @@ BACKENDS = [
         uri=_env("mysql"),
         drop_schema="DROP DATABASE IF EXISTS {}",
         quote="`",
+        microseconds=True,
         needs_uri=True,
     ),
     Backend(
@@ -123,6 +129,7 @@ BACKENDS = [
         uri=_env("mariadb"),
         drop_schema="DROP DATABASE IF EXISTS {}",
         quote="`",
+        microseconds=True,
         needs_uri=True,
     ),
     Backend(
@@ -130,6 +137,7 @@ BACKENDS = [
         "trino",
         uri=_env("trino"),
         temporary=False,
+        time_literal="TIMESTAMP '{}'",
         needs_uri=True,
     ),
     Backend(
@@ -138,6 +146,7 @@ BACKENDS = [
         uri=_env("mssql"),
         drop_schema="DROP SCHEMA IF EXISTS {}",
         temporary_prefix="#",
+        microseconds=True,
         needs_uri=True,
     ),
 ]
@@ -161,6 +170,10 @@ class Database:
         name = f"{base}_{uuid.uuid4().hex[:8]}"
         self._created.append(name)
         return name
+
+    def quoted(self, identifier: str) -> str:
+        quote = self.backend.quote
+        return f"{quote}{identifier.replace(quote, quote * 2)}{quote}"
 
     def query(self, sql: str):
         cur = self.con.cursor()
@@ -219,6 +232,7 @@ def ds() -> xr.Dataset:
         attrs=dict(description="Synthetic weather."),
     ).chunk({"time": 4})
     weather["temperature"][0, 0, 0] = np.nan
+    weather["sst"][0, 0, 1] = np.nan
     return weather
 
 
@@ -386,6 +400,151 @@ def test_chunked_round_trip_spills_the_cursor(db, ds):
     )
 
 
+def test_time_filters_select_the_right_rows(db, ds):
+    # A literal means UTC everywhere, and SQLite's text times compare
+    # with it correctly.
+    table = db.name("weather")
+    xql.register(db.con, table, ds)
+    literal = db.backend.time_literal.format("2021-01-01 04:00:00")
+
+    cur = db.query(
+        f"SELECT time, lat, lon, temperature FROM {table} "
+        f"WHERE time >= {literal} ORDER BY time, lat, lon"
+    )
+    out = xql.to_dataset(cur, template=ds)
+
+    expected = ds.temperature.isel(time=slice(4, None))
+    xr.testing.assert_allclose(out.temperature, expected.compute())
+
+
+def test_awkward_variable_names_round_trip(db):
+    ds = xr.Dataset(
+        {
+            "select": ("x", np.arange(3.0)),
+            "wind speed": ("x", np.arange(3.0) * 2),
+            "Order": ("x", np.arange(3.0) * 3),
+        },
+        coords={"x": [10, 20, 30]},
+    ).chunk({"x": 3})
+    table = db.name("awkward")
+    xql.register(db.con, table, ds)
+
+    columns = ", ".join(
+        db.quoted(n) for n in ["x", "select", "wind speed", "Order"]
+    )
+    cur = db.query(f"SELECT {columns} FROM {table} ORDER BY {db.quoted('x')}")
+    out = xql.to_dataset(cur, template=ds)
+
+    xr.testing.assert_identical(out, ds.compute())
+
+
+def test_text_coordinates_round_trip(db):
+    ds = xr.Dataset(
+        {"count": ("station", np.arange(4))},
+        coords={"station": ["O'Hare", 'say "hi"', "東京", "Zürich"]},
+    ).chunk({"station": 4})
+    table = db.name("stations")
+    xql.register(db.con, table, ds)
+
+    cur = db.query(f"SELECT station, count FROM {table}")
+    out = xql.to_dataset(cur, template=ds)
+
+    xr.testing.assert_identical(
+        out.sortby("station"), ds.compute().sortby("station")
+    )
+
+
+def test_integer_extremes_round_trip(db):
+    info64 = np.iinfo(np.int64)
+    ds = xr.Dataset(
+        {
+            "i64": ("x", np.array([info64.min, 0, info64.max])),
+            "u8": ("x", np.array([0, 1, 255], dtype=np.uint8)),
+            "u32": ("x", np.array([0, 1, 2**32 - 1], dtype=np.uint32)),
+            "u64": ("x", np.array([0, 1, 2**62], dtype=np.uint64)),
+        },
+        coords={"x": [0, 1, 2]},
+    ).chunk({"x": 3})
+    table = db.name("extremes")
+    xql.register(db.con, table, ds)
+
+    cur = db.query(f"SELECT x, i64, u8, u32, u64 FROM {table} ORDER BY x")
+    out = xql.to_dataset(cur, template=ds)
+
+    xr.testing.assert_identical(out, ds.compute())
+
+
+def test_uint64_beyond_int64_is_never_silently_wrong(db):
+    ds = xr.Dataset(
+        {"u64": ("x", np.array([2**63, 2**64 - 1], dtype=np.uint64))},
+        coords={"x": [0, 1]},
+    ).chunk({"x": 2})
+    table = db.name("huge")
+    try:
+        xql.register(db.con, table, ds)
+    except (ValueError, dbapi.Error):
+        return  # refused loudly: acceptable
+
+    cur = db.query(f"SELECT x, u64 FROM {table} ORDER BY x")
+    try:
+        out = xql.to_dataset(cur, template=ds)
+    except (ValueError, TypeError, dbapi.Error):
+        return  # refused loudly on the way back: acceptable
+    xr.testing.assert_identical(out, ds.compute())
+
+
+def test_nanosecond_times_are_kept_or_truncation_is_reported(db):
+    times = pd.to_datetime(["2021-01-01", "2021-01-01"]) + pd.to_timedelta(
+        [1, 2], unit="ns"
+    )
+    ds = xr.Dataset({"v": ("time", [1.0, 2.0])}, coords={"time": times}).chunk(
+        {"time": 2}
+    )
+    table = db.name("nanos")
+    if db.backend.microseconds:
+        with pytest.warns(RuntimeWarning, match="microsecond"):
+            xql.register(db.con, table, ds)
+        return
+
+    xql.register(db.con, table, ds)
+
+    cur = db.query(f"SELECT time, v FROM {table} ORDER BY time")
+    xr.testing.assert_identical(xql.to_dataset(cur, template=ds), ds.compute())
+
+
+def test_many_chunks_ingest(db):
+    ds = xr.Dataset(
+        {"v": (["time", "x"], np.arange(200_000.0).reshape(1000, 200))},
+        coords={"time": np.arange(1000), "x": np.arange(200)},
+    ).chunk({"time": 100})
+    table = db.name("big")
+    xql.register(db.con, table, ds)
+
+    count, total = db.query(f"SELECT COUNT(*), SUM(v) FROM {table}").fetchone()
+    assert (count, float(total)) == (200_000, float(ds.v.sum()))
+
+
+def test_empty_result_round_trips(db, ds):
+    table = db.name("weather")
+    xql.register(db.con, table, ds)
+
+    cur = db.query(
+        f"SELECT time, lat, lon, temperature FROM {table} WHERE lat > 1000"
+    )
+    out = xql.to_dataset(cur, template=ds)
+
+    assert out.temperature.size == 0
+
+
+def test_long_table_name(db, ds):
+    table = db.name("t" * 51)  # 60 characters with the unique suffix
+    assert len(table) == 60
+    xql.register(db.con, table, ds)
+
+    count = db.query(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    assert count == 8 * 5 * 6
+
+
 # One database's specifics ---------------------------------------------------
 
 
@@ -427,21 +586,6 @@ def test_postgresql_uses_an_existing_schema(db, mixed_ds):
 
     count = db.query(f"SELECT COUNT(*) FROM {name}.surface").fetchone()[0]
     assert count == 6 * 3 * 4
-
-
-def test_clickhouse_time_literals_mean_utc(db, ds):
-    _only(db, "clickhouse", "chdb")
-    table = db.name("weather")
-    xql.register(db.con, table, ds)
-
-    cur = db.query(
-        f"SELECT time, lat, lon, temperature FROM {table} "
-        "WHERE time >= '2021-01-01 04:00:00' ORDER BY time, lat, lon"
-    )
-    out = xql.to_dataset(cur, template=ds)
-
-    expected = ds.temperature.isel(time=slice(4, None))
-    xr.testing.assert_allclose(out.temperature, expected.compute())
 
 
 def test_mysql_keeps_the_default_database(db, mixed_ds):
