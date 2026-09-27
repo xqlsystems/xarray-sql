@@ -117,6 +117,33 @@ def _as_dtype(coord: xr.DataArray, dtype: np.dtype) -> xr.DataArray:
     return coord.astype(dtype)
 
 
+_NARROWINGS = {("i", "b"), ("u", "b"), ("f", "f")}
+"""(result kind, template kind) pairs a database may have widened."""
+
+
+def _restore_dtype(var: xr.DataArray, dtype: np.dtype) -> xr.DataArray:
+    """*var* as the template's *dtype*, when that loses nothing.
+
+    Databases without a type widen it: SQLite stores ``float32`` as
+    ``float64`` and ``bool`` as an integer, MySQL ``bool`` as ``int8``.
+    A plain ``SELECT`` of such a column narrows back exactly; a derived
+    value (an ``AVG`` of ``float32``, a ``SUM`` of ``bool``) does not, and
+    keeps the result's dtype. Only in-memory values can be checked, so a
+    lazily reconstructed variable keeps the result's dtype too.
+    """
+    if var.dtype == dtype or not isinstance(var.data, np.ndarray):
+        return var
+    if (var.dtype.kind, dtype.kind) not in _NARROWINGS:
+        return var
+    values = var.values
+    narrowed = values.astype(dtype)
+    if not np.array_equal(
+        narrowed.astype(values.dtype), values, equal_nan=True
+    ):
+        return var
+    return var.copy(data=narrowed)
+
+
 def _apply_template(ds: xr.Dataset, template: xr.Dataset) -> xr.Dataset:
     """Recover metadata that the forward SQL pivot strips.
 
@@ -130,6 +157,8 @@ def _apply_template(ds: xr.Dataset, template: xr.Dataset) -> xr.Dataset:
       ``AVG`` or a null-introducing filter), and reattaching the
       source's packing would make a later ``ds.to_netcdf()`` write
       corrupt values.
+    * Data-variable dtype, where the database widened it and every value
+      survives the narrowing exactly (see ``_restore_dtype``).
     * Dim-coordinate dtype, where SQL upcasted (datetime is the
       canonical case).
     * Non-dim coordinates whose dims are all present in ``ds`` (scalar
@@ -140,10 +169,11 @@ def _apply_template(ds: xr.Dataset, template: xr.Dataset) -> xr.Dataset:
     """
     out = ds.copy()
 
-    # 1. Data-var attrs / encoding for vars present in the template.
-    #    Aggregation aliases absent from template intentionally inherit nothing.
+    # 1. Data-var dtype, attrs, and encoding for vars present in the
+    #    template. Aggregation aliases absent from template inherit nothing.
     for name in list(out.data_vars):
         if name in template.data_vars:
+            out[name] = _restore_dtype(out[name], template[name].dtype)
             out[name].attrs = dict(template[name].attrs)
             # Drop dtype-bound encoding keys; SQL may have changed dtype.
             enc = {

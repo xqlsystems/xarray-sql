@@ -511,15 +511,21 @@ def _as_durations(array: pa.Array) -> pa.Array:
     return pa.array(pd.to_timedelta(array.to_pandas()), pa.duration("ns"))
 
 
+def _as_timestamps(array: pa.Array) -> pa.Array:
+    """Times a database returned as text (SQLite has no time type)."""
+    return pa.array(pd.to_datetime(array.to_pandas()), pa.timestamp("ns"))
+
+
 def _stream_to_parquet(
     result: Any, path: str, template: xr.Dataset | None = None
 ) -> None:
     """Write a one-shot Arrow result to Parquet, batch by batch.
 
-    Columns the template holds as ``timedelta64`` coordinates but the
-    database returned as intervals or text are written as durations:
-    Parquet cannot store month-day-nano intervals, and the windows the
-    chunked reconstruction builds compare durations, not text.
+    Coordinates the template holds as ``timedelta64`` or ``datetime64``
+    but the database returned as intervals or text are written as
+    durations and timestamps: Parquet cannot store month-day-nano
+    intervals, and the windows the chunked reconstruction builds compare
+    times, not text.
     """
     opened = _open_stream(result)
     if opened is None:
@@ -528,25 +534,25 @@ def _stream_to_parquet(
             "Arrow stream."
         )
     schema, batches = opened
-    durations = [
-        i
-        for i, field in enumerate(schema)
-        if template is not None
-        and field.name in template.coords
-        and template.coords[field.name].dtype.kind == "m"
-        and (
-            pa.types.is_interval(field.type)
-            or pa.types.is_string(field.type)
-            or pa.types.is_large_string(field.type)
+    conversions = {}
+    for i, field in enumerate(schema):
+        if template is None or field.name not in template.coords:
+            continue
+        kind = template.coords[field.name].dtype.kind
+        text = pa.types.is_string(field.type) or pa.types.is_large_string(
+            field.type
         )
-    ]
-    for i in durations:
-        schema = schema.set(i, schema.field(i).with_type(pa.duration("ns")))
+        if kind == "m" and (text or pa.types.is_interval(field.type)):
+            conversions[i] = (_as_durations, pa.duration("ns"))
+        elif kind == "M" and text:
+            conversions[i] = (_as_timestamps, pa.timestamp("ns"))
+    for i, (_, arrow_type) in conversions.items():
+        schema = schema.set(i, schema.field(i).with_type(arrow_type))
     with pq.ParquetWriter(path, schema) as writer:
         for batch in batches:
-            if durations:
+            if conversions:
                 columns = list(batch.columns)
-                for i in durations:
-                    columns[i] = _as_durations(columns[i])
+                for i, (convert, _) in conversions.items():
+                    columns[i] = convert(columns[i])
                 batch = pa.RecordBatch.from_arrays(columns, schema=schema)
             writer.write_batch(batch)
