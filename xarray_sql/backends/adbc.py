@@ -30,10 +30,9 @@ from __future__ import annotations
 
 import contextlib
 import warnings
-from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any, Literal, TypeGuard
+from collections.abc import Iterator, Mapping
+from typing import TYPE_CHECKING, Any, TypeGuard
 
-import pyarrow as pa
 import xarray as xr
 
 from ..df import (
@@ -43,6 +42,12 @@ from ..df import (
     resolve_table_names,
     shared_coord_arrays,
 )
+from ._adbc_dialects import (
+    Dialect,
+    IngestMode,
+    dialect_for,
+    durations_as_integers,
+)
 from .base import register_adapter
 from .pyarrow import XarrayPushdownDataset
 
@@ -51,165 +56,6 @@ if TYPE_CHECKING:
 
 __all__ = ["ADBCAdapter"]
 
-IngestMode = Literal["create", "append", "replace", "create_append"]
-
-
-_BACKTICK_VENDORS = ("mysql", "mariadb", "bigquery")
-"""Databases whose SQL quotes identifiers with backticks, not ``"``.
-
-MySQL reads ``"era5"`` as a string unless ``ANSI_QUOTES`` is set, and
-BigQuery always does.
-"""
-
-
-def _quote(identifier: str, vendor: str = "") -> str:
-    """Render *identifier* as a quoted SQL identifier in *vendor*'s SQL."""
-    if any(name in vendor for name in _BACKTICK_VENDORS):
-        escaped = identifier.replace("`", "``")
-        return f"`{escaped}`"
-    escaped = identifier.replace('"', '""')
-    return f'"{escaped}"'
-
-
-def _vendor(con: dbapi.Connection) -> str:
-    """The lowercase name of the database behind *con*; ``""`` if unknown.
-
-    Drivers name their database in ``adbc_get_info``. The ClickHouse
-    driver does not implement it, so only a driver without it is probed
-    with a query against ClickHouse's ``system.one`` table.
-    """
-    try:
-        info = con.adbc_get_info()
-    except Exception:  # noqa: BLE001 — unimplemented; probe instead
-        pass
-    else:
-        return str(info.get("vendor_name") or "").lower()
-    try:
-        with con.cursor() as cur:
-            cur.execute("SELECT 1 FROM system.one")
-            cur.fetchall()
-    except Exception:  # noqa: BLE001
-        return ""
-    return "clickhouse"
-
-
-_CLICKHOUSE_TYPES = {
-    pa.bool_(): "Bool",
-    pa.int8(): "Int8",
-    pa.int16(): "Int16",
-    pa.int32(): "Int32",
-    pa.int64(): "Int64",
-    pa.uint8(): "UInt8",
-    pa.uint16(): "UInt16",
-    pa.uint32(): "UInt32",
-    pa.uint64(): "UInt64",
-    pa.float16(): "Float32",
-    pa.float32(): "Float32",
-    pa.float64(): "Float64",
-    pa.string(): "String",
-    pa.large_string(): "String",
-    pa.binary(): "String",
-    pa.large_binary(): "String",
-    pa.date32(): "Date32",
-}
-
-_TIMESTAMP_PRECISION = {"s": 0, "ms": 3, "us": 6, "ns": 9}
-
-
-def _clickhouse_type(field: pa.Field, key: bool) -> str:
-    """The ClickHouse column type for an Arrow field.
-
-    Timestamps without a zone are declared UTC, which is what their
-    values mean; ClickHouse also parses string literals compared with a
-    column in that column's zone, so ``time >= '2020-01-01'`` means UTC
-    rather than the server's local time. Sort-key columns are not
-    ``Nullable``. Floats are: the scan writes NaN as null so aggregates
-    skip missing values, and a plain ``Float64`` column would store that
-    null as 0.
-    """
-    arrow_type = field.type
-    if pa.types.is_timestamp(arrow_type):
-        precision = _TIMESTAMP_PRECISION[arrow_type.unit]
-        zone = arrow_type.tz or "UTC"
-        name = f"DateTime64({precision}, '{zone}')"
-    elif arrow_type in _CLICKHOUSE_TYPES:
-        name = _CLICKHOUSE_TYPES[arrow_type]
-    else:
-        raise TypeError(
-            f"no ClickHouse column type for {field.name!r} of Arrow type "
-            f"{arrow_type}; create the table yourself and register with "
-            f'mode="append"'
-        )
-    if key or not field.nullable:
-        return name
-    return f"Nullable({name})"
-
-
-def _clickhouse_ddl(
-    table: str,
-    schema: pa.Schema,
-    dims: tuple[str, ...],
-    *,
-    mode: IngestMode,
-    temporary: bool,
-    database: str | None,
-) -> list[str]:
-    """Statements that prepare *table* for an append-mode ingest.
-
-    ClickHouse's ADBC driver only appends, so the table is created here
-    for every other mode. Tables are sorted by their dimensions, so
-    ClickHouse's primary index skips data on dimension predicates the
-    way chunk pruning does in the other engines.
-    """
-    if mode == "append":
-        return []
-    target = _quote(table)
-    if database is not None:
-        target = f"{_quote(database)}.{target}"
-    columns = ", ".join(
-        f"{_quote(field.name)} {_clickhouse_type(field, field.name in dims)}"
-        for field in schema
-    )
-    kind = "TEMPORARY TABLE" if temporary else "TABLE"
-    if temporary:
-        engine = "ENGINE = Memory"
-    else:
-        order = ", ".join(_quote(dim) for dim in dims) or "tuple()"
-        engine = f"ENGINE = MergeTree ORDER BY ({order})"
-    statements = []
-    if mode == "replace":
-        statements.append(f"DROP {kind} IF EXISTS {target}")
-    exists = " IF NOT EXISTS" if mode == "create_append" else ""
-    statements.append(f"CREATE {kind}{exists} {target} ({columns}) {engine}")
-    return statements
-
-
-_NO_DURATION_VENDORS = ("sqlite", "clickhouse")
-"""Databases with no duration type; timedeltas are stored as integers."""
-
-
-def _durations_as_integers(
-    reader: pa.RecordBatchReader,
-) -> pa.RecordBatchReader:
-    """*reader* with duration columns as integer counts of their unit.
-
-    The template's ``timedelta64`` unit matches the Arrow unit the scan
-    derived from it, so [xarray_sql.to_dataset][] reads the counts back
-    as the original durations.
-    """
-    fields = [
-        pa.field(f.name, pa.int64(), f.nullable, f.metadata)
-        if pa.types.is_duration(f.type)
-        else f
-        for f in reader.schema
-    ]
-    if all(f.type == g.type for f, g in zip(fields, reader.schema)):
-        return reader
-    schema = pa.schema(fields, metadata=reader.schema.metadata)
-    return pa.RecordBatchReader.from_batches(
-        schema, (batch.cast(schema) for batch in reader)
-    )
-
 
 def _ingest(
     con: dbapi.Connection,
@@ -217,10 +63,11 @@ def _ingest(
     ds: xr.Dataset,
     chunks: Chunks,
     *,
+    dialect: Dialect,
     dims: tuple[str, ...],
     mode: IngestMode,
     temporary: bool,
-    vendor: str,
+    ingest_options: Mapping[str, str] | None,
     db_schema_name: str | None = None,
     **kwargs: Any,
 ) -> None:
@@ -232,10 +79,10 @@ def _ingest(
     batches, so the source read and the database write overlap.
     """
     reader = XarrayPushdownDataset(ds, chunks, **kwargs).scanner().to_reader()
-    if vendor in _NO_DURATION_VENDORS:
-        reader = _durations_as_integers(reader)
-    if vendor == "clickhouse":
-        for statement in _clickhouse_ddl(
+    if not dialect.durations:
+        reader = durations_as_integers(reader)
+    if dialect.table_ddl is not None:
+        for statement in dialect.table_ddl(
             table,
             reader.schema,
             dims,
@@ -250,13 +97,15 @@ def _ingest(
     in_database: contextlib.AbstractContextManager[None] = (
         contextlib.nullcontext()
     )
-    if db_schema_name is not None and vendor.startswith(("mysql", "mariadb")):
-        # The MySQL driver creates the table in the connection's default
-        # database but inserts into the one it was given, so name the
-        # target by making it the default instead.
-        in_database = _default_database(con, db_schema_name, vendor)
+    if (
+        db_schema_name is not None
+        and dialect.target_schema == "default_database"
+    ):
+        in_database = _default_database(con, db_schema_name, dialect)
         target_schema = None
     with in_database, con.cursor() as cur:
+        if ingest_options:
+            cur.adbc_statement.set_options(**ingest_options)
         cur.adbc_ingest(
             table,
             reader,
@@ -268,23 +117,25 @@ def _ingest(
 
 @contextlib.contextmanager
 def _default_database(
-    con: dbapi.Connection, database: str, vendor: str
+    con: dbapi.Connection, database: str, dialect: Dialect
 ) -> Iterator[None]:
-    """Make *database* the MySQL connection's default while in the block.
+    """Make *database* the connection's default while in the block.
 
-    The previous default is restored afterwards. MySQL cannot unset a
-    default database, so a connection that had none keeps *database*.
+    For drivers that create an ingest's table in the default database
+    whatever target schema they are given. The previous default is
+    restored afterwards; MySQL cannot unset a default database, so a
+    connection that had none keeps *database*.
     """
     with con.cursor() as cur:
         cur.execute("SELECT DATABASE()")
         (previous,) = cur.fetchone()
-        cur.execute(f"USE {_quote(database, vendor)}")
+        cur.execute(f"USE {dialect.quote_identifier(database)}")
     try:
         yield
     finally:
         if previous is not None:
             with con.cursor() as cur:
-                cur.execute(f"USE {_quote(previous, vendor)}")
+                cur.execute(f"USE {dialect.quote_identifier(previous)}")
 
 
 def _schema_exists(con: dbapi.Connection, name: str) -> bool:
@@ -313,27 +164,37 @@ def _connection_usable(con: dbapi.Connection) -> bool:
     return True
 
 
-def _create_schema(con: dbapi.Connection, name: str, *, vendor: str) -> bool:
+def _flat(name: str, reason: str) -> bool:
+    """Warn that *name*'s groups become flat tables; always ``False``."""
+    warnings.warn(
+        f"Registering the dimension groups of {name!r} as flat "
+        f"{name}_<group> tables: {reason}.",
+        RuntimeWarning,
+        stacklevel=4,
+    )
+    return False
+
+
+def _create_schema(con: dbapi.Connection, name: str, dialect: Dialect) -> bool:
     """Ensure the database schema *name* exists; whether it does.
 
     An existing schema is used as is: creating it can need privileges on
     the whole database (PostgreSQL checks them even for ``IF NOT
     EXISTS``) that a role granted only that schema lacks.
 
-    Not every ADBC database has schemas (SQLite does not), and creating
-    one can fail for lack of privileges. When the connection survives the
-    failure, the caller falls back to flat table names. On databases
-    where a failed statement aborts the transaction (PostgreSQL), nothing
-    after it could run, so this raises instead of falling back. In
-    ClickHouse, a database plays the role of a schema.
+    Creating one can fail for lack of privileges. When the connection
+    survives the failure, the caller falls back to flat table names. On
+    databases where a failed statement aborts the transaction
+    (PostgreSQL), nothing after it could run, so this raises instead.
     """
+    if not dialect.schemas:
+        return _flat(name, f"{dialect.name} has no schemas to hold them")
     if _schema_exists(con, name):
         return True
-    kind = "DATABASE" if vendor == "clickhouse" else "SCHEMA"
-    target = _quote(name, vendor)
+    target = dialect.quote_identifier(name)
     try:
         with con.cursor() as cur:
-            cur.execute(f"CREATE {kind} IF NOT EXISTS {target}")
+            cur.execute(f"CREATE {dialect.schema_kind} IF NOT EXISTS {target}")
     except Exception as exc:
         if not _connection_usable(con):
             raise RuntimeError(
@@ -344,14 +205,7 @@ def _create_schema(con: dbapi.Connection, name: str, *, vendor: str) -> bool:
                 f"the privilege to), or pass temporary=True to register "
                 f"flat {name}_<group> tables instead."
             ) from exc
-        warnings.warn(
-            f"Could not create the {name!r} schema to hold the dimension "
-            f"groups of {name!r} ({exc}); registering them as flat "
-            f"{name}_<group> tables instead.",
-            RuntimeWarning,
-            stacklevel=4,
-        )
-        return False
+        return _flat(name, f"could not create the {name!r} schema ({exc})")
     return True
 
 
@@ -379,6 +233,7 @@ class ADBCAdapter:
         table_names: TableNames = None,
         mode: IngestMode = "create",
         temporary: bool = False,
+        ingest_options: Mapping[str, str] | None = None,
         **kwargs: Any,
     ) -> dbapi.Connection:
         """Ingest ``ds`` into tables on an ADBC connection.
@@ -421,7 +276,12 @@ class ADBCAdapter:
                 ``"replace"`` drops and recreates it, ``"append"`` and
                 ``"create_append"`` add rows to it.
             temporary: Create temporary tables, which the database drops
-                when the connection closes.
+                when the connection closes. Raises ``ValueError`` on
+                databases whose driver cannot (DataFusion, Trino, Spark,
+                BigQuery, Databricks, Snowflake).
+            ingest_options: Driver-specific statement options set on each
+                ingest, e.g. Spark's
+                ``{"spark.ingest.staging_area_uri": "s3://bucket/path"}``.
             **kwargs: Forwarded to
                 [XarrayPushdownDataset][xarray_sql.backends.pyarrow.XarrayPushdownDataset]
                 (``batch_size``, ``prefetch``, ``prefetch_bytes``,
@@ -429,22 +289,29 @@ class ADBCAdapter:
         """
         groups = group_vars_by_dims(ds)
         names = resolve_table_names(ds, table_names, case_insensitive=True)
-        vendor = _vendor(con)
+        dialect = dialect_for(con)
+        if temporary and not dialect.temporary_tables:
+            raise ValueError(
+                f"{dialect.name}'s ADBC driver does not support temporary "
+                f"tables; register without temporary=True and drop the "
+                f"tables when done."
+            )
         if len(groups) <= 1:
             _ingest(
                 con,
                 name,
                 ds,
                 chunks,
+                dialect=dialect,
                 dims=next(iter(groups), ()),
                 mode=mode,
                 temporary=temporary,
-                vendor=vendor,
+                ingest_options=ingest_options,
                 **kwargs,
             )
             return con
 
-        in_schema = not temporary and _create_schema(con, name, vendor=vendor)
+        in_schema = not temporary and _create_schema(con, name, dialect)
         coord_arrays = shared_coord_arrays(ds)
         for dims, var_names in groups.items():
             group = names[dims]
@@ -453,10 +320,11 @@ class ADBCAdapter:
                 group if in_schema else f"{name}_{group}",
                 ds[var_names],
                 chunks,
+                dialect=dialect,
                 dims=dims,
                 mode=mode,
                 temporary=temporary,
-                vendor=vendor,
+                ingest_options=ingest_options,
                 db_schema_name=name if in_schema else None,
                 coord_arrays=coord_arrays,
                 **kwargs,
