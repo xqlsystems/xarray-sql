@@ -150,7 +150,7 @@ class FlightSQLServer:
     @property
     def is_running(self) -> bool:
         """Whether the server is accepting connections."""
-        return self._native.is_running()
+        return bool(self._native.is_running())
 
     def wait(self, poll_interval: float = 0.5) -> None:
         """Block until the server stops; Ctrl+C shuts it down."""
