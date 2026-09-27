@@ -1,35 +1,45 @@
-"""Tests for the ADBC engine adapter.
+"""Tests for the ADBC engine adapter, run against every available database.
 
-``xql.register`` ingests a Dataset into any database reachable through an
-ADBC driver, and ``xql.to_dataset`` rebuilds a labeled Dataset from the
-driver's Arrow cursor. Two drivers cover the two shapes of database:
-SQLite, which has no schemas and stores timestamps as text, and DuckDB's
-built-in ADBC driver, which has schemas and native temporal types.
+``xql.register`` ingests a Dataset into any database with an ADBC driver,
+and ``xql.to_dataset`` rebuilds a labeled Dataset from the driver's Arrow
+cursor. The contract tests below run once per backend in ``BACKENDS``;
+tests of one database's specifics follow them.
+
+SQLite and DuckDB always run. The others run when available:
+
+- ``chdb`` and ``datafusion`` run in-process once their drivers are
+  installed (``dbc install chdb datafusion``).
+- ``clickhouse``, ``postgresql``, ``mysql``, ``mariadb``, and ``trino``
+  need a server: set ``XARRAY_SQL_TEST_<NAME>_URI`` to its URI (and
+  ``XARRAY_SQL_TEST_CLICKHOUSE_DRIVER`` for a ClickHouse driver that
+  ``dbc`` did not install).
 """
 
+import dataclasses
 import importlib.util
 import os
+import uuid
 
 import numpy as np
 import pandas as pd
-import pyarrow as pa
 import pytest
 import xarray as xr
 
 import xarray_sql as xql
-from xarray_sql.backends.adbc import _clickhouse_ddl
 
 dbapi = pytest.importorskip("adbc_driver_manager.dbapi")
-sqlite_dbapi = pytest.importorskip("adbc_driver_sqlite.dbapi")
-
-NAMES = {
-    ("time", "lat", "lon"): "surface",
-    ("time", "level", "lat", "lon"): "atmosphere",
-}
 
 
-def _duckdb_driver_path() -> str | None:
-    """Path of the shared library holding DuckDB's ADBC entrypoint."""
+def _module_driver(module: str) -> str | None:
+    """The driver library an ``adbc_driver_*`` Python package ships."""
+    try:
+        return importlib.import_module(module)._driver_path()
+    except ImportError:
+        return None
+
+
+def _duckdb_driver() -> str | None:
+    """The shared library holding DuckDB's ADBC entrypoint."""
     for module in ("_duckdb", "duckdb.duckdb"):
         try:
             spec = importlib.util.find_spec(module)
@@ -40,43 +50,156 @@ def _duckdb_driver_path() -> str | None:
     return None
 
 
-def _connect(driver: str):
-    if driver == "sqlite":
-        return sqlite_dbapi.connect()
-    path = _duckdb_driver_path()
-    if path is None:
-        pytest.skip("duckdb is not installed")
-    return dbapi.connect(driver=path, entrypoint="duckdb_adbc_init")
+def _env(name: str) -> str | None:
+    return os.environ.get(f"XARRAY_SQL_TEST_{name.upper()}_URI")
 
 
-@pytest.fixture(params=["sqlite", "duckdb"])
-def con(request):
-    connection = _connect(request.param)
-    yield connection
-    connection.close()
+@dataclasses.dataclass(frozen=True)
+class Backend:
+    """A database to run the contract tests against."""
+
+    name: str
+    driver: str | None
+    uri: str | None = None
+    entrypoint: str | None = None
+    schemas: bool = True
+    """Whether mixed-dimension Datasets register as ``name.group``."""
+    temporary: bool = True
+    """Whether ``temporary=True`` is supported."""
+    drop_schema: str = "DROP SCHEMA IF EXISTS {} CASCADE"
+    quote: str = '"'
+    needs_uri: bool = False
+
+    def connect(self):
+        if self.driver is None or (self.needs_uri and not self.uri):
+            pytest.skip(f"{self.name} is not available; see module docstring")
+        kwargs = {"db_kwargs": {"uri": self.uri}} if self.uri else {}
+        if self.entrypoint:
+            kwargs["entrypoint"] = self.entrypoint
+        try:
+            return dbapi.connect(driver=self.driver, **kwargs)
+        except dbapi.Error as exc:
+            if self.needs_uri:
+                raise
+            pytest.skip(f"{self.name} driver is not installed ({exc})")
 
 
-@pytest.fixture
-def sqlite_con():
-    connection = _connect("sqlite")
-    yield connection
-    connection.close()
+BACKENDS = [
+    Backend("sqlite", _module_driver("adbc_driver_sqlite"), schemas=False),
+    Backend("duckdb", _duckdb_driver(), entrypoint="duckdb_adbc_init"),
+    Backend(
+        "chdb",
+        "chdb",
+        uri="chdb://",
+        drop_schema="DROP DATABASE IF EXISTS {}",
+    ),
+    Backend("datafusion", "datafusion", temporary=False),
+    Backend(
+        "clickhouse",
+        os.environ.get("XARRAY_SQL_TEST_CLICKHOUSE_DRIVER", "clickhouse"),
+        uri=_env("clickhouse"),
+        drop_schema="DROP DATABASE IF EXISTS {}",
+        needs_uri=True,
+    ),
+    Backend(
+        "postgresql",
+        _module_driver("adbc_driver_postgresql") or "postgresql",
+        uri=_env("postgresql"),
+        needs_uri=True,
+    ),
+    Backend(
+        "mysql",
+        "mysql",
+        uri=_env("mysql"),
+        drop_schema="DROP DATABASE IF EXISTS {}",
+        quote="`",
+        needs_uri=True,
+    ),
+    Backend(
+        "mariadb",
+        "mysql",
+        uri=_env("mariadb"),
+        drop_schema="DROP DATABASE IF EXISTS {}",
+        quote="`",
+        needs_uri=True,
+    ),
+    Backend(
+        "trino",
+        "trino",
+        uri=_env("trino"),
+        temporary=False,
+        needs_uri=True,
+    ),
+]
+
+NAMES = {
+    ("time", "lat", "lon"): "surface",
+    ("time", "level", "lat", "lon"): "atmosphere",
+}
 
 
-@pytest.fixture
-def duckdb_con():
-    connection = _connect("duckdb")
-    yield connection
-    connection.close()
+class Database:
+    """A connection plus the unique names a test creates, dropped after."""
+
+    def __init__(self, backend: Backend, con) -> None:
+        self.backend = backend
+        self.con = con
+        self._created: list[str] = []
+
+    def name(self, base: str) -> str:
+        """A fresh table (or schema) name, dropped when the test ends."""
+        name = f"{base}_{uuid.uuid4().hex[:8]}"
+        self._created.append(name)
+        return name
+
+    def query(self, sql: str):
+        cur = self.con.cursor()
+        cur.execute(sql)
+        return cur
+
+    def cleanup(self) -> None:
+        postgresql = self.backend.name == "postgresql"
+        if postgresql:
+            self.con.rollback()
+        for name in self._created:
+            quoted = f"{self.backend.quote}{name}{self.backend.quote}"
+            for statement in (
+                f"DROP TABLE IF EXISTS {quoted}",
+                self.backend.drop_schema.format(quoted),
+            ):
+                try:
+                    self.query(statement).close()
+                except dbapi.Error:
+                    if postgresql:
+                        self.con.rollback()
+        if postgresql:
+            self.con.commit()
+
+
+@pytest.fixture(params=BACKENDS, ids=[b.name for b in BACKENDS])
+def db(request):
+    backend = request.param
+    database = Database(backend, backend.connect())
+    yield database
+    database.cleanup()
+    database.con.close()
 
 
 @pytest.fixture
 def ds() -> xr.Dataset:
-    np.random.seed(3)
-    return xr.Dataset(
+    rng = np.random.default_rng(3)
+    weather = xr.Dataset(
         data_vars=dict(
-            temperature=(["time", "lat", "lon"], np.random.randn(8, 5, 6)),
-            precipitation=(["time", "lat", "lon"], np.random.rand(8, 5, 6)),
+            temperature=(
+                ["time", "lat", "lon"],
+                rng.standard_normal((8, 5, 6)),
+            ),
+            count=(["time", "lat", "lon"], rng.integers(0, 100, (8, 5, 6))),
+            sst=(
+                ["time", "lat", "lon"],
+                rng.random((8, 5, 6)).astype("float32"),
+            ),
+            land=(["time", "lat", "lon"], rng.random((8, 5, 6)) > 0.5),
         ),
         coords=dict(
             time=pd.date_range("2021-01-01", periods=8, freq="h"),
@@ -85,17 +208,19 @@ def ds() -> xr.Dataset:
         ),
         attrs=dict(description="Synthetic weather."),
     ).chunk({"time": 4})
+    weather["temperature"][0, 0, 0] = np.nan
+    return weather
 
 
 @pytest.fixture
 def mixed_ds() -> xr.Dataset:
-    np.random.seed(11)
+    rng = np.random.default_rng(11)
     return xr.Dataset(
         {
-            "t2m": (["time", "lat", "lon"], np.random.rand(6, 3, 4)),
+            "t2m": (["time", "lat", "lon"], rng.random((6, 3, 4))),
             "temperature": (
                 ["time", "level", "lat", "lon"],
-                np.random.rand(6, 2, 3, 4),
+                rng.random((6, 2, 3, 4)),
             ),
         },
         coords={
@@ -107,33 +232,46 @@ def mixed_ds() -> xr.Dataset:
     ).chunk({"time": 2})
 
 
-def _query(con, sql: str):
-    cur = con.cursor()
-    cur.execute(sql)
-    return cur
+@pytest.fixture
+def forecast() -> xr.Dataset:
+    rng = np.random.default_rng(7)
+    return xr.Dataset(
+        {"t2m": (["step", "lat"], rng.random((4, 2)))},
+        coords={
+            "step": pd.to_timedelta([0, 6, 12, 18], unit="h"),
+            "lat": [1.0, 2.0],
+        },
+    ).chunk({"step": 2})
 
 
-def test_full_scan_round_trips(con, ds):
-    xql.register(con, "weather", ds)
-
-    cur = _query(
-        con,
-        "SELECT time, lat, lon, temperature, precipitation FROM weather "
-        "ORDER BY time, lat, lon",
+def _select_all(db, table: str):
+    return db.query(
+        f"SELECT time, lat, lon, temperature, count, sst, land FROM {table} "
+        "ORDER BY time, lat, lon"
     )
-    out = xql.to_dataset(cur, template=ds)
-
-    xr.testing.assert_allclose(out, ds.compute())
-    assert out.attrs == ds.attrs
 
 
-def test_aggregation_round_trips_on_surviving_dims(con, ds):
-    xql.register(con, "weather", ds)
+# The contract, on every backend -------------------------------------------
 
-    cur = _query(
-        con,
-        "SELECT lat, lon, AVG(temperature) AS temperature FROM weather "
-        "GROUP BY lat, lon ORDER BY lat, lon",
+
+def test_round_trip_keeps_values_and_dtypes(db, ds):
+    table = db.name("weather")
+    xql.register(db.con, table, ds)
+
+    out = xql.to_dataset(_select_all(db, table), template=ds)
+
+    # NaN survives as missing, and bool/float32 come back as themselves
+    # even where the database widens them (SQLite, MySQL).
+    xr.testing.assert_identical(out, ds.compute())
+
+
+def test_aggregates_skip_missing_values(db, ds):
+    table = db.name("weather")
+    xql.register(db.con, table, ds)
+
+    cur = db.query(
+        f"SELECT lat, lon, AVG(temperature) AS temperature FROM {table} "
+        "GROUP BY lat, lon ORDER BY lat, lon"
     )
     out = xql.to_dataset(cur, template=ds)
 
@@ -143,15 +281,91 @@ def test_aggregation_round_trips_on_surviving_dims(con, ds):
     )
 
 
-def test_chunked_round_trip_spills_the_cursor(duckdb_con, ds):
-    # DuckDB keeps `time` a timestamp; SQLite returns it as text, which
-    # only the eager round-trip recovers.
-    xql.register(duckdb_con, "weather", ds)
+def test_existing_table_is_not_overwritten_by_default(db, ds):
+    table = db.name("weather")
+    xql.register(db.con, table, ds)
 
-    cur = _query(
-        duckdb_con,
-        "SELECT time, lat, lon, temperature FROM weather "
-        "ORDER BY time, lat, lon",
+    with pytest.raises(dbapi.Error):
+        xql.register(db.con, table, ds)
+
+
+def test_replace_then_append(db, ds):
+    table = db.name("weather")
+    xql.register(db.con, table, ds)
+    xql.register(db.con, table, ds.isel(time=slice(0, 4)), mode="replace")
+    xql.register(db.con, table, ds.isel(time=slice(4, 8)), mode="append")
+
+    out = xql.to_dataset(_select_all(db, table), template=ds)
+
+    xr.testing.assert_identical(out, ds.compute())
+
+
+def test_create_append_creates_then_appends(db, ds):
+    table = db.name("weather")
+    xql.register(db.con, table, ds, mode="create_append")
+    xql.register(db.con, table, ds, mode="create_append")
+
+    count = db.query(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    assert count == 2 * 8 * 5 * 6
+
+
+def test_temporary_tables(db, ds):
+    table = db.name("weather")
+    if not db.backend.temporary:
+        with pytest.raises(ValueError, match="temporary"):
+            xql.register(db.con, table, ds, temporary=True)
+        return
+
+    xql.register(db.con, table, ds, temporary=True)
+
+    count = db.query(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    assert count == 8 * 5 * 6
+
+
+def test_mixed_dimensions_are_named_like_every_engine(db, mixed_ds):
+    name = db.name("era5")
+    if db.backend.schemas:
+        xql.register(db.con, name, mixed_ds, table_names=NAMES)
+        table = f"{name}.atmosphere"
+    else:
+        with pytest.warns(RuntimeWarning, match="flat"):
+            xql.register(db.con, name, mixed_ds, table_names=NAMES)
+        table = f"{name}_atmosphere"
+
+    cur = db.query(
+        f"SELECT time, level, lat, lon, temperature FROM {table} "
+        "ORDER BY time, level, lat, lon"
+    )
+    out = xql.to_dataset(cur, template=mixed_ds[["temperature"]])
+
+    xr.testing.assert_allclose(out.temperature, mixed_ds.temperature.compute())
+
+
+@pytest.mark.parametrize(
+    "chunks", [None, {"step": 2}], ids=["eager", "chunked"]
+)
+def test_timedelta_coordinates_round_trip(db, forecast, chunks):
+    # Stored as a duration, an integer count (SQLite, ClickHouse), an
+    # interval (DuckDB, PostgreSQL), or text (MySQL, Trino).
+    table = db.name("forecast")
+    xql.register(db.con, table, forecast)
+
+    cur = db.query(f"SELECT step, lat, t2m FROM {table} ORDER BY step, lat")
+    out = xql.to_dataset(
+        cur, template=forecast, chunks=chunks, spill=chunks is not None
+    )
+
+    xr.testing.assert_allclose(out.compute(), forecast.compute())
+    assert out.step.dtype == forecast.step.dtype
+
+
+def test_chunked_round_trip_spills_the_cursor(db, ds):
+    table = db.name("weather")
+    xql.register(db.con, table, ds)
+
+    cur = db.query(
+        f"SELECT time, lat, lon, temperature FROM {table} "
+        "ORDER BY time, lat, lon"
     )
     out = xql.to_dataset(cur, template=ds, chunks={"time": 2}, spill=True)
 
@@ -161,189 +375,57 @@ def test_chunked_round_trip_spills_the_cursor(duckdb_con, ds):
     )
 
 
-@pytest.mark.parametrize("chunks", [None, {"step": 2}])
-def test_timedelta_coordinates_round_trip(con, chunks):
-    # Forecast `step`: SQLite stores it as an integer count, DuckDB
-    # returns it as an interval.
-    forecast = xr.Dataset(
-        {"t2m": (["step", "lat"], np.random.rand(4, 2))},
-        coords={
-            "step": pd.to_timedelta([0, 6, 12, 18], unit="h"),
-            "lat": [1.0, 2.0],
-        },
-    ).chunk({"step": 2})
-    xql.register(con, "forecast", forecast)
-
-    cur = _query(con, "SELECT step, lat, t2m FROM forecast ORDER BY step, lat")
-    out = xql.to_dataset(
-        cur, template=forecast, chunks=chunks, spill=chunks is not None
-    )
-
-    xr.testing.assert_identical(out.compute().step, forecast.step)
-    xr.testing.assert_allclose(out.compute(), forecast.compute())
+# One database's specifics ---------------------------------------------------
 
 
-def test_existing_table_is_not_overwritten_by_default(con, ds):
-    xql.register(con, "weather", ds)
-
-    with pytest.raises(dbapi.Error):
-        xql.register(con, "weather", ds)
+def _only(db, *names: str) -> None:
+    if db.backend.name not in names:
+        pytest.skip(f"specific to {', '.join(names)}")
 
 
-def test_replace_mode_recreates_the_table(con, ds):
-    xql.register(con, "weather", ds)
-    xql.register(con, "weather", ds.isel(time=slice(0, 4)), mode="replace")
+def test_ingest_options_reach_the_driver(db, ds):
+    _only(db, "sqlite")
 
-    count = _query(con, "SELECT COUNT(*) FROM weather").fetchone()[0]
-    assert count == 4 * 5 * 6
-
-
-def test_append_mode_adds_rows(con, ds):
-    xql.register(con, "weather", ds.isel(time=slice(0, 4)))
-    xql.register(con, "weather", ds.isel(time=slice(4, 8)), mode="append")
-
-    cur = _query(
-        con,
-        "SELECT time, lat, lon, temperature, precipitation FROM weather "
-        "ORDER BY time, lat, lon",
-    )
-    xr.testing.assert_allclose(xql.to_dataset(cur, template=ds), ds.compute())
-
-
-def test_temporary_table_is_queryable(con, ds):
-    xql.register(con, "weather", ds, temporary=True)
-
-    count = _query(con, "SELECT COUNT(*) FROM weather").fetchone()[0]
-    assert count == 8 * 5 * 6
-
-
-def test_mixed_dimensions_register_in_a_schema(duckdb_con, mixed_ds):
-    xql.register(duckdb_con, "era5", mixed_ds, table_names=NAMES)
-
-    cur = _query(duckdb_con, "SELECT AVG(t2m) FROM era5.surface")
-    assert cur.fetchone()[0] == pytest.approx(float(mixed_ds.t2m.mean()))
-    cur = _query(
-        duckdb_con,
-        "SELECT time, level, lat, lon, temperature FROM era5.atmosphere "
-        "ORDER BY time, level, lat, lon",
-    )
-    out = xql.to_dataset(cur, template=mixed_ds[["temperature"]])
-    xr.testing.assert_allclose(out.temperature, mixed_ds.temperature.compute())
-
-
-def test_mixed_dimensions_fall_back_to_flat_names(sqlite_con, mixed_ds):
-    with pytest.warns(RuntimeWarning, match="flat"):
-        xql.register(sqlite_con, "era5", mixed_ds, table_names=NAMES)
-
-    cur = _query(sqlite_con, "SELECT AVG(t2m) FROM era5_surface")
-    assert cur.fetchone()[0] == pytest.approx(float(mixed_ds.t2m.mean()))
-    count = _query(sqlite_con, "SELECT COUNT(*) FROM era5_atmosphere")
-    assert count.fetchone()[0] == 6 * 2 * 3 * 4
-
-
-def test_temporary_mixed_dimensions_use_flat_names(duckdb_con, mixed_ds):
-    xql.register(
-        duckdb_con, "era5", mixed_ds, table_names=NAMES, temporary=True
-    )
-
-    count = _query(duckdb_con, "SELECT COUNT(*) FROM era5_surface")
-    assert count.fetchone()[0] == 6 * 3 * 4
-
-
-def test_clickhouse_float_columns_are_nullable():
-    # The scan writes NaN as an Arrow null, so aggregates skip it; a plain
-    # Float64 column would store that null as 0.
-    schema = pa.schema(
-        [
-            pa.field("time", pa.timestamp("ns")),
-            pa.field("lat", pa.float64()),
-            pa.field("t2m", pa.float64()),
-            pa.field("sst", pa.float32()),
-        ]
-    )
-    [ddl] = _clickhouse_ddl(
-        "weather",
-        schema,
-        ("time", "lat"),
-        mode="create",
-        temporary=False,
-        database=None,
-    )
-    assert '"t2m" Nullable(Float64)' in ddl
-    assert '"sst" Nullable(Float32)' in ddl
-    assert '"lat" Float64,' in ddl  # sort keys stay non-Nullable
-
-
-@pytest.fixture
-def postgres_con():
-    uri = os.environ.get("XARRAY_SQL_TEST_POSTGRES_URI")
-    if not uri:
-        pytest.skip(
-            "set XARRAY_SQL_TEST_POSTGRES_URI to run against PostgreSQL"
+    with pytest.raises(dbapi.Error, match="not.an.option"):
+        xql.register(
+            db.con,
+            db.name("weather"),
+            ds,
+            ingest_options={"not.an.option": "x"},
         )
-    postgres = pytest.importorskip("adbc_driver_postgresql.dbapi")
-    connection = postgres.connect(uri)
-    yield connection
-    connection.rollback()
-    connection.close()
 
 
-def test_postgres_schema_failure_explains_the_aborted_transaction(
-    postgres_con, mixed_ds
+def test_postgresql_schema_failure_explains_the_aborted_transaction(
+    db, mixed_ds
 ):
     # PostgreSQL rejects schema names starting with `pg_`, so CREATE SCHEMA
     # fails here for any user, and a failed statement aborts the
     # transaction: no fallback ingest could run after it.
+    _only(db, "postgresql")
+
     with pytest.raises(RuntimeError, match="rollback"):
-        xql.register(postgres_con, "pg_era5", mixed_ds, table_names=NAMES)
+        xql.register(db.con, db.name("pg_era5"), mixed_ds, table_names=NAMES)
 
 
-def test_postgres_uses_an_existing_schema(postgres_con, mixed_ds):
-    with postgres_con.cursor() as cur:
-        cur.execute("CREATE SCHEMA IF NOT EXISTS era5")
-    xql.register(postgres_con, "era5", mixed_ds, table_names=NAMES)
+def test_postgresql_uses_an_existing_schema(db, mixed_ds):
+    _only(db, "postgresql")
+    name = db.name("era5")
+    db.query(f'CREATE SCHEMA "{name}"').close()
 
-    count = _query(postgres_con, "SELECT COUNT(*) FROM era5.surface")
-    assert count.fetchone()[0] == 6 * 3 * 4
+    xql.register(db.con, name, mixed_ds, table_names=NAMES)
 
-
-@pytest.fixture
-def clickhouse_con():
-    uri = os.environ.get("XARRAY_SQL_TEST_CLICKHOUSE_URI")
-    driver = os.environ.get("XARRAY_SQL_TEST_CLICKHOUSE_DRIVER")
-    if not (uri and driver):
-        pytest.skip(
-            "set XARRAY_SQL_TEST_CLICKHOUSE_URI and "
-            "XARRAY_SQL_TEST_CLICKHOUSE_DRIVER to run against ClickHouse"
-        )
-    connection = dbapi.connect(driver=driver, db_kwargs={"uri": uri})
-    for statement in [
-        "DROP TABLE IF EXISTS weather",
-        "DROP DATABASE IF EXISTS era5",
-    ]:
-        _query(connection, statement).close()
-    yield connection
-    connection.close()
+    count = db.query(f"SELECT COUNT(*) FROM {name}.surface").fetchone()[0]
+    assert count == 6 * 3 * 4
 
 
-def test_clickhouse_round_trips(clickhouse_con, ds):
-    xql.register(clickhouse_con, "weather", ds)
+def test_clickhouse_time_literals_mean_utc(db, ds):
+    _only(db, "clickhouse", "chdb")
+    table = db.name("weather")
+    xql.register(db.con, table, ds)
 
-    cur = _query(
-        clickhouse_con,
-        "SELECT time, lat, lon, temperature, precipitation FROM weather "
-        "ORDER BY time, lat, lon",
-    )
-    xr.testing.assert_allclose(xql.to_dataset(cur, template=ds), ds.compute())
-
-
-def test_clickhouse_time_literals_mean_utc(clickhouse_con, ds):
-    xql.register(clickhouse_con, "weather", ds)
-
-    cur = _query(
-        clickhouse_con,
-        "SELECT time, lat, lon, temperature FROM weather "
-        "WHERE time >= '2021-01-01 04:00:00' ORDER BY time, lat, lon",
+    cur = db.query(
+        f"SELECT time, lat, lon, temperature FROM {table} "
+        "WHERE time >= '2021-01-01 04:00:00' ORDER BY time, lat, lon"
     )
     out = xql.to_dataset(cur, template=ds)
 
@@ -351,96 +433,12 @@ def test_clickhouse_time_literals_mean_utc(clickhouse_con, ds):
     xr.testing.assert_allclose(out.temperature, expected.compute())
 
 
-def test_clickhouse_replace_then_append(clickhouse_con, ds):
-    xql.register(clickhouse_con, "weather", ds)
-    xql.register(
-        clickhouse_con, "weather", ds.isel(time=slice(0, 4)), mode="replace"
-    )
-    xql.register(
-        clickhouse_con, "weather", ds.isel(time=slice(4, 8)), mode="append"
-    )
+def test_mysql_keeps_the_default_database(db, mixed_ds):
+    # The MySQL driver ignores the target schema, so the adapter switches
+    # the default database for the ingest and must switch it back.
+    _only(db, "mysql", "mariadb")
+    before = db.query("SELECT DATABASE()").fetchone()[0]
 
-    cur = _query(
-        clickhouse_con,
-        "SELECT time, lat, lon, temperature, precipitation FROM weather "
-        "ORDER BY time, lat, lon",
-    )
-    xr.testing.assert_allclose(xql.to_dataset(cur, template=ds), ds.compute())
+    xql.register(db.con, db.name("era5"), mixed_ds, table_names=NAMES)
 
-
-def test_clickhouse_temporary_table_is_queryable(clickhouse_con, ds):
-    xql.register(clickhouse_con, "weather", ds, temporary=True)
-
-    count = _query(clickhouse_con, "SELECT COUNT(*) FROM weather")
-    assert count.fetchone()[0] == 8 * 5 * 6
-
-
-def test_clickhouse_mixed_dimensions_register_in_a_database(
-    clickhouse_con, mixed_ds
-):
-    xql.register(clickhouse_con, "era5", mixed_ds, table_names=NAMES)
-
-    cur = _query(
-        clickhouse_con,
-        "SELECT time, level, lat, lon, temperature FROM era5.atmosphere "
-        "ORDER BY time, level, lat, lon",
-    )
-    out = xql.to_dataset(cur, template=mixed_ds[["temperature"]])
-    xr.testing.assert_allclose(out.temperature, mixed_ds.temperature.compute())
-
-
-def test_clickhouse_keeps_missing_values(clickhouse_con, ds):
-    holed = ds.copy(deep=True)
-    holed["temperature"][0, 0, 0] = np.nan
-    xql.register(clickhouse_con, "weather", holed)
-
-    with _query(clickhouse_con, "SELECT AVG(temperature) FROM weather") as avg:
-        mean = avg.fetchone()[0]
-    assert mean == pytest.approx(float(holed.temperature.mean()))
-    cur = _query(
-        clickhouse_con,
-        "SELECT time, lat, lon, temperature FROM weather "
-        "ORDER BY time, lat, lon",
-    )
-    out = xql.to_dataset(cur, template=holed)
-    xr.testing.assert_allclose(out.temperature, holed.temperature.compute())
-
-
-@pytest.fixture
-def mysql_con():
-    uri = os.environ.get("XARRAY_SQL_TEST_MYSQL_URI")
-    if not uri:
-        pytest.skip("set XARRAY_SQL_TEST_MYSQL_URI to run against MySQL")
-    connection = dbapi.connect(driver="mysql", db_kwargs={"uri": uri})
-    for statement in [
-        "DROP TABLE IF EXISTS weather",
-        "DROP DATABASE IF EXISTS era5",
-    ]:
-        _query(connection, statement).close()
-    yield connection
-    connection.close()
-
-
-def test_mysql_round_trips(mysql_con, ds):
-    xql.register(mysql_con, "weather", ds)
-
-    cur = _query(
-        mysql_con,
-        "SELECT time, lat, lon, temperature, precipitation FROM weather "
-        "ORDER BY time, lat, lon",
-    )
-    xr.testing.assert_allclose(xql.to_dataset(cur, template=ds), ds.compute())
-
-
-def test_mysql_mixed_dimensions_register_in_a_database(mysql_con, mixed_ds):
-    xql.register(mysql_con, "era5", mixed_ds, table_names=NAMES)
-
-    cur = _query(
-        mysql_con,
-        "SELECT time, level, lat, lon, temperature FROM era5.atmosphere "
-        "ORDER BY time, level, lat, lon",
-    )
-    out = xql.to_dataset(cur, template=mixed_ds[["temperature"]])
-    xr.testing.assert_allclose(out.temperature, mixed_ds.temperature.compute())
-    default = _query(mysql_con, "SELECT DATABASE()").fetchone()[0]
-    assert default != "era5"
+    assert db.query("SELECT DATABASE()").fetchone()[0] == before

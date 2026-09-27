@@ -68,17 +68,17 @@ jobs:
         run: uv sync --dev --no-install-package xarray-sql
       - name: build rust
         run: uv run --no-project maturin develop --uv
-      - name: Install the chDB ADBC driver
-        # Embedded ClickHouse: runs the ClickHouse adapter tests without a
-        # server. dbc installs into the active virtualenv.
+      - name: Install in-process ADBC drivers
+        # chDB (embedded ClickHouse) and DataFusion run the ADBC adapter's
+        # contract tests without a server. dbc installs into the active
+        # virtualenv.
         env:
           VIRTUAL_ENV: ${{ github.workspace }}/.venv
         run: |
           uv pip install dbc
           uv run --no-project dbc install chdb
+          uv run --no-project dbc install datafusion
       - name: Run unit tests
         env:
           VIRTUAL_ENV: ${{ github.workspace }}/.venv
-          XARRAY_SQL_TEST_CLICKHOUSE_DRIVER: chdb
-          XARRAY_SQL_TEST_CLICKHOUSE_URI: "chdb://"
         run: uv run --no-project pytest -v . -m "not integration"
