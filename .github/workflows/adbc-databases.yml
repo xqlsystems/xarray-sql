@@ -1,6 +1,9 @@
-# Runs the ADBC adapter's contract tests against real database servers in
-# service containers. The main CI job covers the in-process backends
-# (SQLite, DuckDB, chDB, DataFusion); this one covers the servers.
+# Runs the ADBC adapter's contract tests and the ARCO-ERA5 queries against
+# real database servers in service containers, one job per database so
+# each pulls only its own image and a failure names its database. The
+# main CI job runs the contract on the in-process backends (SQLite,
+# DuckDB, chDB, DataFusion); the "in-process" job here adds their
+# ARCO-ERA5 queries.
 name: adbc databases
 
 on:
@@ -19,69 +22,70 @@ on:
       - ".github/workflows/adbc-databases.yml"
   workflow_dispatch:
 
+# A newer push to the same pull request supersedes a running check.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   databases:
-    name: "ADBC contract on database servers"
+    name: ${{ matrix.backend }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: sqlite,duckdb,chdb,datafusion
+          - backend: postgresql
+            image: postgres:18
+            port: 5432
+            uri: postgresql://postgres:xql@localhost:5432/postgres
+          - backend: mysql
+            image: mysql:8.4
+            port: 3306
+            uri: mysql://root:xql@127.0.0.1:3306/xql
+          - backend: mariadb
+            image: mariadb:11.4
+            port: 3306
+            uri: mysql://root:xql@127.0.0.1:3306/xql
+          - backend: clickhouse
+            image: clickhouse/clickhouse-server:26.8
+            port: 8123
+            uri: http://localhost:8123/?user=default&password=xql
+          - backend: trino
+            image: trinodb/trino:483
+            port: 8080
+            uri: http://ci@localhost:8080?catalog=memory&schema=default
+          - backend: mssql
+            image: mcr.microsoft.com/mssql/server:2022-latest
+            port: 1433
+            uri: sqlserver://sa:XqlPassw0rd@localhost:1433?database=master
+          - backend: flightsql
+            image: gizmodata/gizmosql:latest
+            port: 31337
+            uri: grpc://localhost:31337
     services:
-      postgresql:
-        image: postgres:18
+      # An empty image (the in-process databases) starts no container.
+      # Each image reads only its own variables below.
+      db:
+        image: ${{ matrix.image }}
+        ports:
+          - ${{ matrix.port || 1 }}:${{ matrix.port || 1 }}
         env:
           POSTGRES_PASSWORD: xql
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s --health-timeout 5s --health-retries 30
-      mysql:
-        image: mysql:8.4
-        env:
           MYSQL_ROOT_PASSWORD: xql
           MYSQL_DATABASE: xql
-        ports: ["3306:3306"]
-        options: >-
-          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pxql"
-          --health-interval 5s --health-timeout 5s --health-retries 40
-      mariadb:
-        image: mariadb:11.4
-        env:
           MARIADB_ROOT_PASSWORD: xql
           MARIADB_DATABASE: xql
-        ports: ["3307:3306"]
-        options: >-
-          --health-cmd "healthcheck.sh --connect --innodb_initialized"
-          --health-interval 5s --health-timeout 5s --health-retries 40
-      clickhouse:
-        image: clickhouse/clickhouse-server:26.8
-        env:
           CLICKHOUSE_PASSWORD: xql
-        ports: ["8123:8123"]
-      trino:
-        image: trinodb/trino:483
-        ports: ["8080:8080"]
-      mssql:
-        image: mcr.microsoft.com/mssql/server:2022-latest
-        env:
           ACCEPT_EULA: "Y"
           MSSQL_SA_PASSWORD: XqlPassw0rd
-        ports: ["1433:1433"]
-      # DuckDB served over Arrow Flight SQL.
-      gizmosql:
-        image: gizmodata/gizmosql:latest
-        env:
           TLS_ENABLED: "0"
           GIZMOSQL_USERNAME: xql
           GIZMOSQL_PASSWORD: xql
-        ports: ["31337:31337"]
-        options: --init
     env:
       VIRTUAL_ENV: ${{ github.workspace }}/.venv
-      XARRAY_SQL_TEST_POSTGRESQL_URI: postgresql://postgres:xql@localhost:5432/postgres
-      XARRAY_SQL_TEST_MYSQL_URI: mysql://root:xql@127.0.0.1:3306/xql
-      XARRAY_SQL_TEST_MARIADB_URI: mysql://root:xql@127.0.0.1:3307/xql
-      XARRAY_SQL_TEST_CLICKHOUSE_URI: http://localhost:8123/?user=default&password=xql
-      XARRAY_SQL_TEST_TRINO_URI: http://ci@localhost:8080?catalog=memory&schema=default
-      XARRAY_SQL_TEST_MSSQL_URI: sqlserver://sa:XqlPassw0rd@localhost:1433?database=master
-      XARRAY_SQL_TEST_FLIGHTSQL_URI: grpc://localhost:31337
+      XARRAY_SQL_TEST_ONLY: ${{ matrix.backend }}
       XARRAY_SQL_TEST_FLIGHTSQL_USERNAME: xql
       XARRAY_SQL_TEST_FLIGHTSQL_PASSWORD: xql
     steps:
@@ -114,22 +118,41 @@ jobs:
             uv run --no-project dbc install "$driver"
           done
 
-      - name: Wait for ClickHouse, Trino, and GizmoSQL
+      - name: Point the tests' backend table at the server
+        if: matrix.uri
         run: |
-          for i in $(seq 1 60); do
-            curl -sf http://localhost:8123/ping >/dev/null \
-              && curl -sf http://localhost:8080/v1/info | grep -q '"starting":false' \
-              && (echo > /dev/tcp/localhost/31337) 2>/dev/null \
-              && exit 0
-            sleep 3
-          done
-          echo "ClickHouse, Trino, or GizmoSQL did not start" >&2
-          exit 1
+          echo "XARRAY_SQL_TEST_${BACKEND^^}_URI=${{ matrix.uri }}" >> "$GITHUB_ENV"
+        env:
+          BACKEND: ${{ matrix.backend }}
+
+      - name: Wait for the server
+        if: matrix.uri
+        run: |
+          uv run --no-project python - <<'PY'
+          import os, sys, time
+          sys.path.insert(0, os.getcwd())
+          from tests._adbc import BACKENDS
+          backend = next(b for b in BACKENDS if b.name == "${{ matrix.backend }}")
+          for attempt in range(100):
+              try:
+                  con = backend.connect()
+                  cur = con.cursor()
+                  cur.execute("SELECT 1")
+                  cur.fetchall()
+                  print(f"{backend.name} is up")
+                  break
+              except Exception as exc:
+                  print(f"waiting for {backend.name}: {str(exc)[:120]}")
+                  time.sleep(3)
+          else:
+              sys.exit(f"{backend.name} did not start")
+          PY
 
       - name: Run the ADBC contract tests
+        if: matrix.uri
         run: uv run --no-project pytest -v -rs tests/test_adbc_backend.py
 
-      - name: Run realistic ARCO-ERA5 queries on every database
+      - name: Run realistic ARCO-ERA5 queries
         # Reads a regional subset anonymously from the public bucket.
         run: >-
           uv run --no-project pytest -v -rs -m integration

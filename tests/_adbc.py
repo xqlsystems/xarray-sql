@@ -12,6 +12,9 @@ available:
   ``XARRAY_SQL_TEST_CLICKHOUSE_DRIVER`` for a ClickHouse driver that
   ``dbc`` did not install; ``XARRAY_SQL_TEST_FLIGHTSQL_USERNAME`` and
   ``_PASSWORD`` for a Flight SQL server such as GizmoSQL).
+
+``XARRAY_SQL_TEST_ONLY`` (comma-separated names) restricts a run to
+those backends, e.g. one CI job per database.
 """
 
 import dataclasses
@@ -80,6 +83,9 @@ class Backend:
     def connect(self):
         if dbapi is None:
             pytest.skip("adbc-driver-manager is not installed")
+        only = os.environ.get("XARRAY_SQL_TEST_ONLY")
+        if only and self.name not in only.split(","):
+            pytest.skip(f"XARRAY_SQL_TEST_ONLY={only} excludes {self.name}")
         if self.driver is None or (self.needs_uri and not self.uri):
             pytest.skip(f"{self.name} is not available; see module docstring")
         db_kwargs = dict(self.options)
