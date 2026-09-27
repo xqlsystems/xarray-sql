@@ -9,8 +9,8 @@ SQLite and DuckDB always run. The others run when available:
 
 - ``chdb`` and ``datafusion`` run in-process once their drivers are
   installed (``dbc install chdb datafusion``).
-- ``clickhouse``, ``postgresql``, ``mysql``, ``mariadb``, and ``trino``
-  need a server: set ``XARRAY_SQL_TEST_<NAME>_URI`` to its URI (and
+- ``clickhouse``, ``postgresql``, ``mysql``, ``mariadb``, ``trino``, and
+  ``mssql`` need a server: set ``XARRAY_SQL_TEST_<NAME>_URI`` to its URI (and
   ``XARRAY_SQL_TEST_CLICKHOUSE_DRIVER`` for a ClickHouse driver that
   ``dbc`` did not install).
 """
@@ -128,6 +128,13 @@ BACKENDS = [
         "trino",
         uri=_env("trino"),
         temporary=False,
+        needs_uri=True,
+    ),
+    Backend(
+        "mssql",
+        "mssql",
+        uri=_env("mssql"),
+        drop_schema="DROP SCHEMA IF EXISTS {}",
         needs_uri=True,
     ),
 ]

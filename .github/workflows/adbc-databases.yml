@@ -1,0 +1,115 @@
+# Runs the ADBC adapter's contract tests against real database servers in
+# service containers. The main CI job covers the in-process backends
+# (SQLite, DuckDB, chDB, DataFusion); this one covers the servers.
+name: adbc databases
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    paths:
+      - "xarray_sql/backends/adbc.py"
+      - "xarray_sql/backends/_adbc_dialects.py"
+      - "xarray_sql/ds.py"
+      - "xarray_sql/lazyscan.py"
+      - "xarray_sql/roundtrip.py"
+      - "tests/test_adbc_backend.py"
+      - ".github/workflows/adbc-databases.yml"
+  workflow_dispatch:
+
+jobs:
+  databases:
+    name: "ADBC contract on database servers"
+    runs-on: ubuntu-latest
+    services:
+      postgresql:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: xql
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 30
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: xql
+          MYSQL_DATABASE: xql
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pxql"
+          --health-interval 5s --health-timeout 5s --health-retries 40
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: xql
+          MARIADB_DATABASE: xql
+        ports: ["3307:3306"]
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s --health-timeout 5s --health-retries 40
+      clickhouse:
+        image: clickhouse/clickhouse-server:26.8
+        env:
+          CLICKHOUSE_PASSWORD: xql
+        ports: ["8123:8123"]
+      trino:
+        image: trinodb/trino:483
+        ports: ["8080:8080"]
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: XqlPassw0rd
+        ports: ["1433:1433"]
+    env:
+      VIRTUAL_ENV: ${{ github.workspace }}/.venv
+      XARRAY_SQL_TEST_POSTGRESQL_URI: postgresql://postgres:xql@localhost:5432/postgres
+      XARRAY_SQL_TEST_MYSQL_URI: mysql://root:xql@127.0.0.1:3306/xql
+      XARRAY_SQL_TEST_MARIADB_URI: mysql://root:xql@127.0.0.1:3307/xql
+      XARRAY_SQL_TEST_CLICKHOUSE_URI: http://localhost:8123/?user=default&password=xql
+      XARRAY_SQL_TEST_TRINO_URI: http://ci@localhost:8080?catalog=memory&schema=default
+      XARRAY_SQL_TEST_MSSQL_URI: sqlserver://sa:XqlPassw0rd@localhost:1433?database=master
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Configure sccache
+        run: |
+          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install xarray_sql
+        run: uv sync --dev --no-install-package xarray-sql
+      - name: build rust
+        run: uv run --no-project maturin develop --uv
+
+      - name: Install ADBC drivers
+        run: |
+          uv pip install dbc adbc-driver-postgresql
+          for driver in chdb datafusion mysql clickhouse trino mssql; do
+            uv run --no-project dbc install "$driver"
+          done
+
+      - name: Wait for ClickHouse and Trino
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8123/ping >/dev/null \
+              && curl -sf http://localhost:8080/v1/info | grep -q '"starting":false' \
+              && exit 0
+            sleep 3
+          done
+          echo "ClickHouse or Trino did not start" >&2
+          exit 1
+
+      - name: Run the ADBC contract tests
+        run: uv run --no-project pytest -v -rs tests/test_adbc_backend.py
