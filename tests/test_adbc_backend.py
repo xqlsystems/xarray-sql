@@ -217,18 +217,21 @@ def test_chunked_round_trip_spills_the_cursor(db, ds):
 
 def test_time_filters_select_the_right_rows(db, ds):
     # A literal means UTC everywhere, and SQLite's text times compare
-    # with it correctly.
+    # with it correctly, including at an inclusive bound.
     table = db.name("weather")
     xql.register(db.con, table, ds)
-    literal = db.backend.time_literal.format("2021-01-01 04:00:00")
+    start, end = (
+        db.backend.time_literal.format(f"2021-01-01 0{hour}:00:00")
+        for hour in (4, 6)
+    )
 
     cur = db.query(
         f"SELECT time, lat, lon, temperature FROM {table} "
-        f"WHERE time >= {literal} ORDER BY time, lat, lon"
+        f"WHERE time BETWEEN {start} AND {end} ORDER BY time, lat, lon"
     )
     out = xql.to_dataset(cur, template=ds)
 
-    expected = ds.temperature.isel(time=slice(4, None))
+    expected = ds.temperature.isel(time=slice(4, 7))
     xr.testing.assert_allclose(out.temperature, expected.compute())
 
 

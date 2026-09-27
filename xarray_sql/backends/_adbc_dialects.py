@@ -302,9 +302,19 @@ _SIGNED_WIDTH = {
 
 
 def _timestamps_as_text(array: pa.Array) -> pa.Array:
-    """Times as space-separated ISO text, at their own resolution."""
-    values = np.datetime_as_string(array.to_numpy(zero_copy_only=False))
-    text = np.char.replace(values, "T", " ", count=1)
+    """Times as space-separated ISO text.
+
+    Whole seconds are written exactly as SQLite's ``datetime()`` writes
+    them (``2021-01-01 04:00:00``), so equality and inclusive bounds
+    against such a literal hold; a fraction of a second is kept where
+    there is one, which still orders correctly.
+    """
+    values = array.to_numpy(zero_copy_only=False)
+    whole = np.datetime_as_string(values, unit="s")
+    exact = np.datetime_as_string(values)
+    fractional = values != values.astype("datetime64[s]")
+    text = np.where(fractional, exact, whole)
+    text = np.char.replace(text, "T", " ", count=1)
     return pa.array(text, pa.string(), mask=np.asarray(array.is_null()))
 
 
