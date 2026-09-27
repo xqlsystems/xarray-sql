@@ -74,6 +74,8 @@ class Backend:
     """How a timestamp literal is written in a comparison."""
     microseconds: bool = False
     """Whether the database stores times only to the microsecond."""
+    folds: bool = False
+    """Whether unquoted names fold, so mixed-case ones need quotes."""
     needs_uri: bool = False
 
     def connect(self):
@@ -99,7 +101,7 @@ BACKENDS = [
         uri="chdb://",
         drop_schema="DROP DATABASE IF EXISTS {}",
     ),
-    Backend("datafusion", "datafusion", temporary=False),
+    Backend("datafusion", "datafusion", temporary=False, folds=True),
     Backend(
         "clickhouse",
         os.environ.get("XARRAY_SQL_TEST_CLICKHOUSE_DRIVER", "clickhouse"),
@@ -112,6 +114,7 @@ BACKENDS = [
         _module_driver("adbc_driver_postgresql") or "postgresql",
         uri=_env("postgresql"),
         microseconds=True,
+        folds=True,
         needs_uri=True,
     ),
     Backend(
@@ -542,6 +545,18 @@ def test_long_table_name(db, ds):
     xql.register(db.con, table, ds)
 
     count = db.query(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    assert count == 8 * 5 * 6
+
+
+def test_mixed_case_names_are_found_quoted(db, ds):
+    table = db.name("Weather")
+    if db.backend.folds:
+        with pytest.warns(RuntimeWarning, match="quote"):
+            xql.register(db.con, table, ds)
+    else:
+        xql.register(db.con, table, ds)
+
+    count = db.query(f"SELECT COUNT(*) FROM {db.quoted(table)}").fetchone()[0]
     assert count == 8 * 5 * 6
 
 

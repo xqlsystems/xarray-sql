@@ -46,7 +46,7 @@ from ._adbc_dialects import (
     Dialect,
     IngestMode,
     dialect_for,
-    durations_as_integers,
+    ingestable,
 )
 from .base import register_adapter
 from .pyarrow import XarrayPushdownDataset
@@ -79,8 +79,7 @@ def _ingest(
     batches, so the source read and the database write overlap.
     """
     reader = XarrayPushdownDataset(ds, chunks, **kwargs).scanner().to_reader()
-    if not dialect.durations:
-        reader = durations_as_integers(reader)
+    reader = ingestable(reader, dialect)
     if dialect.table_ddl is not None:
         for statement in dialect.table_ddl(
             table,
@@ -162,6 +161,39 @@ def _connection_usable(con: dbapi.Connection) -> bool:
     except Exception:  # noqa: BLE001
         return False
     return True
+
+
+def _warn_on_lost_precision(ds: xr.Dataset, dialect: Dialect) -> None:
+    """Warn if *dialect* would truncate a time coordinate of *ds*."""
+    if dialect.timestamp_unit == "ns":
+        return
+    for name, coord in ds.coords.items():
+        if coord.dtype.kind != "M":
+            continue
+        values = coord.values.astype("datetime64[ns]")
+        if (values.astype("datetime64[us]") != values).any():
+            warnings.warn(
+                f"{dialect.name} stores times to the microsecond, so the "
+                f"sub-microsecond part of {name!r} will be truncated.",
+                RuntimeWarning,
+                stacklevel=4,
+            )
+
+
+def _warn_on_folded_names(names: list[str], dialect: Dialect) -> None:
+    """Warn about names *dialect*'s database would fold if unquoted."""
+    if dialect.folds is None:
+        return
+    fold = str.lower if dialect.folds == "lower" else str.upper
+    folded = [n for n in names if fold(n) != n]
+    if folded:
+        quoted = ", ".join(dialect.quote_identifier(n) for n in folded)
+        warnings.warn(
+            f"{dialect.name} folds unquoted names to {dialect.folds}case, "
+            f"so quote these in queries: {quoted}.",
+            RuntimeWarning,
+            stacklevel=4,
+        )
 
 
 def _flat(name: str, reason: str) -> bool:
@@ -295,6 +327,10 @@ class ADBCAdapter:
                 f"tables; register without temporary=True and drop the "
                 f"tables when done."
             )
+        _warn_on_lost_precision(ds, dialect)
+        _warn_on_folded_names(
+            [name] if len(groups) <= 1 else [name, *names.values()], dialect
+        )
         if len(groups) <= 1:
             _ingest(
                 con,

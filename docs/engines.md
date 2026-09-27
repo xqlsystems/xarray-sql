@@ -246,9 +246,12 @@ Options specific to this adapter:
 - `ingest_options={...}` sets driver-specific options on each ingest
   statement — e.g. Spark's staging area,
   `{"spark.ingest.staging_area_uri": "s3://bucket/path"}`.
-- Ingest runs inside the connection's current transaction. The tables
-  are visible to this connection at once; call `con.commit()` for
-  other connections to see them.
+- **Commit after registering.** Ingest runs inside the connection's
+  current transaction, as DB-API prescribes. The tables are visible to
+  this connection at once, but other connections — a BI tool, a
+  separate reader — see nothing until you call `con.commit()` (SQL
+  Server even blocks them on the lock), and `con.rollback()` discards
+  the tables. DuckDB's driver autocommits; MySQL commits DDL itself.
 
 Mixed-dimension Datasets are ingested into a database schema named
 after the Dataset, so `era5.surface` is the same SQL here as on
@@ -306,20 +309,30 @@ against each database it can reach:
 
 | Database | `name.group` as | Temporary tables | Notes |
 |---|---|---|---|
-| SQLite | flat `name_group` (no schemas) | yes | times stored as text, timedeltas as integers |
+| SQLite | flat `name_group` (no schemas) | yes | times stored as text (`2021-01-01 04:00:00…`), so plain literals compare correctly; timedeltas and unsigned integers as integers |
 | DuckDB | schema | yes | |
-| PostgreSQL | schema | yes | a failed statement aborts the transaction |
-| MySQL, MariaDB | database | yes | backtick identifiers; the driver ignores the target schema, so the adapter switches the default database for the ingest |
+| PostgreSQL | schema | yes | a failed statement aborts the transaction; times to the microsecond; mixed-case names need quotes |
+| MySQL, MariaDB | database | yes | backtick identifiers; the driver ignores the target schema, so the adapter switches the default database for the ingest; times to the microsecond |
 | ClickHouse, chDB | database | yes (`Memory`) | tables created by the adapter (above) |
-| DataFusion | schema | no | |
+| DataFusion | schema | no | mixed-case names need quotes |
 | Trino | schema | no | |
-| SQL Server | schema | yes (queried as `#name`) | timedeltas as integers |
+| SQL Server | schema | yes (queried as `#name`) | timedeltas and unsigned integers as integers; times to the microsecond |
 
 Spark, BigQuery, Databricks, and Snowflake follow their drivers'
 published feature tables (no temporary tables; backtick identifiers in
 Spark, BigQuery, and Databricks; no target schema in Spark, whose
 groups are flat) but are not exercised by the test suite; other
-databases get standard SQL. Where a database widens a type — SQLite
+databases get standard SQL.
+
+Where a database lacks a type, the adapter converts on the way in
+rather than let the driver lose data silently. Unsigned integers widen
+to the next signed width where there are none (PostgreSQL would
+otherwise wrap a `uint64` above the int64 range around to a negative
+number); a `uint64` too large for int64 raises `ValueError` instead.
+Registering a time coordinate with sub-microsecond values on a database
+that stores microseconds warns, and a name the database folds
+(`Weather` on PostgreSQL) warns that it must be quoted in queries.
+Where a database widens a type — SQLite
 stores `float32` as `float64` and `bool` as an integer, MySQL `bool` as
 `int8`, interval or text durations — `to_dataset` narrows a plain
 `SELECT` back to the template's type; derived values such as an `AVG`

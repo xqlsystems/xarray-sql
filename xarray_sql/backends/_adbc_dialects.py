@@ -18,6 +18,7 @@ import dataclasses
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Literal
 
+import numpy as np
 import pyarrow as pa
 
 if TYPE_CHECKING:
@@ -58,6 +59,23 @@ class Dialect:
     durations: bool = True
     """Whether the database stores Arrow durations; if not, timedeltas are
     ingested as integer counts of their unit."""
+
+    unsigned: bool = True
+    """Whether the database stores unsigned integers. If not, they are
+    widened to the next signed width, and a ``uint64`` above the int64
+    range is refused rather than wrapped."""
+
+    timestamps_as_text: bool = False
+    """For databases without a time type: write times as text like
+    ``2021-01-01 04:00:00.000000000``, which compares correctly with a
+    literal such as ``'2021-01-01 04:00:00'`` (SQLite's own format)."""
+
+    timestamp_unit: Literal["ns", "us"] = "ns"
+    """The finest time resolution the database stores."""
+
+    folds: Literal["lower", "upper"] | None = None
+    """How the database folds unquoted identifiers; names it would fold
+    must be quoted in queries."""
 
     table_ddl: TableDDL | None = None
     """For drivers that can only append: creates each table beforehand."""
@@ -199,33 +217,52 @@ CLICKHOUSE = Dialect(
 SQL_SERVER = Dialect(
     "SQL Server",
     durations=False,
+    unsigned=False,
+    timestamp_unit="us",
     schema_ddl=_sql_server_schema_ddl,
 )
 
 DIALECTS: dict[str, Dialect] = {
     # Exercised by the test suite, against a live database or driver.
-    "sqlite": Dialect("SQLite", schemas=False, durations=False),
+    "sqlite": Dialect(
+        "SQLite",
+        schemas=False,
+        durations=False,
+        unsigned=False,
+        timestamps_as_text=True,
+    ),
     "duckdb": Dialect("DuckDB"),
-    "postgresql": Dialect("PostgreSQL"),
+    # PostgreSQL wraps a uint64 above the int64 range without an error.
+    "postgresql": Dialect(
+        "PostgreSQL", unsigned=False, timestamp_unit="us", folds="lower"
+    ),
     # MariaDB's server reports itself as MySQL.
     "mysql": Dialect(
         "MySQL",
         quote="`",
         schema_kind="DATABASE",
         target_schema="default_database",
+        unsigned=False,
+        timestamp_unit="us",
     ),
     "clickhouse": CLICKHOUSE,
-    "datafusion": Dialect("DataFusion", temporary_tables=False),
+    "datafusion": Dialect("DataFusion", temporary_tables=False, folds="lower"),
     # Trino's driver ignores temporary=True and creates a permanent table.
-    "trino": Dialect("Trino", temporary_tables=False),
+    "trino": Dialect("Trino", temporary_tables=False, unsigned=False),
     # Temporary tables are queried as #name.
     "sql server": SQL_SERVER,
     # From the drivers' published feature tables and the databases' SQL
     # references; not exercised by the test suite.
     "spark": Dialect("Spark", quote="`", schemas=False, temporary_tables=False),
-    "bigquery": Dialect("BigQuery", quote="`", temporary_tables=False),
+    "bigquery": Dialect(
+        "BigQuery",
+        quote="`",
+        temporary_tables=False,
+        durations=False,
+        unsigned=False,
+    ),
     "databricks": Dialect("Databricks", quote="`", temporary_tables=False),
-    "snowflake": Dialect("Snowflake", temporary_tables=False),
+    "snowflake": Dialect("Snowflake", temporary_tables=False, folds="upper"),
 }
 """Known databases, keyed by a name their drivers' vendor names contain."""
 
@@ -256,24 +293,71 @@ def dialect_for(con: dbapi.Connection) -> Dialect:
     return CLICKHOUSE
 
 
-def durations_as_integers(
-    reader: pa.RecordBatchReader,
-) -> pa.RecordBatchReader:
-    """*reader* with duration columns as integer counts of their unit.
+_SIGNED_WIDTH = {
+    pa.uint8(): pa.int16(),
+    pa.uint16(): pa.int32(),
+    pa.uint32(): pa.int64(),
+    pa.uint64(): pa.int64(),
+}
 
-    The template's ``timedelta64`` unit matches the Arrow unit the scan
-    derived from it, so [xarray_sql.to_dataset][] reads the counts back
-    as the original durations.
+
+def _timestamps_as_text(array: pa.Array) -> pa.Array:
+    """Times as space-separated ISO text, at their own resolution."""
+    values = np.datetime_as_string(array.to_numpy(zero_copy_only=False))
+    text = np.char.replace(values, "T", " ", count=1)
+    return pa.array(text, pa.string(), mask=np.asarray(array.is_null()))
+
+
+def _conversion(field: pa.Field, dialect: Dialect) -> pa.DataType | None:
+    """The type *field* must be ingested as, or ``None`` to keep it."""
+    arrow_type = field.type
+    if pa.types.is_duration(arrow_type) and not dialect.durations:
+        return pa.int64()
+    if pa.types.is_unsigned_integer(arrow_type) and not dialect.unsigned:
+        return _SIGNED_WIDTH[arrow_type]
+    if pa.types.is_timestamp(arrow_type) and dialect.timestamps_as_text:
+        return pa.string()
+    return None
+
+
+def _convert(
+    array: pa.Array, target: pa.DataType, dialect: Dialect
+) -> pa.Array:
+    if pa.types.is_string(target):
+        return _timestamps_as_text(array)
+    try:
+        return array.cast(target)
+    except pa.ArrowInvalid as exc:
+        raise ValueError(
+            f"{dialect.name} cannot store {array.type} values above the "
+            f"{target} range, which it would otherwise wrap around; convert "
+            f"the variable (e.g. to float64) before registering it."
+        ) from exc
+
+
+def ingestable(
+    reader: pa.RecordBatchReader, dialect: Dialect
+) -> pa.RecordBatchReader:
+    """*reader* with every column in a type *dialect*'s database stores.
+
+    Durations become integer counts of their unit (the template's
+    ``timedelta64`` unit matches it, so [xarray_sql.to_dataset][] reads
+    them back exactly), unsigned integers widen to the next signed width,
+    and times become text where there is no time type.
     """
-    fields = [
-        pa.field(f.name, pa.int64(), f.nullable, f.metadata)
-        if pa.types.is_duration(f.type)
-        else f
-        for f in reader.schema
-    ]
-    if all(f.type == g.type for f, g in zip(fields, reader.schema)):
+    targets = {i: _conversion(f, dialect) for i, f in enumerate(reader.schema)}
+    targets = {i: t for i, t in targets.items() if t is not None}
+    if not targets:
         return reader
-    schema = pa.schema(fields, metadata=reader.schema.metadata)
-    return pa.RecordBatchReader.from_batches(
-        schema, (batch.cast(schema) for batch in reader)
-    )
+    schema = reader.schema
+    for i, target in targets.items():
+        schema = schema.set(i, schema.field(i).with_type(target))
+
+    def batches():
+        for batch in reader:
+            columns = list(batch.columns)
+            for i, target in targets.items():
+                columns[i] = _convert(columns[i], target, dialect)
+            yield pa.RecordBatch.from_arrays(columns, schema=schema)
+
+    return pa.RecordBatchReader.from_batches(schema, batches())

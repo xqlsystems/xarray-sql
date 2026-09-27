@@ -117,7 +117,7 @@ def _as_dtype(coord: xr.DataArray, dtype: np.dtype) -> xr.DataArray:
     return coord.astype(dtype)
 
 
-_NARROWINGS = {("i", "b"), ("u", "b"), ("f", "f")}
+_NARROWINGS = {("i", "b"), ("u", "b"), ("i", "u"), ("f", "f")}
 """(result kind, template kind) pairs a database may have widened."""
 
 
@@ -125,7 +125,8 @@ def _restore_dtype(var: xr.DataArray, dtype: np.dtype) -> xr.DataArray:
     """*var* as the template's *dtype*, when that loses nothing.
 
     Databases without a type widen it: SQLite stores ``float32`` as
-    ``float64`` and ``bool`` as an integer, MySQL ``bool`` as ``int8``.
+    ``float64`` and ``bool`` as an integer, MySQL ``bool`` as ``int8``, and
+    databases without unsigned integers store them as signed ones.
     A plain ``SELECT`` of such a column narrows back exactly; a derived
     value (an ``AVG`` of ``float32``, a ``SUM`` of ``bool``) does not, and
     keeps the result's dtype. Only in-memory values can be checked, so a
@@ -136,6 +137,8 @@ def _restore_dtype(var: xr.DataArray, dtype: np.dtype) -> xr.DataArray:
     if (var.dtype.kind, dtype.kind) not in _NARROWINGS:
         return var
     values = var.values
+    if dtype.kind == "u" and values.size and values.min() < 0:
+        return var  # the cast would wrap negative values around
     narrowed = values.astype(dtype)
     if not np.array_equal(
         narrowed.astype(values.dtype), values, equal_nan=True
