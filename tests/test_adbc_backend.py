@@ -382,3 +382,43 @@ def test_clickhouse_keeps_missing_values(clickhouse_con, ds):
     )
     out = xql.to_dataset(cur, template=holed)
     xr.testing.assert_allclose(out.temperature, holed.temperature.compute())
+
+
+@pytest.fixture
+def mysql_con():
+    uri = os.environ.get("XARRAY_SQL_TEST_MYSQL_URI")
+    if not uri:
+        pytest.skip("set XARRAY_SQL_TEST_MYSQL_URI to run against MySQL")
+    connection = dbapi.connect(driver="mysql", db_kwargs={"uri": uri})
+    for statement in [
+        "DROP TABLE IF EXISTS weather",
+        "DROP DATABASE IF EXISTS era5",
+    ]:
+        _query(connection, statement).close()
+    yield connection
+    connection.close()
+
+
+def test_mysql_round_trips(mysql_con, ds):
+    xql.register(mysql_con, "weather", ds)
+
+    cur = _query(
+        mysql_con,
+        "SELECT time, lat, lon, temperature, precipitation FROM weather "
+        "ORDER BY time, lat, lon",
+    )
+    xr.testing.assert_allclose(xql.to_dataset(cur, template=ds), ds.compute())
+
+
+def test_mysql_mixed_dimensions_register_in_a_database(mysql_con, mixed_ds):
+    xql.register(mysql_con, "era5", mixed_ds, table_names=NAMES)
+
+    cur = _query(
+        mysql_con,
+        "SELECT time, level, lat, lon, temperature FROM era5.atmosphere "
+        "ORDER BY time, level, lat, lon",
+    )
+    out = xql.to_dataset(cur, template=mixed_ds[["temperature"]])
+    xr.testing.assert_allclose(out.temperature, mixed_ds.temperature.compute())
+    default = _query(mysql_con, "SELECT DATABASE()").fetchone()[0]
+    assert default != "era5"

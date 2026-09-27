@@ -28,7 +28,9 @@ dependency (``pip install xarray-sql[adbc]`` plus a driver package).
 
 from __future__ import annotations
 
+import contextlib
 import warnings
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, Literal, TypeGuard
 
 import pyarrow as pa
@@ -52,14 +54,25 @@ __all__ = ["ADBCAdapter"]
 IngestMode = Literal["create", "append", "replace", "create_append"]
 
 
-def _quote(identifier: str) -> str:
-    """Render *identifier* as a quoted SQL identifier."""
+_BACKTICK_VENDORS = ("mysql", "mariadb", "bigquery")
+"""Databases whose SQL quotes identifiers with backticks, not ``"``.
+
+MySQL reads ``"era5"`` as a string unless ``ANSI_QUOTES`` is set, and
+BigQuery always does.
+"""
+
+
+def _quote(identifier: str, vendor: str = "") -> str:
+    """Render *identifier* as a quoted SQL identifier in *vendor*'s SQL."""
+    if any(name in vendor for name in _BACKTICK_VENDORS):
+        escaped = identifier.replace("`", "``")
+        return f"`{escaped}`"
     escaped = identifier.replace('"', '""')
     return f'"{escaped}"'
 
 
-def _is_clickhouse(con: dbapi.Connection) -> bool:
-    """Whether *con* is connected to ClickHouse.
+def _vendor(con: dbapi.Connection) -> str:
+    """The lowercase name of the database behind *con*; ``""`` if unknown.
 
     Drivers name their database in ``adbc_get_info``. The ClickHouse
     driver does not implement it, so only a driver without it is probed
@@ -70,14 +83,14 @@ def _is_clickhouse(con: dbapi.Connection) -> bool:
     except Exception:  # noqa: BLE001 — unimplemented; probe instead
         pass
     else:
-        return str(info.get("vendor_name", "")).lower() == "clickhouse"
+        return str(info.get("vendor_name") or "").lower()
     try:
         with con.cursor() as cur:
             cur.execute("SELECT 1 FROM system.one")
             cur.fetchall()
     except Exception:  # noqa: BLE001
-        return False
-    return True
+        return ""
+    return "clickhouse"
 
 
 _CLICKHOUSE_TYPES = {
@@ -180,7 +193,7 @@ def _ingest(
     dims: tuple[str, ...],
     mode: IngestMode,
     temporary: bool,
-    clickhouse: bool,
+    vendor: str,
     db_schema_name: str | None = None,
     **kwargs: Any,
 ) -> None:
@@ -192,7 +205,7 @@ def _ingest(
     batches, so the source read and the database write overlap.
     """
     dataset = XarrayPushdownDataset(ds, chunks, **kwargs)
-    if clickhouse:
+    if vendor == "clickhouse":
         for statement in _clickhouse_ddl(
             table,
             dataset.schema,
@@ -205,14 +218,45 @@ def _ingest(
                 cur.execute(statement)
         mode, temporary = "append", False
     reader = dataset.scanner().to_reader()
-    with con.cursor() as cur:
+    target_schema = db_schema_name
+    in_database: contextlib.AbstractContextManager[None] = (
+        contextlib.nullcontext()
+    )
+    if db_schema_name is not None and vendor.startswith(("mysql", "mariadb")):
+        # The MySQL driver creates the table in the connection's default
+        # database but inserts into the one it was given, so name the
+        # target by making it the default instead.
+        in_database = _default_database(con, db_schema_name, vendor)
+        target_schema = None
+    with in_database, con.cursor() as cur:
         cur.adbc_ingest(
             table,
             reader,
             mode=mode,
-            db_schema_name=db_schema_name,
+            db_schema_name=target_schema,
             temporary=temporary,
         )
+
+
+@contextlib.contextmanager
+def _default_database(
+    con: dbapi.Connection, database: str, vendor: str
+) -> Iterator[None]:
+    """Make *database* the MySQL connection's default while in the block.
+
+    The previous default is restored afterwards. MySQL cannot unset a
+    default database, so a connection that had none keeps *database*.
+    """
+    with con.cursor() as cur:
+        cur.execute("SELECT DATABASE()")
+        (previous,) = cur.fetchone()
+        cur.execute(f"USE {_quote(database, vendor)}")
+    try:
+        yield
+    finally:
+        if previous is not None:
+            with con.cursor() as cur:
+                cur.execute(f"USE {_quote(previous, vendor)}")
 
 
 def _schema_exists(con: dbapi.Connection, name: str) -> bool:
@@ -241,9 +285,7 @@ def _connection_usable(con: dbapi.Connection) -> bool:
     return True
 
 
-def _create_schema(
-    con: dbapi.Connection, name: str, *, clickhouse: bool = False
-) -> bool:
+def _create_schema(con: dbapi.Connection, name: str, *, vendor: str) -> bool:
     """Ensure the database schema *name* exists; whether it does.
 
     An existing schema is used as is: creating it can need privileges on
@@ -259,10 +301,11 @@ def _create_schema(
     """
     if _schema_exists(con, name):
         return True
-    kind = "DATABASE" if clickhouse else "SCHEMA"
+    kind = "DATABASE" if vendor == "clickhouse" else "SCHEMA"
+    target = _quote(name, vendor)
     try:
         with con.cursor() as cur:
-            cur.execute(f"CREATE {kind} IF NOT EXISTS {_quote(name)}")
+            cur.execute(f"CREATE {kind} IF NOT EXISTS {target}")
     except Exception as exc:
         if not _connection_usable(con):
             raise RuntimeError(
@@ -357,7 +400,7 @@ class ADBCAdapter:
         """
         groups = group_vars_by_dims(ds)
         names = resolve_table_names(ds, table_names, case_insensitive=True)
-        clickhouse = _is_clickhouse(con)
+        vendor = _vendor(con)
         if len(groups) <= 1:
             _ingest(
                 con,
@@ -367,14 +410,12 @@ class ADBCAdapter:
                 dims=next(iter(groups), ()),
                 mode=mode,
                 temporary=temporary,
-                clickhouse=clickhouse,
+                vendor=vendor,
                 **kwargs,
             )
             return con
 
-        in_schema = not temporary and _create_schema(
-            con, name, clickhouse=clickhouse
-        )
+        in_schema = not temporary and _create_schema(con, name, vendor=vendor)
         coord_arrays = shared_coord_arrays(ds)
         for dims, var_names in groups.items():
             group = names[dims]
@@ -386,7 +427,7 @@ class ADBCAdapter:
                 dims=dims,
                 mode=mode,
                 temporary=temporary,
-                clickhouse=clickhouse,
+                vendor=vendor,
                 db_schema_name=name if in_schema else None,
                 coord_arrays=coord_arrays,
                 **kwargs,
