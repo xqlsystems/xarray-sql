@@ -405,10 +405,6 @@ class _ADBC(EngineContext):
                 xql.register(
                     self._db.con, flat, window, chunks=chunks, mode="replace"
                 )
-                if self._db.backend.name == "postgresql":
-                    # Experiment: without statistics on a freshly
-                    # ingested table, does the planner pick nested loops?
-                    self._db.query(f'ANALYZE "{flat}"').close()
                 sql = re.sub(rf"\b{re.escape(table)}\b", flat, sql)
         return sql
 
