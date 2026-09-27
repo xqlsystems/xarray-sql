@@ -239,7 +239,13 @@ Options specific to this adapter:
   which is how to load a long time series in slices.
 - `temporary=True` creates temporary tables that the database drops
   when the connection closes — the closest match to the other
-  engines' register-for-this-session behavior.
+  engines' register-for-this-session behavior. Where the driver cannot
+  create them (see the table below), registration raises rather than
+  risk a permanent table: Trino's driver, for one, silently ignores
+  the request.
+- `ingest_options={...}` sets driver-specific options on each ingest
+  statement — e.g. Spark's staging area,
+  `{"spark.ingest.staging_area_uri": "s3://bucket/path"}`.
 - Ingest runs inside the connection's current transaction. The tables
   are visible to this connection at once; call `con.commit()` for
   other connections to see them.
@@ -290,15 +296,33 @@ the Dataset (`era5.surface`), and `temporary=True` creates `Memory`
 tables. To choose the engine or sort key yourself, create the table
 first and register with `mode="append"`.
 
-**MySQL.** Mixed-dimension Datasets go into a MySQL database named
-after the Dataset, queried as `era5.surface`; identifiers are quoted
-with backticks there (and on BigQuery), as those dialects require.
+**Tested databases.** Databases differ in how they quote identifiers,
+whether they have schemas, which types they store, and what their
+drivers support; the adapter keeps those facts in one table of
+dialects and has a single code path. The test suite runs the same
+contract — round-trips, every mode, temporary tables, mixed-dimension
+naming, missing values, timedelta coordinates, the chunked round-trip —
+against each database it can reach:
 
-**Durations.** A `timedelta64` coordinate (a forecast step, say)
-round-trips everywhere, however the database stores it: as a duration
-where one exists, as an integer count of its unit on SQLite and
-ClickHouse, and as intervals (DuckDB, PostgreSQL) or text (MySQL) that
-`to_dataset` converts back using the template.
+| Database | `name.group` as | Temporary tables | Notes |
+|---|---|---|---|
+| SQLite | flat `name_group` (no schemas) | yes | times stored as text, timedeltas as integers |
+| DuckDB | schema | yes | |
+| PostgreSQL | schema | yes | a failed statement aborts the transaction |
+| MySQL, MariaDB | database | yes | backtick identifiers; the driver ignores the target schema, so the adapter switches the default database for the ingest |
+| ClickHouse, chDB | database | yes (`Memory`) | tables created by the adapter (above) |
+| DataFusion | schema | no | |
+| Trino | schema | no | |
+
+Spark, BigQuery, Databricks, and Snowflake follow their drivers'
+published feature tables (no temporary tables; backtick identifiers in
+Spark, BigQuery, and Databricks; no target schema in Spark, whose
+groups are flat) but are not exercised by the test suite; other
+databases get standard SQL. Where a database widens a type — SQLite
+stores `float32` as `float64` and `bool` as an integer, MySQL `bool` as
+`int8`, interval or text durations — `to_dataset` narrows a plain
+`SELECT` back to the template's type; derived values such as an `AVG`
+keep the result's type.
 
 The cursor is a one-shot Arrow stream: `xql.to_dataset(cur, ...)`
 round-trips eagerly, and `chunks=` needs `spill=True`.
@@ -318,7 +342,7 @@ What each integration provides. Known issues and constraints live on
 | `geometry` column ([geospatial](geospatial.md#geoarrow-point-geometry-columns)) | annotated WKB passes through | native `GEOMETRY` (`"wkb"` encoding) | plain binary/struct | driver-dependent |
 | Mixed-dimension datasets | one schema, `name.group` tables | `name.group` views over `name_group` tables | `xql.arrow_datasets(ds, name)`, one per group | `name.group` tables in a schema; `name_group` without schemas |
 | Naming those tables (`table_names=`) | yes | yes | yes | yes |
-| Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` | `adbc-driver-manager >= 1.0` (tested on 1.12 with SQLite, DuckDB, PostgreSQL 18, MySQL 8.4, ClickHouse 26.8, and chDB 26.7 drivers) |
+| Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` | `adbc-driver-manager >= 1.0` (tested on 1.12; see [tested databases](#adbc-adapter-any-database-with-a-driver)) |
 
 [^spill-only]: Why DuckDB relations do not re-execute — and two other
     engine-specific issues worth knowing — is explained on

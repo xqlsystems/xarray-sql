@@ -93,15 +93,27 @@ Pick your engine:
     - *What to do:* select the region and variables you will query
       before registering; use `mode="append"` to load in slices.
 
-    **SQLite has no timestamp type.**
+    **Not every driver can create temporary tables.**
 
-    - *Symptom:* a datetime dimension comes back from SQLite as text.
-      The eager round-trip recovers it from the template, but the
-      chunked round-trip (`chunks=..., spill=True`) cannot build its
-      window predicates against a text column and fails.
-    - *What to do:* use the eager round-trip with SQLite, or a database
-      with native timestamps (PostgreSQL, DuckDB, Snowflake, ...) for
-      the chunked one. SQLite also widens `float32` to `float64`.
+    - *Symptom:* `temporary=True` raises `ValueError` on DataFusion,
+      Trino, Spark, BigQuery, Databricks, and Snowflake.
+    - *Why:* their drivers do not support temporary ingest, and Trino's
+      silently creates a permanent table instead, so the adapter refuses
+      up front.
+    - *What to do:* register without `temporary=True` and drop the
+      tables when done.
+
+    **Spark needs an object-store staging area.**
+
+    - *Symptom:* ingest into Spark fails with `must set
+      spark.ingest.staging_area_uri`.
+    - *What to do:* pass
+      `ingest_options={"spark.ingest.staging_area_uri": "s3://..."}`;
+      local paths are not accepted.
+
+    **Cloud warehouses are untested.** Snowflake, BigQuery, Databricks,
+    and Redshift need accounts the test suite does not have; their
+    handling follows the drivers' documentation.
 
 ## Constraints in any engine
 
