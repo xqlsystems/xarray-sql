@@ -184,6 +184,33 @@ def _clickhouse_ddl(
     return statements
 
 
+_NO_DURATION_VENDORS = ("sqlite", "clickhouse")
+"""Databases with no duration type; timedeltas are stored as integers."""
+
+
+def _durations_as_integers(
+    reader: pa.RecordBatchReader,
+) -> pa.RecordBatchReader:
+    """*reader* with duration columns as integer counts of their unit.
+
+    The template's ``timedelta64`` unit matches the Arrow unit the scan
+    derived from it, so [xarray_sql.to_dataset][] reads the counts back
+    as the original durations.
+    """
+    fields = [
+        pa.field(f.name, pa.int64(), f.nullable, f.metadata)
+        if pa.types.is_duration(f.type)
+        else f
+        for f in reader.schema
+    ]
+    if all(f.type == g.type for f, g in zip(fields, reader.schema)):
+        return reader
+    schema = pa.schema(fields, metadata=reader.schema.metadata)
+    return pa.RecordBatchReader.from_batches(
+        schema, (batch.cast(schema) for batch in reader)
+    )
+
+
 def _ingest(
     con: dbapi.Connection,
     table: str,
@@ -204,11 +231,13 @@ def _ingest(
     prefetches chunks on a thread pool while the driver writes earlier
     batches, so the source read and the database write overlap.
     """
-    dataset = XarrayPushdownDataset(ds, chunks, **kwargs)
+    reader = XarrayPushdownDataset(ds, chunks, **kwargs).scanner().to_reader()
+    if vendor in _NO_DURATION_VENDORS:
+        reader = _durations_as_integers(reader)
     if vendor == "clickhouse":
         for statement in _clickhouse_ddl(
             table,
-            dataset.schema,
+            reader.schema,
             dims,
             mode=mode,
             temporary=temporary,
@@ -217,7 +246,6 @@ def _ingest(
             with con.cursor() as cur:
                 cur.execute(statement)
         mode, temporary = "append", False
-    reader = dataset.scanner().to_reader()
     target_schema = db_schema_name
     in_database: contextlib.AbstractContextManager[None] = (
         contextlib.nullcontext()

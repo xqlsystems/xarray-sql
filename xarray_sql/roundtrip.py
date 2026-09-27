@@ -29,6 +29,7 @@ from collections.abc import Mapping
 from typing import Any, Literal
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
@@ -456,7 +457,7 @@ def _to_dataset_spilled(
         if handle is not None:
             handle.spill_parquet(path)
         else:
-            _stream_to_parquet(result, path)
+            _stream_to_parquet(result, path, template)
     except BaseException:
         os.unlink(path)
         raise
@@ -481,8 +482,45 @@ def _unlink_quietly(path: str) -> None:
         pass
 
 
-def _stream_to_parquet(result: Any, path: str) -> None:
-    """Write a one-shot Arrow result to Parquet, batch by batch."""
+_MONTH_DAY_NANO = np.dtype(
+    [("months", "<i4"), ("days", "<i4"), ("nanos", "<i8")]
+)
+_NANOS_PER_DAY = 86_400 * 10**9
+
+
+def _as_durations(array: pa.Array) -> pa.Array:
+    """Durations a database returned as intervals or text, as ``duration``.
+
+    Databases without a duration type return month-day-nano intervals
+    (DuckDB, PostgreSQL) or text such as ``'21600s'`` (MySQL, Trino).
+    """
+    if pa.types.is_interval(array.type):
+        parts = np.frombuffer(
+            array.buffers()[1],
+            dtype=_MONTH_DAY_NANO,
+            count=array.offset + len(array),
+        )[array.offset :]
+        valid = ~np.asarray(array.is_null())
+        if parts["months"][valid].any():
+            raise ValueError(
+                "an interval spans calendar months, which have no fixed "
+                "duration"
+            )
+        nanos = parts["days"].astype(np.int64) * _NANOS_PER_DAY + parts["nanos"]
+        return pa.array(nanos, pa.duration("ns"), mask=~valid)
+    return pa.array(pd.to_timedelta(array.to_pandas()), pa.duration("ns"))
+
+
+def _stream_to_parquet(
+    result: Any, path: str, template: xr.Dataset | None = None
+) -> None:
+    """Write a one-shot Arrow result to Parquet, batch by batch.
+
+    Columns the template holds as ``timedelta64`` coordinates but the
+    database returned as intervals or text are written as durations:
+    Parquet cannot store month-day-nano intervals, and the windows the
+    chunked reconstruction builds compare durations, not text.
+    """
     opened = _open_stream(result)
     if opened is None:
         raise TypeError(
@@ -490,6 +528,25 @@ def _stream_to_parquet(result: Any, path: str) -> None:
             "Arrow stream."
         )
     schema, batches = opened
+    durations = [
+        i
+        for i, field in enumerate(schema)
+        if template is not None
+        and field.name in template.coords
+        and template.coords[field.name].dtype.kind == "m"
+        and (
+            pa.types.is_interval(field.type)
+            or pa.types.is_string(field.type)
+            or pa.types.is_large_string(field.type)
+        )
+    ]
+    for i in durations:
+        schema = schema.set(i, schema.field(i).with_type(pa.duration("ns")))
     with pq.ParquetWriter(path, schema) as writer:
         for batch in batches:
+            if durations:
+                columns = list(batch.columns)
+                for i in durations:
+                    columns[i] = _as_durations(columns[i])
+                batch = pa.RecordBatch.from_arrays(columns, schema=schema)
             writer.write_batch(batch)

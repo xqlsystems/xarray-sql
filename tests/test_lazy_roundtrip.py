@@ -401,3 +401,21 @@ def test_chunked_round_trip_of_zone_aware_times(zone):
     out = xql.to_dataset(result, template=ds, chunks={"time": 2}, spill=True)
 
     xr.testing.assert_allclose(out.compute(), ds)
+
+
+@pytest.mark.parametrize("chunks", [None, {"step": 2}])
+def test_timedelta_coordinates_returned_as_text(chunks):
+    # MySQL and Trino have no duration type and return text.
+    ds = xr.Dataset(
+        {"t2m": (["step"], np.arange(4.0))},
+        coords={"step": pd.to_timedelta([0, 6, 12, 18], unit="h")},
+    )
+    result = pa.table(
+        {"step": ["0s", "21600s", "43200s", "64800s"], "t2m": np.arange(4.0)}
+    )
+
+    out = xql.to_dataset(
+        result, template=ds, chunks=chunks, spill=chunks is not None
+    )
+
+    xr.testing.assert_identical(out.compute(), ds)

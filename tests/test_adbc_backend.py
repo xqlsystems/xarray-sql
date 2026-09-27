@@ -161,6 +161,28 @@ def test_chunked_round_trip_spills_the_cursor(duckdb_con, ds):
     )
 
 
+@pytest.mark.parametrize("chunks", [None, {"step": 2}])
+def test_timedelta_coordinates_round_trip(con, chunks):
+    # Forecast `step`: SQLite stores it as an integer count, DuckDB
+    # returns it as an interval.
+    forecast = xr.Dataset(
+        {"t2m": (["step", "lat"], np.random.rand(4, 2))},
+        coords={
+            "step": pd.to_timedelta([0, 6, 12, 18], unit="h"),
+            "lat": [1.0, 2.0],
+        },
+    ).chunk({"step": 2})
+    xql.register(con, "forecast", forecast)
+
+    cur = _query(con, "SELECT step, lat, t2m FROM forecast ORDER BY step, lat")
+    out = xql.to_dataset(
+        cur, template=forecast, chunks=chunks, spill=chunks is not None
+    )
+
+    xr.testing.assert_identical(out.compute().step, forecast.step)
+    xr.testing.assert_allclose(out.compute(), forecast.compute())
+
+
 def test_existing_table_is_not_overwritten_by_default(con, ds):
     xql.register(con, "weather", ds)
 

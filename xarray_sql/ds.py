@@ -70,6 +70,53 @@ def _ds_var_dims(ds: xr.Dataset) -> list[str]:
     return list(ds.dims)
 
 
+_TIMEDELTA_PARTS = (
+    "weeks",
+    "days",
+    "hours",
+    "minutes",
+    "seconds",
+    "milliseconds",
+    "microseconds",
+    "nanoseconds",
+)
+
+
+def _timedelta(value: Any) -> pd.Timedelta:
+    """One duration a database returned as an interval or as text.
+
+    Arrow's month-day-nano intervals (DuckDB, PostgreSQL) arrive as
+    pandas ``DateOffset`` objects; MySQL and Trino return text such as
+    ``'21600s'``.
+    """
+    if value is None:
+        return pd.NaT
+    if isinstance(value, pd.DateOffset):
+        parts = value.kwds
+        if parts.get("years") or parts.get("months"):
+            raise ValueError(
+                f"{value!r} spans calendar months, which have no fixed duration"
+            )
+        return pd.Timedelta(**{k: parts.get(k, 0) for k in _TIMEDELTA_PARTS})
+    return pd.Timedelta(value)
+
+
+def _as_dtype(coord: xr.DataArray, dtype: np.dtype) -> xr.DataArray:
+    """*coord* cast to the template's *dtype*.
+
+    Databases without a duration type hand timedeltas back as intervals
+    or text, which numpy cannot cast; those are parsed first. (Integers
+    need nothing: numpy reads them as counts of the template's unit,
+    which is how durations are stored where no duration type exists.)
+    """
+    if dtype.kind == "m" and coord.dtype.kind in "OUS":
+        values = np.array(
+            [_timedelta(v) for v in coord.values], dtype="timedelta64[ns]"
+        )
+        return coord.copy(data=values.astype(dtype))
+    return coord.astype(dtype)
+
+
 def _apply_template(ds: xr.Dataset, template: xr.Dataset) -> xr.Dataset:
     """Recover metadata that the forward SQL pivot strips.
 
@@ -114,7 +161,7 @@ def _apply_template(ds: xr.Dataset, template: xr.Dataset) -> xr.Dataset:
             tdt = template.coords[d].dtype
             if out.coords[d].dtype != tdt:
                 try:
-                    out = out.assign_coords({d: out.coords[d].astype(tdt)})
+                    out = out.assign_coords({d: _as_dtype(out.coords[d], tdt)})
                 except (ValueError, TypeError):
                     pass  # incompatible cast; leave as-is
             out[d].attrs = dict(template.coords[d].attrs)
