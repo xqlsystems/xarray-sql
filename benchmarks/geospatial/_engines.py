@@ -328,6 +328,24 @@ class _ADBC(EngineContext):
 
     _DOUBLE = {"postgresql": "DOUBLE PRECISION", "mssql": "FLOAT"}
 
+    _PLUS_DURATION = {
+        "sqlite": "datetime({t}, '+' || ({d} / 1000000000) || ' seconds')",
+        "clickhouse": "addNanoseconds({t}, {d})",
+        "chdb": "addNanoseconds({t}, {d})",
+        "mssql": "DATEADD(second, {d} / 1000000000, {t})",
+        "mysql": (
+            "DATE_ADD({t}, INTERVAL CAST(REPLACE({d}, 'ns', '') AS SIGNED) "
+            "DIV 1000 MICROSECOND)"
+        ),
+        "mariadb": (
+            "DATE_ADD({t}, INTERVAL CAST(REPLACE({d}, 'ns', '') AS SIGNED) "
+            "DIV 1000 MICROSECOND)"
+        ),
+    }
+    """``time + duration`` where durations are not a native interval: the
+    adapter stores them as integer nanoseconds (SQLite, ClickHouse, SQL
+    Server) or as text such as ``'43200000000000ns'`` (MySQL, MariaDB)."""
+
     def _connect(self):
         import sys
         from pathlib import Path
@@ -387,6 +405,10 @@ class _ADBC(EngineContext):
                 xql.register(
                     self._db.con, flat, window, chunks=chunks, mode="replace"
                 )
+                if self._db.backend.name == "postgresql":
+                    # Experiment: without statistics on a freshly
+                    # ingested table, does the planner pick nested loops?
+                    self._db.query(f'ANALYZE "{flat}"').close()
                 sql = re.sub(rf"\b{re.escape(table)}\b", flat, sql)
         return sql
 
@@ -398,8 +420,25 @@ class _ADBC(EngineContext):
             return f"'{text}'"
         return _literal(value)
 
+    def _durations(self) -> set[str]:
+        """Names of the registered timedelta coordinates and variables."""
+        return {
+            str(name)
+            for ds, _, _ in self._datasets.values()
+            for name, var in ds.variables.items()
+            if var.dtype.kind == "m"
+        }
+
     def _dialect(self, sql: str) -> str:
         backend = self._db.backend
+        plus = self._PLUS_DURATION.get(backend.name)
+        if plus:
+            for name in self._durations():
+                sql = re.sub(
+                    rf"([\w.]+)\s*\+\s*(\w+\.{re.escape(name)})\b",
+                    lambda m: plus.format(t=m[1], d=m[2]),
+                    sql,
+                )
         if backend.quote != '"':
             sql = re.sub(
                 r'"([^"]*)"',
@@ -425,9 +464,23 @@ class _ADBC(EngineContext):
             sql = re.sub(rf"\${key}\b", self._literal(value), sql)
         cur = self._db.query(self._dialect(sql))
         pdf = cur.fetch_arrow_table().to_pandas()
+        durations = self._durations()
+        # A duration column keeps its meaning under an alias
+        # (`prediction_timedelta AS "lead"`).
+        durations |= {
+            alias
+            for name in durations
+            for alias in re.findall(
+                rf'\b{re.escape(name)}\s+AS\s+[`"]?(\w+)', sql, re.IGNORECASE
+            )
+        }
         for dim in dims:
             if pdf[dim].dtype == object:
                 pdf[dim] = pdf[dim].map(_as_timedelta)
+            elif dim in durations and pdf[dim].dtype.kind in "iu":
+                # Stored as integer nanoseconds where there is no
+                # duration type (SQLite, ClickHouse, SQL Server).
+                pdf[dim] = pd.to_timedelta(pdf[dim], unit="ns")
         return _pandas_to_dataset(pdf, dims)
 
 

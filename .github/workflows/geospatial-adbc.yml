@@ -50,9 +50,9 @@ jobs:
             image: clickhouse/clickhouse-server:26.8
             port: 8123
             uri: http://localhost:8123/?user=default&password=xql
+          # Started by a step below, to mount a catalog with a larger
+          # memory limit (a service container cannot mount the checkout).
           - engine: adbc-trino
-            image: trinodb/trino:483
-            port: 8080
             uri: http://ci@localhost:8080?catalog=memory&schema=default
           - engine: adbc-mssql
             image: mcr.microsoft.com/mssql/server:2022-latest
@@ -114,6 +114,13 @@ jobs:
           for driver in chdb datafusion mysql clickhouse trino mssql; do
             uv run --no-project dbc install "$driver"
           done
+
+      - name: Start Trino
+        if: matrix.engine == 'adbc-trino'
+        run: >-
+          docker run -d --name trino -p 8080:8080
+          -v "$PWD/.github/trino/catalog:/etc/trino/catalog:ro"
+          trinodb/trino:483
 
       - name: Point the tests' backend table at the server
         if: matrix.uri
