@@ -124,7 +124,7 @@ jobs:
         run: >-
           docker run -d --name trino -p 8080:8080
           -v "$PWD/.github/trino/catalog:/etc/trino/catalog:ro"
-          -e JAVA_TOOL_OPTIONS=-Xmx6G
+          -e JAVA_TOOL_OPTIONS=-Xmx10G
           trinodb/trino:483
 
       - name: Point the tests' backend table at the server
