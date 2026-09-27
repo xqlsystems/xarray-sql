@@ -169,6 +169,17 @@ jobs:
             --out "results/${{ matrix.engine }}.json" \
             --jsonl "results/${{ matrix.engine }}.jsonl"
 
+      - name: Diagnose Trino
+        if: always() && matrix.engine == 'adbc-trino'
+        run: |
+          docker inspect trino --format \
+            'status={{.State.Status}} oom_killed={{.State.OOMKilled}} exit={{.State.ExitCode}} restarts={{.RestartCount}}' || true
+          docker exec trino java -XX:+PrintFlagsFinal -version 2>/dev/null \
+            | grep -E ' MaxHeapSize ' || true
+          docker logs trino 2>&1 | grep -iE 'error|exception|outofmemory|killed|server started' | tail -40 || true
+          sudo dmesg | grep -iE 'out of memory|oom|killed process' | tail -20 || true
+          free -g
+
       - name: Summarize
         if: always()
         run: |
