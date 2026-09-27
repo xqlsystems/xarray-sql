@@ -341,10 +341,12 @@ class _ADBC(EngineContext):
             "DATE_ADD({t}, INTERVAL CAST(REPLACE({d}, 'ns', '') AS SIGNED) "
             "DIV 1000 MICROSECOND)"
         ),
+        "trino": "{t} + parse_duration({d})",
     }
     """``time + duration`` where durations are not a native interval: the
     adapter stores them as integer nanoseconds (SQLite, ClickHouse, SQL
-    Server) or as text such as ``'43200000000000ns'`` (MySQL, MariaDB)."""
+    Server) or as text such as ``'43200000000000ns'`` (MySQL, MariaDB,
+    Trino)."""
 
     def _connect(self):
         import sys
