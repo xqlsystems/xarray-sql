@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from ._adbc import BACKENDS, Database
+
 
 def rand_wx(start: str, end: str) -> xr.Dataset:
     np.random.seed(42)
@@ -148,3 +150,13 @@ def air_and_stations():
         }
     ).chunk({"station": 3})
     return air, stations
+
+
+@pytest.fixture(params=BACKENDS, ids=[b.name for b in BACKENDS])
+def db(request):
+    """A connection to each available ADBC backend (see ``tests/_adbc.py``)."""
+    backend = request.param
+    database = Database(backend, backend.connect())
+    yield database
+    database.cleanup()
+    database.con.close()
