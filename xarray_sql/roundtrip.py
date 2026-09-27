@@ -513,7 +513,10 @@ def _as_durations(array: pa.Array) -> pa.Array:
 
 def _as_timestamps(array: pa.Array) -> pa.Array:
     """Times a database returned as text (SQLite has no time type)."""
-    return pa.array(pd.to_datetime(array.to_pandas()), pa.timestamp("ns"))
+    # ISO8601 rather than an inferred format: SQLite text has a fraction
+    # of a second only where there is one, so a column mixes both forms.
+    times = pd.to_datetime(array.to_pandas(), format="ISO8601")
+    return pa.array(times, pa.timestamp("ns"))
 
 
 def _stream_to_parquet(

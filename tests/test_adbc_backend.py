@@ -235,6 +235,35 @@ def test_time_filters_select_the_right_rows(db, ds):
     xr.testing.assert_allclose(out.temperature, expected.compute())
 
 
+@pytest.mark.parametrize(
+    "chunks", [None, {"time": 2}], ids=["eager", "chunked"]
+)
+def test_subsecond_times_round_trip(db, chunks):
+    # Whole and fractional seconds in one column: SQLite writes them as
+    # text of two lengths, which the spilled read must parse alike.
+    times = pd.to_datetime(
+        [
+            "2021-01-01 04:00:00",
+            "2021-01-01 04:00:00.5",
+            "2021-01-01 05:00:00",
+            "2021-01-01 05:00:00.5",
+        ],
+        format="ISO8601",
+    )
+    ds = xr.Dataset(
+        {"v": ("time", [1.0, 2.0, 3.0, 4.0])}, coords={"time": times}
+    ).chunk({"time": 4})
+    table = db.name("subsecond")
+    xql.register(db.con, table, ds)
+
+    cur = db.query(f"SELECT time, v FROM {table} ORDER BY time")
+    out = xql.to_dataset(
+        cur, template=ds, chunks=chunks, spill=chunks is not None
+    )
+
+    xr.testing.assert_identical(out.compute(), ds.compute())
+
+
 def test_awkward_variable_names_round_trip(db):
     ds = xr.Dataset(
         {
