@@ -52,8 +52,12 @@ jobs:
             uri: http://localhost:8123/?user=default&password=xql
           # Started by a step below, to mount a catalog with a larger
           # memory limit (a service container cannot mount the checkout).
+          # Trino's driver ingests batch by batch (about 10k rows/s), so
+          # the global-day cases (03, 06: 25M rows each) cannot finish in
+          # a job; it runs the regional ones.
           - engine: adbc-trino
             uri: http://ci@localhost:8080?catalog=memory&schema=default
+            cases: 02_climatology,04_anomaly,05_forecast_skill
           - engine: adbc-mssql
             image: mcr.microsoft.com/mssql/server:2022-latest
             port: 1433
@@ -120,6 +124,7 @@ jobs:
         run: >-
           docker run -d --name trino -p 8080:8080
           -v "$PWD/.github/trino/catalog:/etc/trino/catalog:ro"
+          -e JAVA_TOOL_OPTIONS=-Xmx6G
           trinodb/trino:483
 
       - name: Point the tests' backend table at the server
@@ -158,7 +163,7 @@ jobs:
           mkdir -p results
           uv run --no-project python benchmarks/geospatial/engine_suite.py \
             --local --reps 1 \
-            --cases "${{ inputs.cases || '02_climatology,03_zonal_mean,04_anomaly,05_forecast_skill,06_zonal_vector' }}" \
+            --cases "${{ inputs.cases || matrix.cases || '02_climatology,03_zonal_mean,04_anomaly,05_forecast_skill,06_zonal_vector' }}" \
             --engines "${{ matrix.engine }}" \
             --cell-timeout 2700 \
             --out "results/${{ matrix.engine }}.json" \

@@ -372,6 +372,11 @@ class _ADBC(EngineContext):
                 raise CaseSkipped(str(exc)) from None
             raise
         self._db = Database(backend, con)
+        if backend_name == "mariadb":
+            # MariaDB joins by nested loop unless hash joins are enabled;
+            # the forecast-skill join on `time + lead` then runs for hours
+            # (MySQL uses hash joins by default).
+            self._db.query("SET SESSION join_cache_level = 8").close()
         self._datasets: dict[str, tuple] = {}
         self.flavor = f"adbc ({backend_name})"
 
