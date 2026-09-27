@@ -62,6 +62,15 @@ jobs:
           ACCEPT_EULA: "Y"
           MSSQL_SA_PASSWORD: XqlPassw0rd
         ports: ["1433:1433"]
+      # DuckDB served over Arrow Flight SQL.
+      gizmosql:
+        image: gizmodata/gizmosql:latest
+        env:
+          TLS_ENABLED: "0"
+          GIZMOSQL_USERNAME: xql
+          GIZMOSQL_PASSWORD: xql
+        ports: ["31337:31337"]
+        options: --init
     env:
       VIRTUAL_ENV: ${{ github.workspace }}/.venv
       XARRAY_SQL_TEST_POSTGRESQL_URI: postgresql://postgres:xql@localhost:5432/postgres
@@ -70,6 +79,9 @@ jobs:
       XARRAY_SQL_TEST_CLICKHOUSE_URI: http://localhost:8123/?user=default&password=xql
       XARRAY_SQL_TEST_TRINO_URI: http://ci@localhost:8080?catalog=memory&schema=default
       XARRAY_SQL_TEST_MSSQL_URI: sqlserver://sa:XqlPassw0rd@localhost:1433?database=master
+      XARRAY_SQL_TEST_FLIGHTSQL_URI: grpc://localhost:31337
+      XARRAY_SQL_TEST_FLIGHTSQL_USERNAME: xql
+      XARRAY_SQL_TEST_FLIGHTSQL_PASSWORD: xql
     steps:
       - uses: actions/checkout@v4
 
@@ -95,20 +107,21 @@ jobs:
 
       - name: Install ADBC drivers
         run: |
-          uv pip install dbc adbc-driver-postgresql
+          uv pip install dbc adbc-driver-postgresql adbc-driver-flightsql
           for driver in chdb datafusion mysql clickhouse trino mssql; do
             uv run --no-project dbc install "$driver"
           done
 
-      - name: Wait for ClickHouse and Trino
+      - name: Wait for ClickHouse, Trino, and GizmoSQL
         run: |
           for i in $(seq 1 60); do
             curl -sf http://localhost:8123/ping >/dev/null \
               && curl -sf http://localhost:8080/v1/info | grep -q '"starting":false' \
+              && (echo > /dev/tcp/localhost/31337) 2>/dev/null \
               && exit 0
             sleep 3
           done
-          echo "ClickHouse or Trino did not start" >&2
+          echo "ClickHouse, Trino, or GizmoSQL did not start" >&2
           exit 1
 
       - name: Run the ADBC contract tests

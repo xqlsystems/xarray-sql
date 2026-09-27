@@ -9,10 +9,12 @@ SQLite and DuckDB always run. The others run when available:
 
 - ``chdb`` and ``datafusion`` run in-process once their drivers are
   installed (``dbc install chdb datafusion``).
-- ``clickhouse``, ``postgresql``, ``mysql``, ``mariadb``, ``trino``, and
-  ``mssql`` need a server: set ``XARRAY_SQL_TEST_<NAME>_URI`` to its URI (and
+- ``clickhouse``, ``postgresql``, ``mysql``, ``mariadb``, ``trino``,
+  ``mssql``, and ``flightsql`` need a server: set
+  ``XARRAY_SQL_TEST_<NAME>_URI`` to its URI (and
   ``XARRAY_SQL_TEST_CLICKHOUSE_DRIVER`` for a ClickHouse driver that
-  ``dbc`` did not install).
+  ``dbc`` did not install; ``XARRAY_SQL_TEST_FLIGHTSQL_USERNAME`` and
+  ``_PASSWORD`` for a Flight SQL server such as GizmoSQL).
 """
 
 import dataclasses
@@ -62,6 +64,8 @@ class Backend:
     driver: str | None
     uri: str | None = None
     entrypoint: str | None = None
+    options: tuple[tuple[str, str], ...] = ()
+    """Further database options, e.g. credentials."""
     schemas: bool = True
     """Whether mixed-dimension Datasets register as ``name.group``."""
     temporary: bool = True
@@ -81,7 +85,10 @@ class Backend:
     def connect(self):
         if self.driver is None or (self.needs_uri and not self.uri):
             pytest.skip(f"{self.name} is not available; see module docstring")
-        kwargs = {"db_kwargs": {"uri": self.uri}} if self.uri else {}
+        db_kwargs = dict(self.options)
+        if self.uri:
+            db_kwargs["uri"] = self.uri
+        kwargs: dict = {"db_kwargs": db_kwargs} if db_kwargs else {}
         if self.entrypoint:
             kwargs["entrypoint"] = self.entrypoint
         try:
@@ -90,6 +97,14 @@ class Backend:
             if self.needs_uri:
                 raise
             pytest.skip(f"{self.name} driver is not installed ({exc})")
+
+
+def _credentials(name: str) -> tuple[tuple[str, str], ...]:
+    return tuple(
+        (option, os.environ[f"XARRAY_SQL_TEST_{name.upper()}_{option.upper()}"])
+        for option in ("username", "password")
+        if f"XARRAY_SQL_TEST_{name.upper()}_{option.upper()}" in os.environ
+    )
 
 
 BACKENDS = [
@@ -150,6 +165,13 @@ BACKENDS = [
         drop_schema="DROP SCHEMA IF EXISTS {}",
         temporary_prefix="#",
         microseconds=True,
+        needs_uri=True,
+    ),
+    Backend(
+        "flightsql",
+        _module_driver("adbc_driver_flightsql") or "flightsql",
+        uri=_env("flightsql"),
+        options=_credentials("flightsql"),
         needs_uri=True,
     ),
 ]
