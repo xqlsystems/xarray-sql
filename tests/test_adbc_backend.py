@@ -33,7 +33,7 @@ dbapi = pytest.importorskip("adbc_driver_manager.dbapi")
 def _module_driver(module: str) -> str | None:
     """The driver library an ``adbc_driver_*`` Python package ships."""
     try:
-        return importlib.import_module(module)._driver_path()
+        return str(importlib.import_module(module)._driver_path())
     except ImportError:
         return None
 
