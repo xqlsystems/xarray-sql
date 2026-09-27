@@ -62,10 +62,39 @@ class Dialect:
     table_ddl: TableDDL | None = None
     """For drivers that can only append: creates each table beforehand."""
 
+    schema_ddl: Callable[[str], str] | None = None
+    """For SQL without ``CREATE ... IF NOT EXISTS``: the statement that
+    creates the schema of a given name unless it exists."""
+
     def quote_identifier(self, identifier: str) -> str:
         """*identifier* as a quoted identifier in this database's SQL."""
         escaped = identifier.replace(self.quote, self.quote * 2)
         return f"{self.quote}{escaped}{self.quote}"
+
+    def create_schema_sql(self, name: str) -> str:
+        """The statement that creates schema *name* unless it exists."""
+        if self.schema_ddl is not None:
+            return self.schema_ddl(name)
+        target = self.quote_identifier(name)
+        return f"CREATE {self.schema_kind} IF NOT EXISTS {target}"
+
+
+def _tsql_literal(text: str) -> str:
+    """*text* as a T-SQL Unicode string literal."""
+    return "N'" + text.replace("'", "''") + "'"
+
+
+def _sql_server_schema_ddl(name: str) -> str:
+    """Creates schema *name* unless it exists, in T-SQL.
+
+    T-SQL has no ``CREATE SCHEMA IF NOT EXISTS``, and ``CREATE SCHEMA``
+    must be alone in its batch, hence the dynamic ``EXEC``.
+    """
+    create = f"CREATE SCHEMA {SQL_SERVER.quote_identifier(name)}"
+    return (
+        f"IF SCHEMA_ID({_tsql_literal(name)}) IS NULL "
+        f"EXEC({_tsql_literal(create)})"
+    )
 
 
 _CLICKHOUSE_TYPES = {
@@ -167,6 +196,12 @@ CLICKHOUSE = Dialect(
     table_ddl=_clickhouse_ddl,
 )
 
+SQL_SERVER = Dialect(
+    "SQL Server",
+    durations=False,
+    schema_ddl=_sql_server_schema_ddl,
+)
+
 DIALECTS: dict[str, Dialect] = {
     # Exercised by the test suite, against a live database or driver.
     "sqlite": Dialect("SQLite", schemas=False, durations=False),
@@ -183,6 +218,8 @@ DIALECTS: dict[str, Dialect] = {
     "datafusion": Dialect("DataFusion", temporary_tables=False),
     # Trino's driver ignores temporary=True and creates a permanent table.
     "trino": Dialect("Trino", temporary_tables=False),
+    # Temporary tables are queried as #name.
+    "sql server": SQL_SERVER,
     # From the drivers' published feature tables and the databases' SQL
     # references; not exercised by the test suite.
     "spark": Dialect("Spark", quote="`", schemas=False, temporary_tables=False),

@@ -313,6 +313,7 @@ against each database it can reach:
 | ClickHouse, chDB | database | yes (`Memory`) | tables created by the adapter (above) |
 | DataFusion | schema | no | |
 | Trino | schema | no | |
+| SQL Server | schema | yes (queried as `#name`) | timedeltas as integers |
 
 Spark, BigQuery, Databricks, and Snowflake follow their drivers'
 published feature tables (no temporary tables; backtick identifiers in

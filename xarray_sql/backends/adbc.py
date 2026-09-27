@@ -191,10 +191,9 @@ def _create_schema(con: dbapi.Connection, name: str, dialect: Dialect) -> bool:
         return _flat(name, f"{dialect.name} has no schemas to hold them")
     if _schema_exists(con, name):
         return True
-    target = dialect.quote_identifier(name)
     try:
         with con.cursor() as cur:
-            cur.execute(f"CREATE {dialect.schema_kind} IF NOT EXISTS {target}")
+            cur.execute(dialect.create_schema_sql(name))
     except Exception as exc:
         if not _connection_usable(con):
             raise RuntimeError(

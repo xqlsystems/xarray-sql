@@ -66,6 +66,8 @@ class Backend:
     """Whether mixed-dimension Datasets register as ``name.group``."""
     temporary: bool = True
     """Whether ``temporary=True`` is supported."""
+    temporary_prefix: str = ""
+    """How a temporary table's name is prefixed in queries."""
     drop_schema: str = "DROP SCHEMA IF EXISTS {} CASCADE"
     quote: str = '"'
     needs_uri: bool = False
@@ -135,6 +137,7 @@ BACKENDS = [
         "mssql",
         uri=_env("mssql"),
         drop_schema="DROP SCHEMA IF EXISTS {}",
+        temporary_prefix="#",
         needs_uri=True,
     ),
 ]
@@ -325,7 +328,8 @@ def test_temporary_tables(db, ds):
 
     xql.register(db.con, table, ds, temporary=True)
 
-    count = db.query(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    temporary = f"{db.backend.temporary_prefix}{table}"
+    count = db.query(f"SELECT COUNT(*) FROM {temporary}").fetchone()[0]
     assert count == 8 * 5 * 6
 
 
