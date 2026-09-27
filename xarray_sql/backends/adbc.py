@@ -109,8 +109,10 @@ def _clickhouse_type(field: pa.Field, key: bool) -> str:
     Timestamps without a zone are declared UTC, which is what their
     values mean; ClickHouse also parses string literals compared with a
     column in that column's zone, so ``time >= '2020-01-01'`` means UTC
-    rather than the server's local time. Sort-key columns and floats
-    (which carry NaN) are not ``Nullable``.
+    rather than the server's local time. Sort-key columns are not
+    ``Nullable``. Floats are: the scan writes NaN as null so aggregates
+    skip missing values, and a plain ``Float64`` column would store that
+    null as 0.
     """
     arrow_type = field.type
     if pa.types.is_timestamp(arrow_type):
@@ -125,7 +127,7 @@ def _clickhouse_type(field: pa.Field, key: bool) -> str:
             f"{arrow_type}; create the table yourself and register with "
             f'mode="append"'
         )
-    if key or pa.types.is_floating(arrow_type) or not field.nullable:
+    if key or not field.nullable:
         return name
     return f"Nullable({name})"
 
