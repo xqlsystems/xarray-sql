@@ -21,6 +21,11 @@ on:
         description: Comma-separated cases
         default: 02_climatology,03_zonal_mean,04_anomaly,05_forecast_skill,06_zonal_vector
 
+# A newer push to the same pull request supersedes a running check.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   geospatial:
     name: ${{ matrix.engine }}
