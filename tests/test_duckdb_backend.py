@@ -133,6 +133,24 @@ def test_to_dataset_accepts_plain_arrow_table(ds):
     np.testing.assert_allclose(out["temperature"].values, [1.0, 2.0, 3.0])
 
 
+def test_to_dataset_infers_dims_from_a_mixed_dimension_template():
+    # Grouping a pressure-level variable by level keeps `level`, although
+    # the template's first variable (a surface field) has no such dim.
+    template = xr.Dataset(
+        {
+            "t2m": (["time", "lat"], np.zeros((2, 3))),
+            "temperature": (["time", "level", "lat"], np.zeros((2, 2, 3))),
+        },
+        coords={"time": [0, 1], "level": [500, 850], "lat": [1.0, 2.0, 3.0]},
+    )
+    result = pa.table({"level": [500, 850], "temperature": [250.0, 280.0]})
+
+    out = xql.to_dataset(result, template=template)
+
+    assert out.temperature.dims == ("level",)
+    np.testing.assert_array_equal(out.temperature.values, [250.0, 280.0])
+
+
 def test_to_dataset_requires_dims_or_template():
     table = pa.table({"a": [1, 2], "b": [3.0, 4.0]})
     with pytest.raises(ValueError, match="dims cannot be inferred"):

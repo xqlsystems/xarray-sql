@@ -40,8 +40,8 @@ from .ds import (
     XarrayDataFrame,
     _build_lazy_scan,
     _dataset_from_batches,
-    _ds_var_dims,
     _finish_dataset,
+    _result_dims,
 )
 from .lazyscan import LazyResultHandle, PolarsHandle, resolve_lazy_handle
 
@@ -347,7 +347,7 @@ def _resolve_dims(
                 "dims cannot be inferred without a template; pass "
                 "dims=[...] or template=<the registered Dataset>."
             )
-        dims = [d for d in _ds_var_dims(template) if d in field_names]
+        dims = _result_dims(template, field_names)
         if not dims:
             raise ValueError(
                 "dims cannot be inferred: no template dimension survives "

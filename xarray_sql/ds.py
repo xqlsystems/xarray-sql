@@ -56,18 +56,24 @@ Sparsity = Literal["result", "template"]
 # ---------------------------------------------------------------------------
 
 
-def _ds_var_dims(ds: xr.Dataset) -> list[str]:
-    """Return a Dataset's data-variable dim order.
+def _result_dims(template: xr.Dataset, columns) -> list[str]:
+    """The template's dims that survive into a result's *columns*.
 
-    The forward path validates that all data variables share the same dims
-    tuple, so the first var's dim order is canonical. Falls back to
-    ``ds.dims`` keys for empty Datasets. Always use this rather than
-    ``list(ds.dims)`` when round-tripping, since the latter is in
-    canonical name order and may not match the variable's axis order.
+    In the variables' axis order, not ``template.dims``'s name order. A
+    mixed-dimension template has one order per group of variables, so
+    the variables the result carries pick theirs: ``AVG(temperature) ...
+    GROUP BY level`` keeps ``level`` although the template's first
+    variable has none. A result carrying no template variable (only
+    aliases such as ``wind``) may keep any template dim.
     """
-    if ds.data_vars:
-        return list(next(iter(ds.data_vars.values())).dims)
-    return list(ds.dims)
+    columns = set(columns)
+    carried = [name for name in template.data_vars if name in columns]
+    order: list = []
+    for name in carried or list(template.data_vars):
+        order.extend(d for d in template[name].dims if d not in order)
+    if not order:
+        order = list(template.dims)
+    return [d for d in order if d in columns]
 
 
 _TIMEDELTA_PARTS = (
@@ -1175,13 +1181,13 @@ class XarrayDataFrame:
         become the dimensions, so aggregations that drop dims (e.g.
         ``GROUP BY time`` over a ``(time, lat, lon)`` grid) round-trip on the
         surviving dim(s). Uses the data variable's dim order (via
-        ``_ds_var_dims``) so the original axis order is preserved.
+        ``_result_dims``) so the original axis order is preserved.
         """
         result_cols = set(self._result_columns())
 
         def surviving(template: xr.Dataset) -> list[str]:
             # Template dims still present in the result, in var axis order.
-            return [d for d in _ds_var_dims(template) if d in result_cols]
+            return _result_dims(template, result_cols)
 
         if preferred_template is not None:
             preferred = surviving(preferred_template)
