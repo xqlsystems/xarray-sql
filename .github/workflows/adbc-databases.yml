@@ -13,7 +13,9 @@ on:
       - "xarray_sql/ds.py"
       - "xarray_sql/lazyscan.py"
       - "xarray_sql/roundtrip.py"
+      - "tests/_adbc.py"
       - "tests/test_adbc_backend.py"
+      - "tests/test_adbc_era5_integration.py"
       - ".github/workflows/adbc-databases.yml"
   workflow_dispatch:
 
@@ -126,3 +128,9 @@ jobs:
 
       - name: Run the ADBC contract tests
         run: uv run --no-project pytest -v -rs tests/test_adbc_backend.py
+
+      - name: Run realistic ARCO-ERA5 queries on every database
+        # Reads a regional subset anonymously from the public bucket.
+        run: >-
+          uv run --no-project pytest -v -rs -m integration
+          tests/test_adbc_era5_integration.py
