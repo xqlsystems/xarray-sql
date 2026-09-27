@@ -510,9 +510,21 @@ def _drive_vm(vm, cells, args, src, results, jsonl_lock):
             t0 = time.monotonic()
             try:
                 if submit is None:
-                    rec = run_case_cell(case, engine, args.reps, src)
+                    rec = run_case_cell(
+                        case,
+                        engine,
+                        args.reps,
+                        src,
+                        rep_timeout=args.cell_timeout,
+                    )
                 else:
-                    fut = submit(case, engine, args.reps, src)
+                    fut = submit(
+                        case,
+                        engine,
+                        args.reps,
+                        src,
+                        rep_timeout=args.cell_timeout,
+                    )
                     rec = fut.result(timeout=args.cell_timeout)
             except Exception as exc:  # noqa: BLE001
                 rec = {
