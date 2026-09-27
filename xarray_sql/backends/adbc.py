@@ -112,6 +112,12 @@ def _ingest(
             db_schema_name=target_schema,
             temporary=temporary,
         )
+    if dialect.analyze:
+        target = dialect.quote_identifier(table)
+        if db_schema_name is not None:
+            target = f"{dialect.quote_identifier(db_schema_name)}.{target}"
+        with con.cursor() as cur:
+            cur.execute(f"ANALYZE {target}")
 
 
 @contextlib.contextmanager

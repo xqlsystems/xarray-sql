@@ -447,6 +447,17 @@ def test_postgresql_uses_an_existing_schema(db, mixed_ds):
     assert count == 6 * 3 * 4
 
 
+def test_postgresql_tables_have_statistics_after_register(db, ds):
+    # Without them the planner guesses, and joins over a freshly
+    # registered table can pick plans that run for hours.
+    _only(db, "postgresql")
+    table = db.name("weather")
+    xql.register(db.con, table, ds)
+
+    cur = db.query(f"SELECT reltuples FROM pg_class WHERE relname = '{table}'")
+    assert cur.fetchone()[0] == 8 * 5 * 6
+
+
 def test_mysql_keeps_the_default_database(db, mixed_ds):
     # The MySQL driver ignores the target schema, so the adapter switches
     # the default database for the ingest and must switch it back.

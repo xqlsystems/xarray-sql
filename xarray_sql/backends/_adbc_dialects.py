@@ -77,6 +77,12 @@ class Dialect:
     """How the database folds unquoted identifiers; names it would fold
     must be quoted in queries."""
 
+    analyze: bool = False
+    """Whether to ``ANALYZE`` a table after ingest. PostgreSQL gathers
+    statistics only in the background, after a commit; until then its
+    planner guesses, and a join over a freshly registered table can pick
+    a nested loop that runs for hours instead of seconds."""
+
     table_ddl: TableDDL | None = None
     """For drivers that can only append: creates each table beforehand."""
 
@@ -234,7 +240,11 @@ DIALECTS: dict[str, Dialect] = {
     "duckdb": Dialect("DuckDB"),
     # PostgreSQL wraps a uint64 above the int64 range without an error.
     "postgresql": Dialect(
-        "PostgreSQL", unsigned=False, timestamp_unit="us", folds="lower"
+        "PostgreSQL",
+        unsigned=False,
+        timestamp_unit="us",
+        folds="lower",
+        analyze=True,
     ),
     # MariaDB's server reports itself as MySQL.
     "mysql": Dialect(
