@@ -222,10 +222,13 @@ def test_plain_flight_schema_of_a_path(server):
 
 
 def test_clickhouse_reads_through_arrow_flight(server, ds):
-    uri = os.environ.get("XARRAY_SQL_TEST_CLICKHOUSE_URI")
-    if not uri:
+    uri = os.environ.get("XARRAY_SQL_TEST_CLICKHOUSE_URI", "")
+    if not uri.startswith(("http://", "https://")):
+        # chDB, which the other ClickHouse tests can use, is built without
+        # the arrowFlight table function.
         pytest.skip(
-            "set XARRAY_SQL_TEST_CLICKHOUSE_URI to run against ClickHouse"
+            "set XARRAY_SQL_TEST_CLICKHOUSE_URI to a ClickHouse server's "
+            "HTTP address to run against ClickHouse"
         )
     sql = (
         "SELECT round(avg(temperature), 9) "
