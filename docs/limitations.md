@@ -111,6 +111,24 @@ Pick your engine:
       `ingest_options={"spark.ingest.staging_area_uri": "s3://..."}`;
       local paths are not accepted.
 
+    **MariaDB joins by nested loop by default.**
+
+    - *Symptom:* a join on a computed key (e.g. `ON e.time = f.time +
+      f.lead`) runs for hours on MariaDB; MySQL answers the same query in
+      seconds with a hash join.
+    - *What to do:* enable MariaDB's hash joins for the session,
+      `SET SESSION join_cache_level = 8`, before querying.
+
+    **Trino ingests slowly.**
+
+    - *Symptom:* registering on Trino takes minutes per million rows.
+    - *Why:* its ADBC driver ingests with one `INSERT` per batch, about
+      10,000 rows a second, and Trino's `memory` catalog caps stored data
+      (128 MB by default, `memory.max-data-per-node`).
+    - *What to do:* register a region or period rather than a global
+      field, or load large data through a Trino connector that writes
+      files (Hive, Iceberg).
+
     **Cloud warehouses are untested.** Snowflake, BigQuery, Databricks,
     and Redshift need accounts the test suite does not have; their
     handling follows the drivers' documentation.

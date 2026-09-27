@@ -311,11 +311,11 @@ against each database it can reach:
 |---|---|---|---|
 | SQLite | flat `name_group` (no schemas) | yes | times stored as text (`2021-01-01 04:00:00…`), so plain literals compare correctly; timedeltas and unsigned integers as integers |
 | DuckDB | schema | yes | |
-| PostgreSQL | schema | yes | a failed statement aborts the transaction; times to the microsecond; mixed-case names need quotes |
-| MySQL, MariaDB | database | yes | backtick identifiers; the driver ignores the target schema, so the adapter switches the default database for the ingest; times to the microsecond |
+| PostgreSQL | schema | yes | tables are `ANALYZE`d after ingest; a failed statement aborts the transaction; times to the microsecond; mixed-case names need quotes |
+| MySQL, MariaDB | database | yes | backtick identifiers; the driver ignores the target schema, so the adapter switches the default database for the ingest; times to the microsecond; MariaDB joins without hash joins by default (see limitations) |
 | ClickHouse, chDB | database | yes (`Memory`) | tables created by the adapter (above) |
 | DataFusion | schema | no | mixed-case names need quotes |
-| Trino | schema | no | |
+| Trino | schema | no | ingest is slow, about 10k rows/s (see limitations) |
 | SQL Server | schema | yes (queried as `#name`) | timedeltas and unsigned integers as integers; times to the microsecond |
 
 Spark, BigQuery, Databricks, and Snowflake follow their drivers'
