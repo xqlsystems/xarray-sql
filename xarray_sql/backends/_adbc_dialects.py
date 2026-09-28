@@ -329,7 +329,8 @@ def driver_error(con: dbapi.Connection) -> type[Exception]:
     Catching only this lets bugs and other surprises propagate instead of
     being mistaken for an unsupported feature.
     """
-    return sys.modules["adbc_driver_manager.dbapi"].Error
+    error: type[Exception] = sys.modules["adbc_driver_manager.dbapi"].Error
+    return error
 
 
 def dialect_for(con: dbapi.Connection) -> Dialect:
