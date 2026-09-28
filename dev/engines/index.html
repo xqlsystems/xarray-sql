@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.63">
+      <meta name="generator" content="zensical-0.0.66">
     
     
       
@@ -36,7 +36,7 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.10763589.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.1502b751.min.css">
       
         
           
@@ -477,6 +477,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#adbc-adapter-any-database-with-a-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        ADBC (adapter; any database with a driver)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#engine-support-matrix" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -901,6 +912,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#adbc-adapter-any-database-with-a-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        ADBC (adapter; any database with a driver)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#engine-support-matrix" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1120,6 +1142,192 @@ dimension coordinates once for all of them.</p>
 and its results round-trip through <code>xql.to_dataset</code> unchanged. The
 chunked round-trip is fully supported: windows re-execute on Polars'
 streaming engine.</p>
+<h2 id="adbc-adapter-any-database-with-a-driver">ADBC (adapter; any database with a driver)<a class="headerlink" href="#adbc-adapter-any-database-with-a-driver" title="Permanent link">&para;</a></h2>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'xarray-sql[adbc]'</span><span class="w"> </span>adbc-driver-postgresql<span class="w">   </span><span class="c1"># or -sqlite, -snowflake, ...</span>
+</span></code></pre></div>
+<p><a href="https://arrow.apache.org/adbc/">ADBC</a> is a database-neutral API whose
+drivers speak Arrow natively. <code>xql.register</code> accepts any ADBC DBAPI
+connection, so PostgreSQL, SQLite, Snowflake, BigQuery, Flight SQL,
+DuckDB, and every other database with an ADBC driver share one code
+path:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">adbc_driver_postgresql.dbapi</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">xarray_sql</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xql</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">con</span> <span class="o">=</span> <span class="n">adbc_driver_postgresql</span><span class="o">.</span><span class="n">dbapi</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s2">"postgresql://localhost/weather"</span><span class="p">)</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">xql</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">con</span><span class="p">,</span> <span class="s2">"era5"</span><span class="p">,</span> <span class="n">ds</span><span class="p">)</span>                       <span class="c1"># seam 1: ingest</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="n">con</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">cur</span> <span class="o">=</span> <span class="n">con</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">"""</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="s2">    SELECT time, lat, lon, AVG(t2m) AS t2m</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="s2">    FROM era5</span>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="s2">    WHERE lat BETWEEN 40 AND 41</span>
+</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="s2">    GROUP BY time, lat, lon</span>
+</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="s2">    ORDER BY time, lat, lon</span>
+</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="s2">"""</span><span class="p">)</span>
+</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="n">out</span> <span class="o">=</span> <span class="n">xql</span><span class="o">.</span><span class="n">to_dataset</span><span class="p">(</span><span class="n">cur</span><span class="p">,</span> <span class="n">template</span><span class="o">=</span><span class="n">ds</span><span class="p">)</span>              <span class="c1"># seam 2</span>
+</span></code></pre></div>
+<p><strong>Registration copies the data.</strong> An ADBC database usually runs in
+another process or on another machine, so it cannot call back into
+Python to scan a lazy Dataset while a query runs. The adapter instead
+streams the Dataset into a new table with ADBC's bulk ingest: chunks
+are read on the same prefetching scan the DuckDB adapter uses
+(<code>batch_size</code>, <code>prefetch</code>, <code>prefetch_bytes</code>, <code>coalesce_rows</code> tune it),
+so memory stays bounded while the driver writes, and queries afterwards
+run entirely in the database. Ingest what you intend to query —
+<code>ds.sel(...)</code> a region or <code>ds[[...]]</code> a few variables first — rather
+than a whole archive.</p>
+<p>Options specific to this adapter:</p>
+<ul>
+<li><code>mode="create"</code> (default) raises if the table exists; <code>"replace"</code>
+  drops and recreates it; <code>"append"</code> and <code>"create_append"</code> add rows,
+  which is how to load a long time series in slices.</li>
+<li><code>temporary=True</code> creates temporary tables that the database drops
+  when the connection closes — the closest match to the other
+  engines' register-for-this-session behavior. Where the driver cannot
+  create them (see the table below), registration raises rather than
+  risk a permanent table: Trino's driver, for one, silently ignores
+  the request.</li>
+<li><code>ingest_options={...}</code> sets driver-specific options on each ingest
+  statement — e.g. Spark's staging area,
+  <code>{"spark.ingest.staging_area_uri": "s3://bucket/path"}</code>.</li>
+<li><strong>Commit after registering.</strong> Ingest runs inside the connection's
+  current transaction, as DB-API prescribes. The tables are visible to
+  this connection at once, but other connections — a BI tool, a
+  separate reader — see nothing until you call <code>con.commit()</code> (SQL
+  Server even blocks them on the lock), and <code>con.rollback()</code> discards
+  the tables. DuckDB's driver autocommits; MySQL commits DDL itself.</li>
+</ul>
+<p>Mixed-dimension Datasets are ingested into a database schema named
+after the Dataset, so <code>era5.surface</code> is the same SQL here as on
+DataFusion and DuckDB. An existing schema is used as is, so a role
+granted only that schema can register into it. On databases without
+schemas (SQLite), and for temporary tables, the groups are created as
+flat <code>era5_surface</code> tables instead (with a warning in the first case).
+Where creating the schema fails <em>and</em> the failure aborts the
+transaction (PostgreSQL without the <code>CREATE</code> privilege), registration
+raises instead: call <code>con.rollback()</code>, then create the schema
+beforehand or pass <code>temporary=True</code>.</p>
+<p><strong>ClickHouse.</strong> ClickHouse's
+<a href="https://adbc-drivers.org/drivers/clickhouse/">ADBC driver</a> (a preview
+at the time of writing) can only append, so on ClickHouse the adapter
+creates each table itself and then appends to it:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">adbc_driver_manager</span><span class="w"> </span><span class="kn">import</span> <span class="n">dbapi</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="c1"># dbc install clickhouse</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">con</span> <span class="o">=</span> <span class="n">dbapi</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">driver</span><span class="o">=</span><span class="s2">"clickhouse"</span><span class="p">,</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="n">db_kwargs</span><span class="o">=</span><span class="p">{</span><span class="s2">"uri"</span><span class="p">:</span> <span class="s2">"http://localhost:8123/?user=default&amp;password=..."</span><span class="p">},</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="p">)</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="n">xql</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">con</span><span class="p">,</span> <span class="s2">"era5"</span><span class="p">,</span> <span class="n">ds</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Pass credentials as URI query parameters, as above; credentials in the
+URI's user-info part are not used. Driver 0.1.1 works with ClickHouse
+26.8 but fails every query against 26.9 (<code>decompression error: incorrect
+magic number</code>). <a href="https://clickhouse.com/docs/chdb">chDB</a>, ClickHouse
+embedded in-process, takes the same path with no server:
+<code>dbc install chdb</code>, then <code>driver="chdb"</code> and <code>uri="chdb://"</code>.</p>
+<p>Tables are <code>MergeTree</code> sorted by their dimensions
+(<code>ORDER BY (time, latitude, longitude)</code>), so ClickHouse's primary index
+skips data on dimension filters much as chunk pruning does elsewhere.
+Timestamps are declared <code>DateTime64(p, 'UTC')</code>, with the precision <code>p</code>
+following the coordinate's resolution (9 for <code>datetime64[ns]</code>, 6 for
+<code>datetime64[us]</code>), so a literal like <code>time &gt;= '2020-01-01'</code> means UTC
+rather than the server's local zone.
+Mixed-dimension Datasets go into a ClickHouse <em>database</em> named after
+the Dataset (<code>era5.surface</code>), and <code>temporary=True</code> creates <code>Memory</code>
+tables. To choose the engine or sort key yourself, create the table
+first and register with <code>mode="append"</code>. ClickHouse has no
+transactions, so <code>mode="replace"</code> ingests into a staging table and
+swaps it in with <code>EXCHANGE TABLES</code> only once the ingest succeeds; a
+failed replace leaves the old table as it was.</p>
+<p><strong>Tested databases.</strong> Databases differ in how they quote identifiers,
+whether they have schemas, which types they store, and what their
+drivers support; the adapter keeps those facts in one table of
+dialects and has a single code path. The test suite runs the same
+contract — round-trips, every mode, temporary tables, mixed-dimension
+naming, missing values, timedelta coordinates, the chunked round-trip —
+against each database it can reach:</p>
+<table>
+<thead>
+<tr>
+<th>Database</th>
+<th><code>name.group</code> as</th>
+<th>Temporary tables</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQLite</td>
+<td>flat <code>name_group</code> (no schemas)</td>
+<td>yes</td>
+<td>times stored as text (<code>2021-01-01 04:00:00…</code>), so plain literals compare correctly; timedeltas and unsigned integers as integers</td>
+</tr>
+<tr>
+<td>DuckDB</td>
+<td>schema</td>
+<td>yes</td>
+<td></td>
+</tr>
+<tr>
+<td>PostgreSQL</td>
+<td>schema</td>
+<td>yes</td>
+<td>tables are <code>ANALYZE</code>d after ingest; a failed statement aborts the transaction; times to the microsecond; mixed-case names need quotes</td>
+</tr>
+<tr>
+<td>MySQL, MariaDB</td>
+<td>database</td>
+<td>yes</td>
+<td>backtick identifiers; the driver ignores the target schema, so the adapter switches the default database for the ingest; times to the microsecond; MariaDB joins without hash joins by default (see limitations)</td>
+</tr>
+<tr>
+<td>ClickHouse, chDB</td>
+<td>database</td>
+<td>yes (<code>Memory</code>)</td>
+<td>tables created by the adapter (above)</td>
+</tr>
+<tr>
+<td>DataFusion</td>
+<td>schema</td>
+<td>no</td>
+<td>mixed-case names need quotes</td>
+</tr>
+<tr>
+<td>Trino</td>
+<td>schema</td>
+<td>no</td>
+<td>ingest is slow, about 10k rows/s (see limitations)</td>
+</tr>
+<tr>
+<td>SQL Server</td>
+<td>schema</td>
+<td>yes (queried as <code>#name</code>)</td>
+<td>timedeltas and unsigned integers as integers; times to the microsecond</td>
+</tr>
+</tbody>
+</table>
+<p>Spark, BigQuery, Databricks, and Snowflake follow their drivers'
+published feature tables (no temporary tables; backtick identifiers in
+Spark, BigQuery, and Databricks; no target schema in Spark, whose
+groups are flat) but are not exercised by the test suite; other
+databases get standard SQL.</p>
+<p>Where a database lacks a type, the adapter converts on the way in
+rather than let the driver lose data silently. Unsigned integers widen
+to the next signed width where there are none (PostgreSQL would
+otherwise wrap a <code>uint64</code> above the int64 range around to a negative
+number); a <code>uint64</code> too large for int64 raises <code>ValueError</code> instead.
+Registering a time coordinate with sub-microsecond values on a database
+that stores microseconds warns, and a name the database folds
+(<code>Weather</code> on PostgreSQL) warns that it must be quoted in queries.
+Where a database widens a type — SQLite
+stores <code>float32</code> as <code>float64</code> and <code>bool</code> as an integer, MySQL <code>bool</code> as
+<code>int8</code>, interval or text durations — <code>to_dataset</code> narrows a plain
+<code>SELECT</code> back to the template's type; derived values such as an <code>AVG</code>
+keep the result's type.</p>
+<p>The cursor is a one-shot Arrow stream: <code>xql.to_dataset(cur, ...)</code>
+round-trips eagerly, and <code>chunks=</code> needs <code>spill=True</code>.</p>
 <h2 id="engine-support-matrix">Engine support matrix<a class="headerlink" href="#engine-support-matrix" title="Permanent link">&para;</a></h2>
 <p>What each integration provides. Known issues and constraints live on
 <a href="../limitations/">Known issues &amp; limitations</a>.</p>
@@ -1130,6 +1338,7 @@ streaming engine.</p>
 <th>DataFusion</th>
 <th>DuckDB</th>
 <th>Polars</th>
+<th>ADBC</th>
 </tr>
 </thead>
 <tbody>
@@ -1138,45 +1347,53 @@ streaming engine.</p>
 <td><code>XarrayContext</code> / any <code>SessionContext</code></td>
 <td><code>xql.register(con, name, ds)</code></td>
 <td><code>pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))</code></td>
+<td><code>xql.register(con, name, ds)</code> (copies into the database)</td>
 </tr>
 <tr>
 <td>Projection pushdown</td>
 <td>yes</td>
 <td>yes</td>
 <td>yes</td>
+<td>n/a (the database's own tables)</td>
 </tr>
 <tr>
 <td>Chunk pruning on dim predicates</td>
 <td>yes</td>
 <td>yes</td>
 <td>yes</td>
+<td>n/a (the database's own indexes)</td>
 </tr>
 <tr>
 <td>Eager round-trip (<code>xql.to_dataset</code>)</td>
 <td>yes</td>
 <td>yes</td>
 <td>yes</td>
+<td>yes (pass the cursor)</td>
 </tr>
 <tr>
 <td>Chunked round-trip (<code>chunks=</code>)</td>
 <td>re-execution</td>
 <td><code>spill=True</code> <sup id="fnref:spill-only"><a class="footnote-ref" href="#fn:spill-only">1</a></sup></td>
 <td>re-execution (streaming engine)</td>
+<td><code>spill=True</code></td>
 </tr>
 <tr>
 <td><code>geometry</code> column (<a href="../geospatial/#geoarrow-point-geometry-columns">geospatial</a>)</td>
 <td>annotated WKB passes through</td>
 <td>native <code>GEOMETRY</code> (<code>"wkb"</code> encoding)</td>
 <td>plain binary/struct</td>
+<td>driver-dependent</td>
 </tr>
 <tr>
 <td>Mixed-dimension datasets</td>
 <td>one schema, <code>name.group</code> tables</td>
 <td><code>name.group</code> views over <code>name_group</code> tables</td>
 <td><code>xql.arrow_datasets(ds, name)</code>, one per group</td>
+<td><code>name.group</code> tables in a schema; <code>name_group</code> without schemas</td>
 </tr>
 <tr>
 <td>Naming those tables (<code>table_names=</code>)</td>
+<td>yes</td>
 <td>yes</td>
 <td>yes</td>
 <td>yes</td>
@@ -1186,6 +1403,7 @@ streaming engine.</p>
 <td>bundled (core dependency)</td>
 <td><code>duckdb &gt;= 1.4</code> (tested on 1.5)</td>
 <td>tested on <code>polars 1.42</code></td>
+<td><code>adbc-driver-manager &gt;= 1.12</code> (see <a href="#adbc-adapter-any-database-with-a-driver">tested databases</a>)</td>
 </tr>
 </tbody>
 </table>
@@ -1238,23 +1456,23 @@ Arrow C streams are the common wire; pushdown quality is where adapters
 differ. The round-trip needs no per-engine work as long as the engine
 can hand back Arrow.</p>
 <p>A complete adapter, modeled on the DuckDB one:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">register_adapter</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.pyarrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">XarrayPushdownDataset</span>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="nd">@register_adapter</span>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">AcmeAdapter</span><span class="p">:</span>
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span><span class="sd">"""Registers Datasets on acme.Connection objects."""</span>
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="nd">@staticmethod</span>
-</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">matches</span><span class="p">(</span><span class="n">con</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>        <span class="c1"># type inspection only, so `acme` stays an optional dependency</span>
-</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>        <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="n">con</span><span class="p">)</span><span class="o">.</span><span class="vm">__module__</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"."</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"acme"</span>
-</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>
-</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>    <span class="nd">@staticmethod</span>
-</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="n">con</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ds</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>        <span class="n">dataset</span> <span class="o">=</span> <span class="n">XarrayPushdownDataset</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>        <span class="n">con</span><span class="o">.</span><span class="n">register_arrow</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">dataset</span><span class="p">)</span>  <span class="c1"># the engine's own API</span>
-</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>        <span class="k">return</span> <span class="n">con</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">register_adapter</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.pyarrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">XarrayPushdownDataset</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="nd">@register_adapter</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">AcmeAdapter</span><span class="p">:</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">    </span><span class="sd">"""Registers Datasets on acme.Connection objects."""</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    <span class="nd">@staticmethod</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">matches</span><span class="p">(</span><span class="n">con</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>        <span class="c1"># type inspection only, so `acme` stays an optional dependency</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>        <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="n">con</span><span class="p">)</span><span class="o">.</span><span class="vm">__module__</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"."</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"acme"</span>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>    <span class="nd">@staticmethod</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="n">con</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ds</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>        <span class="n">dataset</span> <span class="o">=</span> <span class="n">XarrayPushdownDataset</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>        <span class="n">con</span><span class="o">.</span><span class="n">register_arrow</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">dataset</span><span class="p">)</span>  <span class="c1"># the engine's own API</span>
+</span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>        <span class="k">return</span> <span class="n">con</span>
 </span></code></pre></div>
 <p><code>xql.register(con, "t", ds)</code> then dispatches here whenever <code>matches</code>
 recognizes the connection. Engines that consume the pyarrow dataset
@@ -1404,7 +1622,7 @@ engine-specific issues worth knowing — is explained on
       <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["announce.dismiss","content.action.edit","content.action.view","content.code.annotate","content.code.copy","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.sections","navigation.top","navigation.tracking","search.highlight","search.share","search.suggest","toc.follow"],"redirect":null,"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"provider":"mike"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.8dcc8e9c.min.js"></script>
+      <script src="../assets/javascripts/bundle.b7d3f789.min.js"></script>
       
     
   </body>

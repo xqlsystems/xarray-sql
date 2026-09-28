@@ -4,24 +4,24 @@
         <loc>https://xqlsystems.github.io/xarray-sql/dev/</loc>
       </url>
       <url>
-        <loc>https://xqlsystems.github.io/xarray-sql/dev/examples/</loc>
+        <loc>https://xqlsystems.github.io/xarray-sql/dev/contributing/</loc>
       </url>
       <url>
         <loc>https://xqlsystems.github.io/xarray-sql/dev/engines/</loc>
       </url>
       <url>
+        <loc>https://xqlsystems.github.io/xarray-sql/dev/examples/</loc>
+      </url>
+      <url>
         <loc>https://xqlsystems.github.io/xarray-sql/dev/geospatial/</loc>
+      </url>
+      <url>
+        <loc>https://xqlsystems.github.io/xarray-sql/dev/limitations/</loc>
       </url>
       <url>
         <loc>https://xqlsystems.github.io/xarray-sql/dev/performance/</loc>
       </url>
       <url>
         <loc>https://xqlsystems.github.io/xarray-sql/dev/reference/xarray_sql/</loc>
-      </url>
-      <url>
-        <loc>https://xqlsystems.github.io/xarray-sql/dev/limitations/</loc>
-      </url>
-      <url>
-        <loc>https://xqlsystems.github.io/xarray-sql/dev/contributing/</loc>
       </url>
 </urlset>

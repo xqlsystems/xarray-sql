@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.63">
+      <meta name="generator" content="zensical-0.0.66">
     
     
       
@@ -36,7 +36,7 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.10763589.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.1502b751.min.css">
       
         
           
@@ -1047,7 +1047,7 @@
 page is only the sharp edges. Everything here is pinned by tests.</p>
 <h2 id="engine-specific-issues">Engine-specific issues<a class="headerlink" href="#engine-specific-issues" title="Permanent link">&para;</a></h2>
 <p>Pick your engine:</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">DataFusion</label><label for="__tabbed_1_2">DuckDB</label><label for="__tabbed_1_3">Polars</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:4"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">DataFusion</label><label for="__tabbed_1_2">DuckDB</label><label for="__tabbed_1_3">Polars</label><label for="__tabbed_1_4">ADBC</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <p>No engine-specific known issues. DataFusion is the deepest
@@ -1118,6 +1118,56 @@ re-execution); the constraints below apply as everywhere.</p>
 from the adapter's prefetch pool (<code>prefetch</code>, <code>prefetch_bytes</code>),
 not from the consumer. Not a bug — worth knowing when sizing
 scans.</p>
+</div>
+<div class="tabbed-block">
+<p><strong>Registration is a copy, not a lazy view.</strong></p>
+<ul>
+<li><em>Symptom:</em> registering a large Dataset takes as long as reading
+  all of it, and the database holds a full copy.</li>
+<li><em>Why:</em> an ADBC database cannot call back into Python while a
+  query runs, so there is no lazy scan to push predicates into.</li>
+<li><em>What to do:</em> select the region and variables you will query
+  before registering; use <code>mode="append"</code> to load in slices.</li>
+</ul>
+<p><strong>Not every driver can create temporary tables.</strong></p>
+<ul>
+<li><em>Symptom:</em> <code>temporary=True</code> raises <code>ValueError</code> on DataFusion,
+  Trino, Spark, BigQuery, Databricks, and Snowflake.</li>
+<li><em>Why:</em> their drivers do not support temporary ingest, and Trino's
+  silently creates a permanent table instead, so the adapter refuses
+  up front.</li>
+<li><em>What to do:</em> register without <code>temporary=True</code> and drop the
+  tables when done.</li>
+</ul>
+<p><strong>Spark needs an object-store staging area.</strong></p>
+<ul>
+<li><em>Symptom:</em> ingest into Spark fails with <code>must set
+  spark.ingest.staging_area_uri</code>.</li>
+<li><em>What to do:</em> pass
+  <code>ingest_options={"spark.ingest.staging_area_uri": "s3://..."}</code>;
+  local paths are not accepted.</li>
+</ul>
+<p><strong>MariaDB joins by nested loop by default.</strong></p>
+<ul>
+<li><em>Symptom:</em> a join on a computed key (e.g. <code>ON e.time = f.time +
+  f.lead</code>) runs for hours on MariaDB; MySQL answers the same query in
+  seconds with a hash join.</li>
+<li><em>What to do:</em> enable MariaDB's hash joins for the session,
+  <code>SET SESSION join_cache_level = 8</code>, before querying.</li>
+</ul>
+<p><strong>Trino ingests slowly.</strong></p>
+<ul>
+<li><em>Symptom:</em> registering on Trino takes minutes per million rows.</li>
+<li><em>Why:</em> its ADBC driver ingests with one <code>INSERT</code> per batch, about
+  10,000 rows a second, and Trino's <code>memory</code> catalog caps stored data
+  (128 MB by default, <code>memory.max-data-per-node</code>).</li>
+<li><em>What to do:</em> register a region or period rather than a global
+  field, or load large data through a Trino connector that writes
+  files (Hive, Iceberg).</li>
+</ul>
+<p><strong>Cloud warehouses are untested.</strong> Snowflake, BigQuery, Databricks,
+and Redshift need accounts the test suite does not have; their
+handling follows the drivers' documentation.</p>
 </div>
 </div>
 </div>
@@ -1328,7 +1378,7 @@ outer-then-gather fallback — correct, but slower than slice windows.</p>
       <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["announce.dismiss","content.action.edit","content.action.view","content.code.annotate","content.code.copy","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.sections","navigation.top","navigation.tracking","search.highlight","search.share","search.suggest","toc.follow"],"redirect":null,"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"provider":"mike"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.8dcc8e9c.min.js"></script>
+      <script src="../assets/javascripts/bundle.b7d3f789.min.js"></script>
       
     
   </body>
