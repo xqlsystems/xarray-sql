@@ -151,6 +151,23 @@ def test_to_dataset_infers_dims_from_a_mixed_dimension_template():
     np.testing.assert_array_equal(out.temperature.values, [250.0, 280.0])
 
 
+def test_widened_dtype_is_restored_for_plain_selects_only():
+    # SQLite and MySQL return bool as an integer. A plain select of the
+    # variable narrows back; an aggregate aliased to the variable's name
+    # keeps its integer dtype whatever its values happen to be.
+    template = xr.Dataset(
+        {"flag": (["time", "x"], np.array([[True, False], [False, False]]))},
+        coords={"time": [0, 1], "x": [10, 20]},
+    )
+    plain = pa.table(
+        {"time": [0, 0, 1, 1], "x": [10, 20, 10, 20], "flag": [1, 0, 0, 0]}
+    )
+    summed = pa.table({"x": [10, 20], "flag": [1, 0]})  # SUM(flag) by x
+
+    assert xql.to_dataset(plain, template=template).flag.dtype == bool
+    assert xql.to_dataset(summed, template=template).flag.dtype == np.int64
+
+
 def test_to_dataset_requires_dims_or_template():
     table = pa.table({"a": [1, 2], "b": [3.0, 4.0]})
     with pytest.raises(ValueError, match="dims cannot be inferred"):

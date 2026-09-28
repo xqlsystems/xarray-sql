@@ -127,18 +127,26 @@ _NARROWINGS = {("i", "b"), ("u", "b"), ("i", "u"), ("f", "f")}
 """(result kind, template kind) pairs a database may have widened."""
 
 
-def _restore_dtype(var: xr.DataArray, dtype: np.dtype) -> xr.DataArray:
-    """*var* as the template's *dtype*, when that loses nothing.
+def _restore_dtype(var: xr.DataArray, template: xr.DataArray) -> xr.DataArray:
+    """*var* as the *template* variable's dtype, when *var* is that variable.
 
     Databases without a type widen it: SQLite stores ``float32`` as
     ``float64`` and ``bool`` as an integer, MySQL ``bool`` as ``int8``, and
-    databases without unsigned integers store them as signed ones.
-    A plain ``SELECT`` of such a column narrows back exactly; a derived
-    value (an ``AVG`` of ``float32``, a ``SUM`` of ``bool``) does not, and
-    keeps the result's dtype. Only in-memory values can be checked, so a
-    lazily reconstructed variable keeps the result's dtype too.
+    databases without unsigned integers store them as signed ones. A plain
+    ``SELECT`` of such a column is narrowed back.
+
+    Whether the column is the variable is read from its dims, since the
+    query itself is not available here: a plain select (filtered or not)
+    keeps every dim of the variable, while an aggregate such as
+    ``SUM(flag) AS flag`` reduces some away and keeps the result's dtype,
+    whatever its values. The narrowing must also be exact, and only
+    in-memory values can be checked, so a lazily reconstructed variable
+    keeps the result's dtype too.
     """
+    dtype = template.dtype
     if var.dtype == dtype or not isinstance(var.data, np.ndarray):
+        return var
+    if set(var.dims) != set(template.dims):
         return var
     if (var.dtype.kind, dtype.kind) not in _NARROWINGS:
         return var
@@ -182,7 +190,7 @@ def _apply_template(ds: xr.Dataset, template: xr.Dataset) -> xr.Dataset:
     #    template. Aggregation aliases absent from template inherit nothing.
     for name in list(out.data_vars):
         if name in template.data_vars:
-            out[name] = _restore_dtype(out[name], template[name].dtype)
+            out[name] = _restore_dtype(out[name], template[name])
             out[name].attrs = dict(template[name].attrs)
             # Drop dtype-bound encoding keys; SQL may have changed dtype.
             enc = {
