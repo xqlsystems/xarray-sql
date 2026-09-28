@@ -543,8 +543,10 @@ impl FlightSqlServer {
     ) -> PyResult<()> {
         let provider = table.table.clone();
         let Some(schema_name) = schema else {
+            // Bare, not parsed as SQL: a `&str` would fold `Weather` to
+            // `weather`, and a quoted `"Weather"` could never find it.
             self.ctx
-                .register_table(name, provider)
+                .register_table(TableReference::bare(name), provider)
                 .map_err(runtime_error)?;
             return Ok(());
         };

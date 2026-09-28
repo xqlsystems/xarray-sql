@@ -46,6 +46,8 @@ from ..df import (
     shared_coord_arrays,
 )
 from ..reader import read_xarray_table
+from ._adbc_dialects import DIALECTS
+from .adbc import _warn_on_folded_names
 from .base import register_adapter
 
 __all__ = ["FlightSQLServer", "serve"]
@@ -89,6 +91,10 @@ class FlightSQLServer:
         [XarrayContext.from_dataset][xarray_sql.XarrayContext.from_dataset]
         registers it.
 
+        Names are registered exactly as given. The server's SQL folds
+        unquoted names to lowercase, so a mixed-case name warns and must
+        be quoted in queries.
+
         Args:
             name: The table name, or the schema name for a
                 mixed-dimension Dataset.
@@ -103,6 +109,10 @@ class FlightSQLServer:
         """
         groups = group_vars_by_dims(ds)
         names = resolve_table_names(ds, table_names)
+        _warn_on_folded_names(
+            [name] if len(groups) <= 1 else [name, *names.values()],
+            DIALECTS["datafusion"],
+        )
         if len(groups) <= 1:
             self._native.register_table(name, read_xarray_table(ds, chunks))
             return self
