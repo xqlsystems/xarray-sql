@@ -458,6 +458,30 @@ def test_postgresql_tables_have_statistics_after_register(db, ds):
     assert cur.fetchone()[0] == 8 * 5 * 6
 
 
+def test_clickhouse_failed_replace_keeps_the_old_table(db, ds):
+    # ClickHouse has no transactions to roll back a half-done replace.
+    _only(db, "clickhouse", "chdb")
+    table = db.name("weather")
+    xql.register(db.con, table, ds)
+
+    def fail_on_second_chunk(block, block_info=None):
+        if block_info[0]["chunk-location"][0] == 1:
+            raise OSError("the source went away")
+        return block
+
+    broken = ds.copy()
+    broken["temperature"] = broken.temperature.copy(
+        data=broken.temperature.data.map_blocks(
+            fail_on_second_chunk, dtype=broken.temperature.dtype
+        )
+    )
+    with pytest.raises((OSError, dbapi.Error)):
+        xql.register(db.con, table, broken, mode="replace")
+
+    out = xql.to_dataset(_select_all(db, table), template=ds)
+    xr.testing.assert_identical(out, ds.compute())
+
+
 def test_mysql_keeps_the_default_database(db, mixed_ds):
     # The MySQL driver ignores the target schema, so the adapter switches
     # the default database for the ingest and must switch it back.

@@ -46,6 +46,7 @@ from ._adbc_dialects import (
     Dialect,
     IngestMode,
     dialect_for,
+    driver_error,
     ingestable,
 )
 from .base import register_adapter
@@ -80,17 +81,17 @@ def _ingest(
     """
     reader = XarrayPushdownDataset(ds, chunks, **kwargs).scanner().to_reader()
     reader = ingestable(reader, dialect)
+    plan = None
     if dialect.table_ddl is not None:
-        for statement in dialect.table_ddl(
+        plan = dialect.table_ddl(
             table,
             reader.schema,
             dims,
             mode=mode,
             temporary=temporary,
             database=db_schema_name,
-        ):
-            with con.cursor() as cur:
-                cur.execute(statement)
+        )
+        _execute(con, plan.before)
         mode, temporary = "append", False
     target_schema = db_schema_name
     in_database: contextlib.AbstractContextManager[None] = (
@@ -102,22 +103,38 @@ def _ingest(
     ):
         in_database = _default_database(con, db_schema_name, dialect)
         target_schema = None
-    with in_database, con.cursor() as cur:
-        if ingest_options:
-            cur.adbc_statement.set_options(**ingest_options)
-        cur.adbc_ingest(
-            table,
-            reader,
-            mode=mode,
-            db_schema_name=target_schema,
-            temporary=temporary,
-        )
+    try:
+        with in_database, con.cursor() as cur:
+            if ingest_options:
+                cur.adbc_statement.set_options(**ingest_options)
+            cur.adbc_ingest(
+                plan.table if plan is not None else table,
+                reader,
+                mode=mode,
+                db_schema_name=target_schema,
+                temporary=temporary,
+            )
+    except BaseException:
+        if plan is not None:
+            try:
+                _execute(con, plan.on_failure)
+            except driver_error(con):
+                pass  # the ingest's own error is the one to report
+        raise
+    if plan is not None:
+        _execute(con, plan.after)
     if dialect.analyze:
         target = dialect.quote_identifier(table)
         if db_schema_name is not None:
             target = f"{dialect.quote_identifier(db_schema_name)}.{target}"
         with con.cursor() as cur:
             cur.execute(f"ANALYZE {target}")
+
+
+def _execute(con: dbapi.Connection, statements: list[str]) -> None:
+    for statement in statements:
+        with con.cursor() as cur:
+            cur.execute(statement)
 
 
 @contextlib.contextmanager
@@ -149,7 +166,7 @@ def _schema_exists(con: dbapi.Connection, name: str) -> bool:
         objects = con.adbc_get_objects(
             depth="db_schemas", db_schema_filter=name
         ).read_all()
-    except Exception:  # noqa: BLE001 — metadata unsupported; assume not
+    except driver_error(con):  # metadata unsupported; assume not
         return False
     return any(
         schema["db_schema_name"] == name
@@ -164,7 +181,7 @@ def _connection_usable(con: dbapi.Connection) -> bool:
         with con.cursor() as cur:
             cur.execute("SELECT 1")
             cur.fetchall()
-    except Exception:  # noqa: BLE001
+    except driver_error(con):
         return False
     return True
 
@@ -232,7 +249,7 @@ def _create_schema(con: dbapi.Connection, name: str, dialect: Dialect) -> bool:
     try:
         with con.cursor() as cur:
             cur.execute(dialect.create_schema_sql(name))
-    except Exception as exc:
+    except driver_error(con) as exc:
         if not _connection_usable(con):
             raise RuntimeError(
                 f"Could not create the {name!r} schema to hold the dimension "

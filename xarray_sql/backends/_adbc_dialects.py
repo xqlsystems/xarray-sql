@@ -15,6 +15,7 @@ ANSI SQL and the ADBC specification prescribe.
 from __future__ import annotations
 
 import dataclasses
+import sys
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Literal
 
@@ -26,8 +27,26 @@ if TYPE_CHECKING:
 
 IngestMode = Literal["create", "append", "replace", "create_append"]
 
-TableDDL = Callable[..., list[str]]
-"""Builds the statements that create a table before an append-only ingest."""
+
+@dataclasses.dataclass(frozen=True)
+class IngestPlan:
+    """The DDL around an ingest, for drivers that can only append."""
+
+    table: str
+    """The table the rows are appended to."""
+
+    before: list[str]
+    """Run before the ingest."""
+
+    after: list[str] = dataclasses.field(default_factory=list)
+    """Run once the ingest succeeds."""
+
+    on_failure: list[str] = dataclasses.field(default_factory=list)
+    """Run if the ingest fails, before the error propagates."""
+
+
+TableDDL = Callable[..., IngestPlan]
+"""Plans the DDL around an append-only ingest into a table."""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -181,20 +200,28 @@ def _clickhouse_ddl(
     mode: IngestMode,
     temporary: bool,
     database: str | None,
-) -> list[str]:
-    """Statements that prepare *table* for an append-mode ingest.
+) -> IngestPlan:
+    """The DDL around an append-mode ingest into *table*.
 
     ClickHouse's ADBC driver only appends, so the table is created here
     for every other mode. Tables are sorted by their dimensions, so
     ClickHouse's primary index skips data on dimension predicates the
     way chunk pruning does in the other engines.
+
+    ClickHouse has no transactions, so ``replace`` ingests into a staging
+    table and swaps it in with ``EXCHANGE TABLES`` (atomic) only once the
+    ingest has succeeded: a failed ingest leaves the old table as it was.
+    Temporary tables cannot be exchanged and are dropped and recreated.
     """
-    if mode == "append":
-        return []
     quote = CLICKHOUSE.quote_identifier
-    target = quote(table)
-    if database is not None:
-        target = f"{quote(database)}.{target}"
+
+    def qualified(name: str) -> str:
+        if database is None:
+            return quote(name)
+        return f"{quote(database)}.{quote(name)}"
+
+    if mode == "append":
+        return IngestPlan(table, [])
     columns = ", ".join(
         f"{quote(field.name)} {_clickhouse_type(field, field.name in dims)}"
         for field in schema
@@ -205,12 +232,29 @@ def _clickhouse_ddl(
     else:
         order = ", ".join(quote(dim) for dim in dims) or "tuple()"
         engine = f"ENGINE = MergeTree ORDER BY ({order})"
+    target = qualified(table)
+    if mode == "replace" and not temporary:
+        staging_name = f"{table}__xarray_sql_replace"
+        staging = qualified(staging_name)
+        return IngestPlan(
+            staging_name,
+            before=[
+                f"DROP TABLE IF EXISTS {staging}",
+                f"CREATE TABLE {staging} ({columns}) {engine}",
+            ],
+            after=[
+                f"CREATE TABLE IF NOT EXISTS {target} AS {staging}",
+                f"EXCHANGE TABLES {target} AND {staging}",
+                f"DROP TABLE {staging}",
+            ],
+            on_failure=[f"DROP TABLE IF EXISTS {staging}"],
+        )
     statements = []
     if mode == "replace":
         statements.append(f"DROP {kind} IF EXISTS {target}")
     exists = " IF NOT EXISTS" if mode == "create_append" else ""
     statements.append(f"CREATE {kind}{exists} {target} ({columns}) {engine}")
-    return statements
+    return IngestPlan(table, statements)
 
 
 CLICKHOUSE = Dialect(
@@ -277,6 +321,17 @@ DIALECTS: dict[str, Dialect] = {
 """Known databases, keyed by a name their drivers' vendor names contain."""
 
 
+def driver_error(con: dbapi.Connection) -> type[Exception]:
+    """The DB-API ``Error`` every ADBC driver's failures derive from.
+
+    Looked up rather than imported, so ADBC stays an optional dependency:
+    whenever an ADBC connection exists, its driver manager is loaded.
+    Catching only this lets bugs and other surprises propagate instead of
+    being mistaken for an unsupported feature.
+    """
+    return sys.modules["adbc_driver_manager.dbapi"].Error
+
+
 def dialect_for(con: dbapi.Connection) -> Dialect:
     """The [Dialect][xarray_sql.backends._adbc_dialects.Dialect] of *con*.
 
@@ -286,7 +341,7 @@ def dialect_for(con: dbapi.Connection) -> Dialect:
     """
     try:
         info = con.adbc_get_info()
-    except Exception:  # noqa: BLE001 — unimplemented; probe instead
+    except driver_error(con):  # unimplemented; probe instead
         pass
     else:
         vendor = str(info.get("vendor_name") or "").lower()
@@ -298,7 +353,7 @@ def dialect_for(con: dbapi.Connection) -> Dialect:
         with con.cursor() as cur:
             cur.execute("SELECT 1 FROM system.one")
             cur.fetchall()
-    except Exception:  # noqa: BLE001
+    except driver_error(con):
         return Dialect("the database")
     return CLICKHOUSE
 
