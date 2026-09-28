@@ -29,6 +29,7 @@ from collections.abc import Mapping
 from typing import Any, Literal
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
@@ -39,8 +40,8 @@ from .ds import (
     XarrayDataFrame,
     _build_lazy_scan,
     _dataset_from_batches,
-    _ds_var_dims,
     _finish_dataset,
+    _result_dims,
 )
 from .lazyscan import LazyResultHandle, PolarsHandle, resolve_lazy_handle
 
@@ -346,7 +347,7 @@ def _resolve_dims(
                 "dims cannot be inferred without a template; pass "
                 "dims=[...] or template=<the registered Dataset>."
             )
-        dims = [d for d in _ds_var_dims(template) if d in field_names]
+        dims = _result_dims(template, field_names)
         if not dims:
             raise ValueError(
                 "dims cannot be inferred: no template dimension survives "
@@ -456,7 +457,7 @@ def _to_dataset_spilled(
         if handle is not None:
             handle.spill_parquet(path)
         else:
-            _stream_to_parquet(result, path)
+            _stream_to_parquet(result, path, template)
     except BaseException:
         os.unlink(path)
         raise
@@ -481,8 +482,54 @@ def _unlink_quietly(path: str) -> None:
         pass
 
 
-def _stream_to_parquet(result: Any, path: str) -> None:
-    """Write a one-shot Arrow result to Parquet, batch by batch."""
+_MONTH_DAY_NANO = np.dtype(
+    [("months", "<i4"), ("days", "<i4"), ("nanos", "<i8")]
+)
+_NANOS_PER_DAY = 86_400 * 10**9
+
+
+def _as_durations(array: pa.Array) -> pa.Array:
+    """Durations a database returned as intervals or text, as ``duration``.
+
+    Databases without a duration type return month-day-nano intervals
+    (DuckDB, PostgreSQL) or text such as ``'21600s'`` (MySQL, Trino).
+    """
+    if pa.types.is_interval(array.type):
+        parts = np.frombuffer(
+            array.buffers()[1],
+            dtype=_MONTH_DAY_NANO,
+            count=array.offset + len(array),
+        )[array.offset :]
+        valid = ~np.asarray(array.is_null())
+        if parts["months"][valid].any():
+            raise ValueError(
+                "an interval spans calendar months, which have no fixed "
+                "duration"
+            )
+        nanos = parts["days"].astype(np.int64) * _NANOS_PER_DAY + parts["nanos"]
+        return pa.array(nanos, pa.duration("ns"), mask=~valid)
+    return pa.array(pd.to_timedelta(array.to_pandas()), pa.duration("ns"))
+
+
+def _as_timestamps(array: pa.Array) -> pa.Array:
+    """Times a database returned as text (SQLite has no time type)."""
+    # ISO8601 rather than an inferred format: SQLite text has a fraction
+    # of a second only where there is one, so a column mixes both forms.
+    times = pd.to_datetime(array.to_pandas(), format="ISO8601")
+    return pa.array(times, pa.timestamp("ns"))
+
+
+def _stream_to_parquet(
+    result: Any, path: str, template: xr.Dataset | None = None
+) -> None:
+    """Write a one-shot Arrow result to Parquet, batch by batch.
+
+    Coordinates the template holds as ``timedelta64`` or ``datetime64``
+    but the database returned as intervals or text are written as
+    durations and timestamps: Parquet cannot store month-day-nano
+    intervals, and the windows the chunked reconstruction builds compare
+    times, not text.
+    """
     opened = _open_stream(result)
     if opened is None:
         raise TypeError(
@@ -490,6 +537,25 @@ def _stream_to_parquet(result: Any, path: str) -> None:
             "Arrow stream."
         )
     schema, batches = opened
+    conversions = {}
+    for i, field in enumerate(schema):
+        if template is None or field.name not in template.coords:
+            continue
+        kind = template.coords[field.name].dtype.kind
+        text = pa.types.is_string(field.type) or pa.types.is_large_string(
+            field.type
+        )
+        if kind == "m" and (text or pa.types.is_interval(field.type)):
+            conversions[i] = (_as_durations, pa.duration("ns"))
+        elif kind == "M" and text:
+            conversions[i] = (_as_timestamps, pa.timestamp("ns"))
+    for i, (_, arrow_type) in conversions.items():
+        schema = schema.set(i, schema.field(i).with_type(arrow_type))
     with pq.ParquetWriter(path, schema) as writer:
         for batch in batches:
+            if conversions:
+                columns = list(batch.columns)
+                for i, (convert, _) in conversions.items():
+                    columns[i] = convert(columns[i])
+                batch = pa.RecordBatch.from_arrays(columns, schema=schema)
             writer.write_batch(batch)

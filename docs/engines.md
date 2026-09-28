@@ -190,22 +190,176 @@ chunked round-trip is fully supported: windows re-execute on Polars'
 streaming engine.
 
 
+## ADBC (adapter; any database with a driver)
+
+```sh
+pip install 'xarray-sql[adbc]' adbc-driver-postgresql   # or -sqlite, -snowflake, ...
+```
+
+[ADBC](https://arrow.apache.org/adbc/) is a database-neutral API whose
+drivers speak Arrow natively. `xql.register` accepts any ADBC DBAPI
+connection, so PostgreSQL, SQLite, Snowflake, BigQuery, Flight SQL,
+DuckDB, and every other database with an ADBC driver share one code
+path:
+
+```python
+import adbc_driver_postgresql.dbapi
+import xarray_sql as xql
+
+con = adbc_driver_postgresql.dbapi.connect("postgresql://localhost/weather")
+xql.register(con, "era5", ds)                       # seam 1: ingest
+con.commit()
+
+cur = con.cursor()
+cur.execute("""
+    SELECT time, lat, lon, AVG(t2m) AS t2m
+    FROM era5
+    WHERE lat BETWEEN 40 AND 41
+    GROUP BY time, lat, lon
+    ORDER BY time, lat, lon
+""")
+out = xql.to_dataset(cur, template=ds)              # seam 2
+```
+
+**Registration copies the data.** An ADBC database usually runs in
+another process or on another machine, so it cannot call back into
+Python to scan a lazy Dataset while a query runs. The adapter instead
+streams the Dataset into a new table with ADBC's bulk ingest: chunks
+are read on the same prefetching scan the DuckDB adapter uses
+(`batch_size`, `prefetch`, `prefetch_bytes`, `coalesce_rows` tune it),
+so memory stays bounded while the driver writes, and queries afterwards
+run entirely in the database. Ingest what you intend to query —
+`ds.sel(...)` a region or `ds[[...]]` a few variables first — rather
+than a whole archive.
+
+Options specific to this adapter:
+
+- `mode="create"` (default) raises if the table exists; `"replace"`
+  drops and recreates it; `"append"` and `"create_append"` add rows,
+  which is how to load a long time series in slices.
+- `temporary=True` creates temporary tables that the database drops
+  when the connection closes — the closest match to the other
+  engines' register-for-this-session behavior. Where the driver cannot
+  create them (see the table below), registration raises rather than
+  risk a permanent table: Trino's driver, for one, silently ignores
+  the request.
+- `ingest_options={...}` sets driver-specific options on each ingest
+  statement — e.g. Spark's staging area,
+  `{"spark.ingest.staging_area_uri": "s3://bucket/path"}`.
+- **Commit after registering.** Ingest runs inside the connection's
+  current transaction, as DB-API prescribes. The tables are visible to
+  this connection at once, but other connections — a BI tool, a
+  separate reader — see nothing until you call `con.commit()` (SQL
+  Server even blocks them on the lock), and `con.rollback()` discards
+  the tables. DuckDB's driver autocommits; MySQL commits DDL itself.
+
+Mixed-dimension Datasets are ingested into a database schema named
+after the Dataset, so `era5.surface` is the same SQL here as on
+DataFusion and DuckDB. An existing schema is used as is, so a role
+granted only that schema can register into it. On databases without
+schemas (SQLite), and for temporary tables, the groups are created as
+flat `era5_surface` tables instead (with a warning in the first case).
+Where creating the schema fails *and* the failure aborts the
+transaction (PostgreSQL without the `CREATE` privilege), registration
+raises instead: call `con.rollback()`, then create the schema
+beforehand or pass `temporary=True`.
+
+**ClickHouse.** ClickHouse's
+[ADBC driver](https://adbc-drivers.org/drivers/clickhouse/) (a preview
+at the time of writing) can only append, so on ClickHouse the adapter
+creates each table itself and then appends to it:
+
+```python
+from adbc_driver_manager import dbapi
+
+# dbc install clickhouse
+con = dbapi.connect(
+    driver="clickhouse",
+    db_kwargs={"uri": "http://localhost:8123/?user=default&password=..."},
+)
+xql.register(con, "era5", ds)
+```
+
+Pass credentials as URI query parameters, as above; credentials in the
+URI's user-info part are not used. Driver 0.1.1 works with ClickHouse
+26.8 but fails every query against 26.9 (`decompression error: incorrect
+magic number`). [chDB](https://clickhouse.com/docs/chdb), ClickHouse
+embedded in-process, takes the same path with no server:
+`dbc install chdb`, then `driver="chdb"` and `uri="chdb://"`.
+
+Tables are `MergeTree` sorted by their dimensions
+(`ORDER BY (time, latitude, longitude)`), so ClickHouse's primary index
+skips data on dimension filters much as chunk pruning does elsewhere.
+Timestamps are declared `DateTime64(p, 'UTC')`, with the precision `p`
+following the coordinate's resolution (9 for `datetime64[ns]`, 6 for
+`datetime64[us]`), so a literal like `time >= '2020-01-01'` means UTC
+rather than the server's local zone.
+Mixed-dimension Datasets go into a ClickHouse *database* named after
+the Dataset (`era5.surface`), and `temporary=True` creates `Memory`
+tables. To choose the engine or sort key yourself, create the table
+first and register with `mode="append"`. ClickHouse has no
+transactions, so `mode="replace"` ingests into a staging table and
+swaps it in with `EXCHANGE TABLES` only once the ingest succeeds; a
+failed replace leaves the old table as it was.
+
+**Tested databases.** Databases differ in how they quote identifiers,
+whether they have schemas, which types they store, and what their
+drivers support; the adapter keeps those facts in one table of
+dialects and has a single code path. The test suite runs the same
+contract — round-trips, every mode, temporary tables, mixed-dimension
+naming, missing values, timedelta coordinates, the chunked round-trip —
+against each database it can reach:
+
+| Database | `name.group` as | Temporary tables | Notes |
+|---|---|---|---|
+| SQLite | flat `name_group` (no schemas) | yes | times stored as text (`2021-01-01 04:00:00…`), so plain literals compare correctly; timedeltas and unsigned integers as integers |
+| DuckDB | schema | yes | |
+| PostgreSQL | schema | yes | tables are `ANALYZE`d after ingest; a failed statement aborts the transaction; times to the microsecond; mixed-case names need quotes |
+| MySQL, MariaDB | database | yes | backtick identifiers; the driver ignores the target schema, so the adapter switches the default database for the ingest; times to the microsecond; MariaDB joins without hash joins by default (see limitations) |
+| ClickHouse, chDB | database | yes (`Memory`) | tables created by the adapter (above) |
+| DataFusion | schema | no | mixed-case names need quotes |
+| Trino | schema | no | ingest is slow, about 10k rows/s (see limitations) |
+| SQL Server | schema | yes (queried as `#name`) | timedeltas and unsigned integers as integers; times to the microsecond |
+
+Spark, BigQuery, Databricks, and Snowflake follow their drivers'
+published feature tables (no temporary tables; backtick identifiers in
+Spark, BigQuery, and Databricks; no target schema in Spark, whose
+groups are flat) but are not exercised by the test suite; other
+databases get standard SQL.
+
+Where a database lacks a type, the adapter converts on the way in
+rather than let the driver lose data silently. Unsigned integers widen
+to the next signed width where there are none (PostgreSQL would
+otherwise wrap a `uint64` above the int64 range around to a negative
+number); a `uint64` too large for int64 raises `ValueError` instead.
+Registering a time coordinate with sub-microsecond values on a database
+that stores microseconds warns, and a name the database folds
+(`Weather` on PostgreSQL) warns that it must be quoted in queries.
+Where a database widens a type — SQLite
+stores `float32` as `float64` and `bool` as an integer, MySQL `bool` as
+`int8`, interval or text durations — `to_dataset` narrows a plain
+`SELECT` back to the template's type; derived values such as an `AVG`
+keep the result's type.
+
+The cursor is a one-shot Arrow stream: `xql.to_dataset(cur, ...)`
+round-trips eagerly, and `chunks=` needs `spill=True`.
+
 ## Engine support matrix
 
 What each integration provides. Known issues and constraints live on
 [Known issues & limitations](limitations.md).
 
-| | DataFusion | DuckDB | Polars |
-|---|---|---|---|
-| Register | `XarrayContext` / any `SessionContext` | `xql.register(con, name, ds)` | `pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))` |
-| Projection pushdown | yes | yes | yes |
-| Chunk pruning on dim predicates | yes | yes | yes |
-| Eager round-trip (`xql.to_dataset`) | yes | yes | yes |
-| Chunked round-trip (`chunks=`) | re-execution | `spill=True` [^spill-only] | re-execution (streaming engine) |
-| `geometry` column ([geospatial](geospatial.md#geoarrow-point-geometry-columns)) | annotated WKB passes through | native `GEOMETRY` (`"wkb"` encoding) | plain binary/struct |
-| Mixed-dimension datasets | one schema, `name.group` tables | `name.group` views over `name_group` tables | `xql.arrow_datasets(ds, name)`, one per group |
-| Naming those tables (`table_names=`) | yes | yes | yes |
-| Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` |
+| | DataFusion | DuckDB | Polars | ADBC |
+|---|---|---|---|---|
+| Register | `XarrayContext` / any `SessionContext` | `xql.register(con, name, ds)` | `pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))` | `xql.register(con, name, ds)` (copies into the database) |
+| Projection pushdown | yes | yes | yes | n/a (the database's own tables) |
+| Chunk pruning on dim predicates | yes | yes | yes | n/a (the database's own indexes) |
+| Eager round-trip (`xql.to_dataset`) | yes | yes | yes | yes (pass the cursor) |
+| Chunked round-trip (`chunks=`) | re-execution | `spill=True` [^spill-only] | re-execution (streaming engine) | `spill=True` |
+| `geometry` column ([geospatial](geospatial.md#geoarrow-point-geometry-columns)) | annotated WKB passes through | native `GEOMETRY` (`"wkb"` encoding) | plain binary/struct | driver-dependent |
+| Mixed-dimension datasets | one schema, `name.group` tables | `name.group` views over `name_group` tables | `xql.arrow_datasets(ds, name)`, one per group | `name.group` tables in a schema; `name_group` without schemas |
+| Naming those tables (`table_names=`) | yes | yes | yes | yes |
+| Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` | `adbc-driver-manager >= 1.12` (see [tested databases](#adbc-adapter-any-database-with-a-driver)) |
 
 [^spill-only]: Why DuckDB relations do not re-execute — and two other
     engine-specific issues worth knowing — is explained on

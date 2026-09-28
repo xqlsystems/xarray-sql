@@ -1,0 +1,162 @@
+# Runs the ADBC adapter's contract tests and the ARCO-ERA5 queries against
+# real database servers in service containers, one job per database so
+# each pulls only its own image and a failure names its database. The
+# main CI job runs the contract on the in-process backends (SQLite,
+# DuckDB, chDB, DataFusion); the "in-process" job here adds their
+# ARCO-ERA5 queries.
+name: adbc databases
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    paths:
+      - "xarray_sql/backends/adbc.py"
+      - "xarray_sql/backends/_adbc_dialects.py"
+      - "xarray_sql/ds.py"
+      - "xarray_sql/lazyscan.py"
+      - "xarray_sql/roundtrip.py"
+      - "tests/_adbc.py"
+      - "tests/test_adbc_backend.py"
+      - "tests/test_adbc_era5_integration.py"
+      - ".github/workflows/adbc-databases.yml"
+  workflow_dispatch:
+
+# A newer push to the same pull request supersedes a running check.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  databases:
+    name: ${{ matrix.backend }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: sqlite,duckdb,chdb,datafusion
+          - backend: postgresql
+            image: postgres:18
+            port: 5432
+            uri: postgresql://postgres:xql@localhost:5432/postgres
+          - backend: mysql
+            image: mysql:8.4
+            port: 3306
+            uri: mysql://root:xql@127.0.0.1:3306/xql
+          - backend: mariadb
+            image: mariadb:11.4
+            port: 3306
+            uri: mysql://root:xql@127.0.0.1:3306/xql
+          - backend: clickhouse
+            image: clickhouse/clickhouse-server:26.8
+            port: 8123
+            uri: http://localhost:8123/?user=default&password=xql
+          - backend: trino
+            image: trinodb/trino:483
+            port: 8080
+            uri: http://ci@localhost:8080?catalog=memory&schema=default
+          - backend: mssql
+            # Floating tags pinned to the digests of the last green run.
+            image: mcr.microsoft.com/mssql/server:2022-latest@sha256:4402d880dd4c34bfa7d8705e56a86cd6c88da80a1f6bbbe741f999e76264a090
+            port: 1433
+            uri: sqlserver://sa:XqlPassw0rd@localhost:1433?database=master
+          - backend: flightsql
+            image: gizmodata/gizmosql:latest@sha256:7d42a760fe9ba0bf6afb3580a7d962125eb68a3082d19768e13508a4db7c8a96
+            port: 31337
+            uri: grpc://localhost:31337
+    services:
+      # An empty image (the in-process databases) starts no container.
+      # Each image reads only its own variables below.
+      db:
+        image: ${{ matrix.image }}
+        ports:
+          - ${{ matrix.port || 1 }}:${{ matrix.port || 1 }}
+        env:
+          POSTGRES_PASSWORD: xql
+          MYSQL_ROOT_PASSWORD: xql
+          MYSQL_DATABASE: xql
+          MARIADB_ROOT_PASSWORD: xql
+          MARIADB_DATABASE: xql
+          CLICKHOUSE_PASSWORD: xql
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: XqlPassw0rd
+          TLS_ENABLED: "0"
+          GIZMOSQL_USERNAME: xql
+          GIZMOSQL_PASSWORD: xql
+    env:
+      VIRTUAL_ENV: ${{ github.workspace }}/.venv
+      XARRAY_SQL_TEST_ONLY: ${{ matrix.backend }}
+      XARRAY_SQL_TEST_FLIGHTSQL_USERNAME: xql
+      XARRAY_SQL_TEST_FLIGHTSQL_PASSWORD: xql
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Configure sccache
+        run: |
+          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install xarray_sql
+        run: uv sync --dev --no-install-package xarray-sql
+      - name: build rust
+        run: uv run --no-project maturin develop --uv
+
+      - name: Install ADBC drivers
+        run: |
+          # Pinned, so an upstream release cannot turn this red unannounced.
+          uv pip install dbc adbc-driver-postgresql==1.12.0 adbc-driver-flightsql==1.12.0
+          for driver in chdb=26.7.0 datafusion=0.27.0 mysql=0.6.1 \
+              clickhouse=0.1.1 trino=0.5.3 mssql=1.6.2; do
+            uv run --no-project dbc install "$driver"
+          done
+
+      - name: Point the tests' backend table at the server
+        if: matrix.uri
+        run: |
+          echo "XARRAY_SQL_TEST_${BACKEND^^}_URI=${{ matrix.uri }}" >> "$GITHUB_ENV"
+        env:
+          BACKEND: ${{ matrix.backend }}
+
+      - name: Wait for the server
+        if: matrix.uri
+        run: |
+          uv run --no-project python - <<'PY'
+          import os, sys, time
+          sys.path.insert(0, os.getcwd())
+          from tests._adbc import BACKENDS
+          backend = next(b for b in BACKENDS if b.name == "${{ matrix.backend }}")
+          for attempt in range(100):
+              try:
+                  con = backend.connect()
+                  cur = con.cursor()
+                  cur.execute("SELECT 1")
+                  cur.fetchall()
+                  print(f"{backend.name} is up")
+                  break
+              except Exception as exc:
+                  print(f"waiting for {backend.name}: {str(exc)[:120]}")
+                  time.sleep(3)
+          else:
+              sys.exit(f"{backend.name} did not start")
+          PY
+
+      - name: Run the ADBC contract tests
+        if: matrix.uri
+        run: uv run --no-project pytest -v -rs tests/test_adbc_backend.py
+
+      - name: Run realistic ARCO-ERA5 queries
+        # Reads a regional subset anonymously from the public bucket.
+        run: >-
+          uv run --no-project pytest -v -rs -m integration
+          tests/test_adbc_era5_integration.py

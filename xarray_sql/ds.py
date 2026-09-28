@@ -56,18 +56,109 @@ Sparsity = Literal["result", "template"]
 # ---------------------------------------------------------------------------
 
 
-def _ds_var_dims(ds: xr.Dataset) -> list[str]:
-    """Return a Dataset's data-variable dim order.
+def _result_dims(template: xr.Dataset, columns) -> list[str]:
+    """The template's dims that survive into a result's *columns*.
 
-    The forward path validates that all data variables share the same dims
-    tuple, so the first var's dim order is canonical. Falls back to
-    ``ds.dims`` keys for empty Datasets. Always use this rather than
-    ``list(ds.dims)`` when round-tripping, since the latter is in
-    canonical name order and may not match the variable's axis order.
+    In the variables' axis order, not ``template.dims``'s name order. A
+    mixed-dimension template has one order per group of variables, so
+    the variables the result carries pick theirs: ``AVG(temperature) ...
+    GROUP BY level`` keeps ``level`` although the template's first
+    variable has none. A result carrying no template variable (only
+    aliases such as ``wind``) may keep any template dim.
     """
-    if ds.data_vars:
-        return list(next(iter(ds.data_vars.values())).dims)
-    return list(ds.dims)
+    columns = set(columns)
+    carried = [name for name in template.data_vars if name in columns]
+    order: list = []
+    for name in carried or list(template.data_vars):
+        order.extend(d for d in template[name].dims if d not in order)
+    if not order:
+        order = list(template.dims)
+    return [d for d in order if d in columns]
+
+
+_TIMEDELTA_PARTS = (
+    "weeks",
+    "days",
+    "hours",
+    "minutes",
+    "seconds",
+    "milliseconds",
+    "microseconds",
+    "nanoseconds",
+)
+
+
+def _timedelta(value: Any) -> pd.Timedelta:
+    """One duration a database returned as an interval or as text.
+
+    Arrow's month-day-nano intervals (DuckDB, PostgreSQL) arrive as
+    pandas ``DateOffset`` objects; MySQL and Trino return text such as
+    ``'21600s'``.
+    """
+    if value is None:
+        return pd.NaT
+    if isinstance(value, pd.DateOffset):
+        parts = value.kwds
+        if parts.get("years") or parts.get("months"):
+            raise ValueError(
+                f"{value!r} spans calendar months, which have no fixed duration"
+            )
+        return pd.Timedelta(**{k: parts.get(k, 0) for k in _TIMEDELTA_PARTS})
+    return pd.Timedelta(value)
+
+
+def _as_dtype(coord: xr.DataArray, dtype: np.dtype) -> xr.DataArray:
+    """*coord* cast to the template's *dtype*.
+
+    Databases without a duration type hand timedeltas back as intervals
+    or text, which numpy cannot cast; those are parsed first. (Integers
+    need nothing: numpy reads them as counts of the template's unit,
+    which is how durations are stored where no duration type exists.)
+    """
+    if dtype.kind == "m" and coord.dtype.kind in "OUS":
+        values = np.array(
+            [_timedelta(v) for v in coord.values], dtype="timedelta64[ns]"
+        )
+        return coord.copy(data=values.astype(dtype))
+    return coord.astype(dtype)
+
+
+_NARROWINGS = {("i", "b"), ("u", "b"), ("i", "u"), ("f", "f")}
+"""(result kind, template kind) pairs a database may have widened."""
+
+
+def _restore_dtype(var: xr.DataArray, template: xr.DataArray) -> xr.DataArray:
+    """*var* as the *template* variable's dtype, when *var* is that variable.
+
+    Databases without a type widen it: SQLite stores ``float32`` as
+    ``float64`` and ``bool`` as an integer, MySQL ``bool`` as ``int8``, and
+    databases without unsigned integers store them as signed ones. A plain
+    ``SELECT`` of such a column is narrowed back.
+
+    Whether the column is the variable is read from its dims, since the
+    query itself is not available here: a plain select (filtered or not)
+    keeps every dim of the variable, while an aggregate such as
+    ``SUM(flag) AS flag`` reduces some away and keeps the result's dtype,
+    whatever its values. The narrowing must also be exact, and only
+    in-memory values can be checked, so a lazily reconstructed variable
+    keeps the result's dtype too.
+    """
+    dtype = template.dtype
+    if var.dtype == dtype or not isinstance(var.data, np.ndarray):
+        return var
+    if set(var.dims) != set(template.dims):
+        return var
+    if (var.dtype.kind, dtype.kind) not in _NARROWINGS:
+        return var
+    values = var.values
+    if dtype.kind == "u" and values.size and values.min() < 0:
+        return var  # the cast would wrap negative values around
+    narrowed = values.astype(dtype)
+    if not np.array_equal(
+        narrowed.astype(values.dtype), values, equal_nan=True
+    ):
+        return var
+    return var.copy(data=narrowed)
 
 
 def _apply_template(ds: xr.Dataset, template: xr.Dataset) -> xr.Dataset:
@@ -83,6 +174,8 @@ def _apply_template(ds: xr.Dataset, template: xr.Dataset) -> xr.Dataset:
       ``AVG`` or a null-introducing filter), and reattaching the
       source's packing would make a later ``ds.to_netcdf()`` write
       corrupt values.
+    * Data-variable dtype, where the database widened it and every value
+      survives the narrowing exactly (see ``_restore_dtype``).
     * Dim-coordinate dtype, where SQL upcasted (datetime is the
       canonical case).
     * Non-dim coordinates whose dims are all present in ``ds`` (scalar
@@ -93,10 +186,11 @@ def _apply_template(ds: xr.Dataset, template: xr.Dataset) -> xr.Dataset:
     """
     out = ds.copy()
 
-    # 1. Data-var attrs / encoding for vars present in the template.
-    #    Aggregation aliases absent from template intentionally inherit nothing.
+    # 1. Data-var dtype, attrs, and encoding for vars present in the
+    #    template. Aggregation aliases absent from template inherit nothing.
     for name in list(out.data_vars):
         if name in template.data_vars:
+            out[name] = _restore_dtype(out[name], template[name])
             out[name].attrs = dict(template[name].attrs)
             # Drop dtype-bound encoding keys; SQL may have changed dtype.
             enc = {
@@ -114,7 +208,7 @@ def _apply_template(ds: xr.Dataset, template: xr.Dataset) -> xr.Dataset:
             tdt = template.coords[d].dtype
             if out.coords[d].dtype != tdt:
                 try:
-                    out = out.assign_coords({d: out.coords[d].astype(tdt)})
+                    out = out.assign_coords({d: _as_dtype(out.coords[d], tdt)})
                 except (ValueError, TypeError):
                     pass  # incompatible cast; leave as-is
             out[d].attrs = dict(template.coords[d].attrs)
@@ -1095,13 +1189,13 @@ class XarrayDataFrame:
         become the dimensions, so aggregations that drop dims (e.g.
         ``GROUP BY time`` over a ``(time, lat, lon)`` grid) round-trip on the
         surviving dim(s). Uses the data variable's dim order (via
-        ``_ds_var_dims``) so the original axis order is preserved.
+        ``_result_dims``) so the original axis order is preserved.
         """
         result_cols = set(self._result_columns())
 
         def surviving(template: xr.Dataset) -> list[str]:
             # Template dims still present in the result, in var axis order.
-            return [d for d in _ds_var_dims(template) if d in result_cols]
+            return _result_dims(template, result_cols)
 
         if preferred_template is not None:
             preferred = surviving(preferred_template)

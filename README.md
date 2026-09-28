@@ -77,10 +77,15 @@ rel = con.sql('SELECT time, AVG("air") AS air FROM air GROUP BY time ORDER BY ti
 xql.to_dataset(rel, template=ds)   # any engine's Arrow result round-trips
 ```
 
+Any database with an [ADBC](https://arrow.apache.org/adbc/) driver
+(PostgreSQL, SQLite, Snowflake, BigQuery, ...) works too: `xql.register`
+ingests the Dataset into a table there, and `xql.to_dataset(cursor, ...)`
+brings results back.
+
 `table_names` (below) works the same way on every engine, so a query written
 against `era5.surface` is not tied to the engine it was written for.
 
-See [Engines](https://xqlsystems.github.io/xarray-sql/latest/engines/) for the support matrix, DuckDB/Polars details,
+See [Engines](https://xqlsystems.github.io/xarray-sql/latest/engines/) for the support matrix, DuckDB/Polars/ADBC details,
 and the lazy chunked round-trip.
 
 ## A bigger example: ARCO-ERA5

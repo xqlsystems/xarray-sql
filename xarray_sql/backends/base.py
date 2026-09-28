@@ -65,7 +65,8 @@ def get_adapter(con: object) -> type[EngineAdapter[Any]]:
     raise TypeError(
         f"No xarray-sql engine adapter for connection of type "
         f"{type(con).__module__}.{type(con).__qualname__}. "
-        f"Supported: DataFusion SessionContext and DuckDB connections."
+        f"Supported: DataFusion SessionContext, DuckDB, and ADBC DBAPI "
+        "connections."
     )
 
 
@@ -108,8 +109,10 @@ def register(
 
     Args:
         con: An engine connection: a ``datafusion.SessionContext`` (or
-            [xarray_sql.XarrayContext][]) or a
-            ``duckdb.DuckDBPyConnection``.
+            [xarray_sql.XarrayContext][]), a
+            ``duckdb.DuckDBPyConnection``, or an ADBC DBAPI connection
+            (``adbc_driver_manager.dbapi.Connection``), into which the
+            Dataset is ingested as a table.
         name: The table name to register the Dataset under. Datasets
             whose variables have differing dimensions are split into one
             table per dimension group, addressed as ``name.group`` on

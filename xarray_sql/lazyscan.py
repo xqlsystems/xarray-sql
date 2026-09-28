@@ -75,6 +75,20 @@ def _plain(value: Any) -> Any:
     return value
 
 
+def _zoned(value: Any, zone: str | None) -> Any:
+    """A plain literal comparable with a column in time zone *zone*.
+
+    Window values come from numpy, which has no time zones: a
+    ``datetime64`` is a UTC instant. Engines refuse to compare a naive
+    literal with a zone-aware column (or compare it as local time), so
+    the literal is labeled UTC and expressed in the column's zone.
+    """
+    plain = _plain(value)
+    if zone and isinstance(plain, pd.Timestamp) and plain.tzinfo is None:
+        return plain.tz_localize("UTC").tz_convert(zone)
+    return plain
+
+
 class LazyResultHandle(Protocol):
     """A re-executable query result (see module docstring)."""
 
@@ -300,10 +314,14 @@ class PolarsHandle:
     ) -> list[pa.RecordBatch]:
         import polars as pl
 
+        schema = self._lf.collect_schema()
         exprs = []
         for dim, (kind, a, b) in specs.items():
+            zone = getattr(schema.get(dim), "time_zone", None)
             if kind == "range":
-                exprs.append(pl.col(dim).is_between(_plain(a), _plain(b)))
+                exprs.append(
+                    pl.col(dim).is_between(_zoned(a, zone), _zoned(b, zone))
+                )
             elif getattr(a, "dtype", None) is not None and a.dtype.kind == "f":
                 # Upstream Polars translates float ``is_in`` literals
                 # imprecisely (silently matching nothing); degenerate
@@ -313,11 +331,14 @@ class PolarsHandle:
                 # of values.
                 exprs.append(
                     pl.any_horizontal(
-                        [pl.col(dim).is_between(*(_plain(v),) * 2) for v in a]
+                        [
+                            pl.col(dim).is_between(*(_zoned(v, zone),) * 2)
+                            for v in a
+                        ]
                     )
                 )
             else:
-                exprs.append(pl.col(dim).is_in([_plain(v) for v in a]))
+                exprs.append(pl.col(dim).is_in([_zoned(v, zone) for v in a]))
         lf = self._lf.filter(*exprs) if exprs else self._lf
         out = _collect_streaming(lf.select([pl.col(n) for n in columns]))
         return cast(list[pa.RecordBatch], out.to_arrow().to_batches())
