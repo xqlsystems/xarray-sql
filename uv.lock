@@ -2872,8 +2872,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "adbc-driver-manager", marker = "extra == 'adbc'", specifier = ">=1.0" },
-    { name = "adbc-driver-sqlite", marker = "extra == 'test'", specifier = ">=1.0" },
+    { name = "adbc-driver-manager", marker = "extra == 'adbc'", specifier = ">=1.12" },
+    { name = "adbc-driver-sqlite", marker = "extra == 'test'", specifier = ">=1.12" },
     { name = "cftime", marker = "extra == 'test'" },
     { name = "dask", specifier = ">=2024.8.0" },
     { name = "datafusion", specifier = "==54.0.0" },

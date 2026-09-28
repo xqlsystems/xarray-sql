@@ -76,8 +76,8 @@ jobs:
           VIRTUAL_ENV: ${{ github.workspace }}/.venv
         run: |
           uv pip install dbc
-          uv run --no-project dbc install chdb
-          uv run --no-project dbc install datafusion
+          uv run --no-project dbc install "chdb=26.7.0"
+          uv run --no-project dbc install "datafusion=0.27.0"
       - name: Run unit tests
         env:
           VIRTUAL_ENV: ${{ github.workspace }}/.venv

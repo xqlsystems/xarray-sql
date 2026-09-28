@@ -38,7 +38,7 @@ dependencies = [
 [project.optional-dependencies]
 adbc = [
   # Plus a driver package for your database, e.g. adbc-driver-postgresql.
-  "adbc-driver-manager>=1.0",
+  "adbc-driver-manager>=1.12",
 ]
 duckdb = [
   "duckdb>=1.4.0",
@@ -53,7 +53,7 @@ geo = [
   "pyproj",
 ]
 test = [
-  "adbc-driver-sqlite>=1.0",
+  "adbc-driver-sqlite>=1.12",
   "cftime",
   "xarray-sql[adbc,duckdb,polars,geo]",
   "pytest",

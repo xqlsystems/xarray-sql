@@ -57,11 +57,12 @@ jobs:
             port: 8080
             uri: http://ci@localhost:8080?catalog=memory&schema=default
           - backend: mssql
-            image: mcr.microsoft.com/mssql/server:2022-latest
+            # Floating tags pinned to the digests of the last green run.
+            image: mcr.microsoft.com/mssql/server:2022-latest@sha256:4402d880dd4c34bfa7d8705e56a86cd6c88da80a1f6bbbe741f999e76264a090
             port: 1433
             uri: sqlserver://sa:XqlPassw0rd@localhost:1433?database=master
           - backend: flightsql
-            image: gizmodata/gizmosql:latest
+            image: gizmodata/gizmosql:latest@sha256:7d42a760fe9ba0bf6afb3580a7d962125eb68a3082d19768e13508a4db7c8a96
             port: 31337
             uri: grpc://localhost:31337
     services:
@@ -113,8 +114,10 @@ jobs:
 
       - name: Install ADBC drivers
         run: |
-          uv pip install dbc adbc-driver-postgresql adbc-driver-flightsql
-          for driver in chdb datafusion mysql clickhouse trino mssql; do
+          # Pinned, so an upstream release cannot turn this red unannounced.
+          uv pip install dbc adbc-driver-postgresql==1.12.0 adbc-driver-flightsql==1.12.0
+          for driver in chdb=26.7.0 datafusion=0.27.0 mysql=0.6.1 \
+              clickhouse=0.1.1 trino=0.5.3 mssql=1.6.2; do
             uv run --no-project dbc install "$driver"
           done
 

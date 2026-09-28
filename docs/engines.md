@@ -297,7 +297,10 @@ rather than the server's local zone.
 Mixed-dimension Datasets go into a ClickHouse *database* named after
 the Dataset (`era5.surface`), and `temporary=True` creates `Memory`
 tables. To choose the engine or sort key yourself, create the table
-first and register with `mode="append"`.
+first and register with `mode="append"`. ClickHouse has no
+transactions, so `mode="replace"` ingests into a staging table and
+swaps it in with `EXCHANGE TABLES` only once the ingest succeeds; a
+failed replace leaves the old table as it was.
 
 **Tested databases.** Databases differ in how they quote identifiers,
 whether they have schemas, which types they store, and what their
@@ -356,7 +359,7 @@ What each integration provides. Known issues and constraints live on
 | `geometry` column ([geospatial](geospatial.md#geoarrow-point-geometry-columns)) | annotated WKB passes through | native `GEOMETRY` (`"wkb"` encoding) | plain binary/struct | driver-dependent |
 | Mixed-dimension datasets | one schema, `name.group` tables | `name.group` views over `name_group` tables | `xql.arrow_datasets(ds, name)`, one per group | `name.group` tables in a schema; `name_group` without schemas |
 | Naming those tables (`table_names=`) | yes | yes | yes | yes |
-| Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` | `adbc-driver-manager >= 1.0` (tested on 1.12; see [tested databases](#adbc-adapter-any-database-with-a-driver)) |
+| Version floor | bundled (core dependency) | `duckdb >= 1.4` (tested on 1.5) | tested on `polars 1.42` | `adbc-driver-manager >= 1.12` (see [tested databases](#adbc-adapter-any-database-with-a-driver)) |
 
 [^spill-only]: Why DuckDB relations do not re-execute — and two other
     engine-specific issues worth knowing — is explained on
