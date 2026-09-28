@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from ._adbc import BACKENDS, Database
+from ._adbc import BACKENDS
 
 
 def rand_wx(start: str, end: str) -> xr.Dataset:
@@ -156,7 +156,7 @@ def air_and_stations():
 def db(request):
     """A connection to each available ADBC backend (see ``tests/_adbc.py``)."""
     backend = request.param
-    database = Database(backend, backend.connect())
+    database = backend.open()
     yield database
     database.cleanup()
-    database.con.close()
+    database.close()

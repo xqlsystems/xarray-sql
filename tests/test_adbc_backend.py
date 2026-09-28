@@ -4,7 +4,9 @@
 and ``xql.to_dataset`` rebuilds a labeled Dataset from the driver's Arrow
 cursor. The contract tests below run once per backend (the ``db``
 fixture; which backends run, and how to enable more, is in
-``tests/_adbc.py``); tests of one database's specifics follow them.
+``tests/_adbc.py``), including xarray-sql's own Flight SQL server, where
+registering serves the Dataset in place; tests of one database's
+specifics follow them.
 """
 
 import numpy as np
@@ -90,12 +92,17 @@ def _select_all(db, table: str):
     )
 
 
+def _ingests(db) -> None:
+    if db.backend.served:
+        pytest.skip("a served Dataset is registered in place, not ingested")
+
+
 # The contract, on every backend -------------------------------------------
 
 
 def test_round_trip_keeps_values_and_dtypes(db, ds):
     table = db.name("weather")
-    xql.register(db.con, table, ds)
+    db.register(table, ds)
 
     out = xql.to_dataset(_select_all(db, table), template=ds)
 
@@ -106,7 +113,7 @@ def test_round_trip_keeps_values_and_dtypes(db, ds):
 
 def test_aggregates_skip_missing_values(db, ds):
     table = db.name("weather")
-    xql.register(db.con, table, ds)
+    db.register(table, ds)
 
     cur = db.query(
         f"SELECT lat, lon, AVG(temperature) AS temperature FROM {table} "
@@ -121,18 +128,20 @@ def test_aggregates_skip_missing_values(db, ds):
 
 
 def test_existing_table_is_not_overwritten_by_default(db, ds):
+    _ingests(db)
     table = db.name("weather")
-    xql.register(db.con, table, ds)
+    db.register(table, ds)
 
     with pytest.raises(dbapi.Error):
-        xql.register(db.con, table, ds)
+        db.register(table, ds)
 
 
 def test_replace_then_append(db, ds):
+    _ingests(db)
     table = db.name("weather")
-    xql.register(db.con, table, ds)
-    xql.register(db.con, table, ds.isel(time=slice(0, 4)), mode="replace")
-    xql.register(db.con, table, ds.isel(time=slice(4, 8)), mode="append")
+    db.register(table, ds)
+    db.register(table, ds.isel(time=slice(0, 4)), mode="replace")
+    db.register(table, ds.isel(time=slice(4, 8)), mode="append")
 
     out = xql.to_dataset(_select_all(db, table), template=ds)
 
@@ -140,22 +149,24 @@ def test_replace_then_append(db, ds):
 
 
 def test_create_append_creates_then_appends(db, ds):
+    _ingests(db)
     table = db.name("weather")
-    xql.register(db.con, table, ds, mode="create_append")
-    xql.register(db.con, table, ds, mode="create_append")
+    db.register(table, ds, mode="create_append")
+    db.register(table, ds, mode="create_append")
 
     count = db.query(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
     assert count == 2 * 8 * 5 * 6
 
 
 def test_temporary_tables(db, ds):
+    _ingests(db)
     table = db.name("weather")
     if not db.backend.temporary:
         with pytest.raises(ValueError, match="temporary"):
-            xql.register(db.con, table, ds, temporary=True)
+            db.register(table, ds, temporary=True)
         return
 
-    xql.register(db.con, table, ds, temporary=True)
+    db.register(table, ds, temporary=True)
 
     temporary = f"{db.backend.temporary_prefix}{table}"
     count = db.query(f"SELECT COUNT(*) FROM {temporary}").fetchone()[0]
@@ -165,11 +176,11 @@ def test_temporary_tables(db, ds):
 def test_mixed_dimensions_are_named_like_every_engine(db, mixed_ds):
     name = db.name("era5")
     if db.backend.schemas:
-        xql.register(db.con, name, mixed_ds, table_names=NAMES)
+        db.register(name, mixed_ds, table_names=NAMES)
         table = f"{name}.atmosphere"
     else:
         with pytest.warns(RuntimeWarning, match="flat"):
-            xql.register(db.con, name, mixed_ds, table_names=NAMES)
+            db.register(name, mixed_ds, table_names=NAMES)
         table = f"{name}_atmosphere"
 
     cur = db.query(
@@ -188,7 +199,7 @@ def test_timedelta_coordinates_round_trip(db, forecast, chunks):
     # Stored as a duration, an integer count (SQLite, ClickHouse), an
     # interval (DuckDB, PostgreSQL), or text (MySQL, Trino).
     table = db.name("forecast")
-    xql.register(db.con, table, forecast)
+    db.register(table, forecast)
 
     cur = db.query(f"SELECT step, lat, t2m FROM {table} ORDER BY step, lat")
     out = xql.to_dataset(
@@ -201,7 +212,7 @@ def test_timedelta_coordinates_round_trip(db, forecast, chunks):
 
 def test_chunked_round_trip_spills_the_cursor(db, ds):
     table = db.name("weather")
-    xql.register(db.con, table, ds)
+    db.register(table, ds)
 
     cur = db.query(
         f"SELECT time, lat, lon, temperature FROM {table} "
@@ -219,7 +230,7 @@ def test_time_filters_select_the_right_rows(db, ds):
     # A literal means UTC everywhere, and SQLite's text times compare
     # with it correctly, including at an inclusive bound.
     table = db.name("weather")
-    xql.register(db.con, table, ds)
+    db.register(table, ds)
     start, end = (
         db.backend.time_literal.format(f"2021-01-01 0{hour}:00:00")
         for hour in (4, 6)
@@ -254,7 +265,7 @@ def test_subsecond_times_round_trip(db, chunks):
         {"v": ("time", [1.0, 2.0, 3.0, 4.0])}, coords={"time": times}
     ).chunk({"time": 4})
     table = db.name("subsecond")
-    xql.register(db.con, table, ds)
+    db.register(table, ds)
 
     cur = db.query(f"SELECT time, v FROM {table} ORDER BY time")
     out = xql.to_dataset(
@@ -274,7 +285,7 @@ def test_awkward_variable_names_round_trip(db):
         coords={"x": [10, 20, 30]},
     ).chunk({"x": 3})
     table = db.name("awkward")
-    xql.register(db.con, table, ds)
+    db.register(table, ds)
 
     columns = ", ".join(
         db.quoted(n) for n in ["x", "select", "wind speed", "Order"]
@@ -291,7 +302,7 @@ def test_text_coordinates_round_trip(db):
         coords={"station": ["O'Hare", 'say "hi"', "東京", "Zürich"]},
     ).chunk({"station": 4})
     table = db.name("stations")
-    xql.register(db.con, table, ds)
+    db.register(table, ds)
 
     cur = db.query(f"SELECT station, count FROM {table}")
     out = xql.to_dataset(cur, template=ds)
@@ -313,7 +324,7 @@ def test_integer_extremes_round_trip(db):
         coords={"x": [0, 1, 2]},
     ).chunk({"x": 3})
     table = db.name("extremes")
-    xql.register(db.con, table, ds)
+    db.register(table, ds)
 
     cur = db.query(f"SELECT x, i64, u8, u32, u64 FROM {table} ORDER BY x")
     out = xql.to_dataset(cur, template=ds)
@@ -328,7 +339,7 @@ def test_uint64_beyond_int64_is_never_silently_wrong(db):
     ).chunk({"x": 2})
     table = db.name("huge")
     try:
-        xql.register(db.con, table, ds)
+        db.register(table, ds)
     except (ValueError, dbapi.Error):
         return  # refused loudly: acceptable
 
@@ -350,10 +361,10 @@ def test_nanosecond_times_are_kept_or_truncation_is_reported(db):
     table = db.name("nanos")
     if db.backend.microseconds:
         with pytest.warns(RuntimeWarning, match="microsecond"):
-            xql.register(db.con, table, ds)
+            db.register(table, ds)
         return
 
-    xql.register(db.con, table, ds)
+    db.register(table, ds)
 
     cur = db.query(f"SELECT time, v FROM {table} ORDER BY time")
     xr.testing.assert_identical(xql.to_dataset(cur, template=ds), ds.compute())
@@ -365,7 +376,7 @@ def test_many_chunks_ingest(db):
         coords={"time": np.arange(1000), "x": np.arange(200)},
     ).chunk({"time": 100})
     table = db.name("big")
-    xql.register(db.con, table, ds)
+    db.register(table, ds)
 
     count, total = db.query(f"SELECT COUNT(*), SUM(v) FROM {table}").fetchone()
     assert (count, float(total)) == (200_000, float(ds.v.sum()))
@@ -373,7 +384,7 @@ def test_many_chunks_ingest(db):
 
 def test_empty_result_round_trips(db, ds):
     table = db.name("weather")
-    xql.register(db.con, table, ds)
+    db.register(table, ds)
 
     cur = db.query(
         f"SELECT time, lat, lon, temperature FROM {table} WHERE lat > 1000"
@@ -386,7 +397,7 @@ def test_empty_result_round_trips(db, ds):
 def test_long_table_name(db, ds):
     table = db.name("t" * 51)  # 60 characters with the unique suffix
     assert len(table) == 60
-    xql.register(db.con, table, ds)
+    db.register(table, ds)
 
     count = db.query(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
     assert count == 8 * 5 * 6
@@ -396,9 +407,9 @@ def test_mixed_case_names_are_found_quoted(db, ds):
     table = db.name("Weather")
     if db.backend.folds:
         with pytest.warns(RuntimeWarning, match="quote"):
-            xql.register(db.con, table, ds)
+            db.register(table, ds)
     else:
-        xql.register(db.con, table, ds)
+        db.register(table, ds)
 
     count = db.query(f"SELECT COUNT(*) FROM {db.quoted(table)}").fetchone()[0]
     assert count == 8 * 5 * 6
@@ -416,8 +427,7 @@ def test_ingest_options_reach_the_driver(db, ds):
     _only(db, "sqlite")
 
     with pytest.raises(dbapi.Error, match="not.an.option"):
-        xql.register(
-            db.con,
+        db.register(
             db.name("weather"),
             ds,
             ingest_options={"not.an.option": "x"},
@@ -433,7 +443,7 @@ def test_postgresql_schema_failure_explains_the_aborted_transaction(
     _only(db, "postgresql")
 
     with pytest.raises(RuntimeError, match="rollback"):
-        xql.register(db.con, db.name("pg_era5"), mixed_ds, table_names=NAMES)
+        db.register(db.name("pg_era5"), mixed_ds, table_names=NAMES)
 
 
 def test_postgresql_uses_an_existing_schema(db, mixed_ds):
@@ -441,7 +451,7 @@ def test_postgresql_uses_an_existing_schema(db, mixed_ds):
     name = db.name("era5")
     db.query(f'CREATE SCHEMA "{name}"').close()
 
-    xql.register(db.con, name, mixed_ds, table_names=NAMES)
+    db.register(name, mixed_ds, table_names=NAMES)
 
     count = db.query(f"SELECT COUNT(*) FROM {name}.surface").fetchone()[0]
     assert count == 6 * 3 * 4
@@ -452,7 +462,7 @@ def test_postgresql_tables_have_statistics_after_register(db, ds):
     # registered table can pick plans that run for hours.
     _only(db, "postgresql")
     table = db.name("weather")
-    xql.register(db.con, table, ds)
+    db.register(table, ds)
 
     cur = db.query(f"SELECT reltuples FROM pg_class WHERE relname = '{table}'")
     assert cur.fetchone()[0] == 8 * 5 * 6
@@ -462,7 +472,7 @@ def test_clickhouse_failed_replace_keeps_the_old_table(db, ds):
     # ClickHouse has no transactions to roll back a half-done replace.
     _only(db, "clickhouse", "chdb")
     table = db.name("weather")
-    xql.register(db.con, table, ds)
+    db.register(table, ds)
 
     def fail_on_second_chunk(block, block_info=None):
         if block_info[0]["chunk-location"][0] == 1:
@@ -476,7 +486,7 @@ def test_clickhouse_failed_replace_keeps_the_old_table(db, ds):
         )
     )
     with pytest.raises((OSError, dbapi.Error)):
-        xql.register(db.con, table, broken, mode="replace")
+        db.register(table, broken, mode="replace")
 
     out = xql.to_dataset(_select_all(db, table), template=ds)
     xr.testing.assert_identical(out, ds.compute())
@@ -488,6 +498,6 @@ def test_mysql_keeps_the_default_database(db, mixed_ds):
     _only(db, "mysql", "mariadb")
     before = db.query("SELECT DATABASE()").fetchone()[0]
 
-    xql.register(db.con, db.name("era5"), mixed_ds, table_names=NAMES)
+    db.register(db.name("era5"), mixed_ds, table_names=NAMES)
 
     assert db.query("SELECT DATABASE()").fetchone()[0] == before

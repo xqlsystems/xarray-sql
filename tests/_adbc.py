@@ -13,6 +13,13 @@ available:
   ``dbc`` did not install; ``XARRAY_SQL_TEST_FLIGHTSQL_USERNAME`` and
   ``_PASSWORD`` for a Flight SQL server such as GizmoSQL).
 
+``served`` is xarray-sql's own Flight SQL server (``xql.serve``): each
+test starts one in-process, registers its Datasets there, and queries
+them through the ADBC Flight SQL driver. It runs once
+``adbc-driver-flightsql`` is installed. Registration serves a Dataset in
+place rather than ingesting it, so the tests of ingest modes and
+temporary tables skip it.
+
 ``XARRAY_SQL_TEST_ONLY`` (comma-separated names) restricts a run to
 those backends, e.g. one CI job per database.
 """
@@ -23,6 +30,9 @@ import os
 import uuid
 
 import pytest
+import xarray as xr
+
+import xarray_sql as xql
 
 try:
     from adbc_driver_manager import dbapi
@@ -79,6 +89,23 @@ class Backend:
     folds: bool = False
     """Whether unquoted names fold, so mixed-case ones need quotes."""
     needs_uri: bool = False
+    served: bool = False
+    """Whether this is xarray-sql's own Flight SQL server, which serves a
+    registered Dataset in place instead of ingesting it."""
+
+    def open(self) -> "Database":
+        """Connect, starting a server first for the ``served`` backend."""
+        if not self.served:
+            return Database(self, self.connect())
+        if self.driver is None:
+            pytest.skip("adbc-driver-flightsql is not installed")
+        server = xql.serve({})
+        try:
+            con = dataclasses.replace(self, uri=server.uri).connect()
+        except BaseException:
+            server.shutdown()
+            raise
+        return Database(self, con, server)
 
     def connect(self):
         if dbapi is None:
@@ -177,16 +204,33 @@ BACKENDS = [
         options=_credentials("flightsql"),
         needs_uri=True,
     ),
+    Backend(
+        "served",
+        _module_driver("adbc_driver_flightsql"),
+        folds=True,
+        served=True,
+    ),
 ]
 
 
 class Database:
     """A connection plus the unique names a test creates, dropped after."""
 
-    def __init__(self, backend: Backend, con) -> None:
+    def __init__(
+        self,
+        backend: Backend,
+        con,
+        server: xql.FlightSQLServer | None = None,
+    ) -> None:
         self.backend = backend
         self.con = con
+        self.server = server
         self._created: list[str] = []
+
+    def register(self, name: str, ds: xr.Dataset, **kwargs):
+        """Register ``ds`` where this backend's queries will find it."""
+        target = self.con if self.server is None else self.server
+        return xql.register(target, name, ds, **kwargs)
 
     def name(self, base: str) -> str:
         """A fresh table (or schema) name, dropped when the test ends."""
@@ -203,7 +247,14 @@ class Database:
         cur.execute(sql)
         return cur
 
+    def close(self) -> None:
+        self.con.close()
+        if self.server is not None:
+            self.server.shutdown()
+
     def cleanup(self) -> None:
+        if self.server is not None:
+            return  # its tables go when the server shuts down
         postgresql = self.backend.name == "postgresql"
         if postgresql:
             self.con.rollback()

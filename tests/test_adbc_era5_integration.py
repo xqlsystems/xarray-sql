@@ -19,7 +19,7 @@ import xarray as xr
 
 import xarray_sql as xql
 
-from ._adbc import BACKENDS, Database
+from ._adbc import BACKENDS
 
 pytestmark = pytest.mark.integration
 
@@ -61,16 +61,16 @@ def era5() -> xr.Dataset:
 def db(request, era5):
     """Each backend, with the subset registered once for all its queries."""
     backend = request.param
-    database = Database(backend, backend.connect())
+    database = backend.open()
     name = database.name("era5")
-    xql.register(database.con, name, era5, table_names=NAMES)
+    database.register(name, era5, table_names=NAMES)
     if backend.schemas:
         database.tables = (f"{name}.surface", f"{name}.atmosphere")
     else:
         database.tables = (f"{name}_surface", f"{name}_atmosphere")
     yield database
     database.cleanup()
-    database.con.close()
+    database.close()
 
 
 def test_area_mean_time_series(db, era5):

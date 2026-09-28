@@ -3,6 +3,12 @@
 A ``FlightSQLServer`` hosts lazily registered Datasets; the client here
 is ADBC's Flight SQL driver, the same one remote users would connect
 with, so the tests exercise the real wire protocol end to end.
+
+How served data round-trips (types, missing values, names, mixed
+dimensions, the ARCO-ERA5 queries) is tested by the ADBC contract, where
+the server is the ``served`` backend (``tests/_adbc.py``). The tests here
+cover what only a server has: serving, discovery, read-only SQL, plain
+Arrow Flight, and other databases as its clients.
 """
 
 import os
@@ -18,11 +24,6 @@ import xarray as xr
 import xarray_sql as xql
 
 flight_sql = pytest.importorskip("adbc_driver_flightsql.dbapi")
-
-NAMES = {
-    ("time", "lat", "lon"): "surface",
-    ("time", "level", "lat", "lon"): "atmosphere",
-}
 
 
 @pytest.fixture
@@ -43,26 +44,6 @@ def ds() -> xr.Dataset:
 
 
 @pytest.fixture
-def mixed_ds() -> xr.Dataset:
-    np.random.seed(11)
-    return xr.Dataset(
-        {
-            "t2m": (["time", "lat", "lon"], np.random.rand(6, 3, 4)),
-            "temperature": (
-                ["time", "level", "lat", "lon"],
-                np.random.rand(6, 2, 3, 4),
-            ),
-        },
-        coords={
-            "time": pd.date_range("2020-01-01", periods=6, freq="D"),
-            "lat": np.linspace(-90, 90, 3),
-            "lon": np.linspace(-180, 180, 4),
-            "level": [500, 1000],
-        },
-    ).chunk({"time": 2})
-
-
-@pytest.fixture
 def server(ds):
     with xql.serve({"weather": ds}) as running:
         yield running
@@ -79,45 +60,6 @@ def _query(con, sql: str):
     cur = con.cursor()
     cur.execute(sql)
     return cur
-
-
-def test_full_scan_round_trips(con, ds):
-    cur = _query(
-        con,
-        "SELECT time, lat, lon, temperature, precipitation FROM weather "
-        "ORDER BY time, lat, lon",
-    )
-    out = xql.to_dataset(cur, template=ds)
-
-    xr.testing.assert_allclose(out, ds.compute())
-    assert out.attrs == ds.attrs
-
-
-def test_filtered_aggregation_round_trips(con, ds):
-    cur = _query(
-        con,
-        "SELECT lat, lon, AVG(temperature) AS temperature FROM weather "
-        "WHERE time >= '2021-01-01T04:00:00' "
-        "GROUP BY lat, lon ORDER BY lat, lon",
-    )
-    out = xql.to_dataset(cur, template=ds)
-
-    expected = ds.temperature.isel(time=slice(4, None)).mean("time")
-    xr.testing.assert_allclose(out.temperature, expected.compute())
-
-
-def test_mixed_dimensions_are_served_as_a_schema(mixed_ds):
-    server = xql.FlightSQLServer()
-    xql.register(server, "era5", mixed_ds, table_names=NAMES)
-    with server.serve():
-        con = flight_sql.connect(server.uri)
-        avg = _query(con, "SELECT AVG(t2m) FROM era5.surface").fetchone()[0]
-        count = _query(con, "SELECT COUNT(*) FROM era5.atmosphere")
-        count = count.fetchone()[0]
-        con.close()
-
-    assert avg == pytest.approx(float(mixed_ds.t2m.mean()))
-    assert count == 6 * 2 * 3 * 4
 
 
 def test_datasets_registered_while_serving_are_visible(server, con, ds):
@@ -221,7 +163,7 @@ def test_plain_flight_schema_of_a_path(server):
     ]
 
 
-def test_clickhouse_reads_through_arrow_flight(server, ds):
+def test_clickhouse_reads_through_arrow_flight(ds):
     uri = os.environ.get("XARRAY_SQL_TEST_CLICKHOUSE_URI", "")
     if not uri.startswith(("http://", "https://")):
         # chDB, which the other ClickHouse tests can use, is built without
@@ -230,13 +172,18 @@ def test_clickhouse_reads_through_arrow_flight(server, ds):
             "set XARRAY_SQL_TEST_CLICKHOUSE_URI to a ClickHouse server's "
             "HTTP address to run against ClickHouse"
         )
-    sql = (
-        "SELECT round(avg(temperature), 9) "
-        f"FROM arrowFlight('127.0.0.1:{server.port}', 'weather')"
-    )
-    request = urllib.request.Request(uri, data=sql.encode())
-    with urllib.request.urlopen(request, timeout=60) as response:
-        avg = float(response.read().decode())
+    # A ClickHouse in a container reaches this process through the Docker
+    # host's address, so the server listens on every interface then.
+    host = os.environ.get("XARRAY_SQL_TEST_CLICKHOUSE_FLIGHT_HOST")
+    bind = "0.0.0.0" if host else "127.0.0.1"
+    with xql.serve({"weather": ds}, host=bind) as server:
+        sql = (
+            "SELECT round(avg(temperature), 9) FROM "
+            f"arrowFlight('{host or '127.0.0.1'}:{server.port}', 'weather')"
+        )
+        request = urllib.request.Request(uri, data=sql.encode())
+        with urllib.request.urlopen(request, timeout=60) as response:
+            avg = float(response.read().decode())
 
     assert avg == pytest.approx(float(ds.temperature.mean()))
 
