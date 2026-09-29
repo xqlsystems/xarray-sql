@@ -419,3 +419,26 @@ def test_timedelta_coordinates_returned_as_text(chunks):
     )
 
     xr.testing.assert_identical(out.compute(), ds)
+
+
+@pytest.mark.parametrize("chunk", [1, 2, 3])
+@pytest.mark.parametrize("via", ["polars", "spill"])
+@pytest.mark.parametrize("kind", ["naive", "zoned", "duration"])
+def test_chunked_windows_over_nanosecond_values(chunk, via, kind):
+    # Four values a nanosecond apart, in windows that leave a partial or
+    # single-step last window (sent as a value list, not a range).
+    pl = pytest.importorskip("polars")
+    steps = pd.to_timedelta([0, 1, 2, 3], unit="ns")
+    coord = steps if kind == "duration" else pd.Timestamp("2021-01-01") + steps
+    ds = xr.Dataset({"v": ("t", [1.0, 2.0, 3.0, 4.0])}, coords={"t": coord})
+    column = pa.array(coord.values)
+    if kind == "zoned":
+        column = column.cast(pa.timestamp("ns", tz="Asia/Tokyo"))
+    table = pa.table({"t": column, "v": ds.v.values})
+    result = pl.from_arrow(table).lazy() if via == "polars" else table
+
+    out = xql.to_dataset(
+        result, template=ds, chunks={"t": chunk}, spill=via == "spill"
+    )
+
+    xr.testing.assert_identical(out.compute(), ds)
