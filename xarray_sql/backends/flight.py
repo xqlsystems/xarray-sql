@@ -107,11 +107,23 @@ class FlightSQLServer:
         Returns:
             The server, to allow chaining.
         """
+        return self._register(name, ds, chunks, table_names, stacklevel=4)
+
+    def _register(
+        self,
+        name: str,
+        ds: xr.Dataset,
+        chunks: Chunks,
+        table_names: TableNames,
+        stacklevel: int,
+    ) -> FlightSQLServer:
+        """``register``, warning *stacklevel* frames up (the user's call)."""
         groups = group_vars_by_dims(ds)
         names = resolve_table_names(ds, table_names)
         _warn_on_folded_names(
             [name] if len(groups) <= 1 else [name, *names.values()],
             DIALECTS["datafusion"],
+            stacklevel=stacklevel,
         )
         if len(groups) <= 1:
             self._native.register_table(name, read_xarray_table(ds, chunks))
@@ -163,12 +175,18 @@ class FlightSQLServer:
         return bool(self._native.is_running())
 
     def wait(self, poll_interval: float = 0.5) -> None:
-        """Block until the server stops; Ctrl+C shuts it down."""
+        """Block until the server stops; Ctrl+C shuts it down.
+
+        Raises:
+            RuntimeError: The server stopped on an error.
+        """
         try:
             while self._native.is_running():
                 time.sleep(poll_interval)
         except KeyboardInterrupt:
-            self.shutdown()
+            pass
+        # Joins the server thread, raising what stopped it, if anything.
+        self.shutdown()
 
     def shutdown(self, timeout: float = 5.0) -> None:
         """Stop accepting connections.
@@ -178,6 +196,9 @@ class FlightSQLServer:
                 which their connections are closed. A client that stops
                 reading a result partway otherwise holds its stream open
                 indefinitely.
+
+        Raises:
+            RuntimeError: The server had stopped on an error.
         """
         self._native.shutdown(timeout)
 
@@ -251,4 +272,5 @@ class FlightSQLAdapter:
             raise TypeError(
                 f"unexpected options for a FlightSQLServer: {sorted(kwargs)}"
             )
-        return con.register(name, ds, chunks=chunks, table_names=table_names)
+        # Called by xarray_sql.register, one frame further from the user.
+        return con._register(name, ds, chunks, table_names, stacklevel=5)

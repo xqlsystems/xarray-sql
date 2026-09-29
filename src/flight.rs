@@ -354,7 +354,7 @@ struct FlightRouter {
 
 impl FlightRouter {
     /// The SQL a path descriptor stands for, or `None` for a command.
-    fn path_query(descriptor: &FlightDescriptor) -> Result<Option<String>, Status> {
+    fn path_query(&self, descriptor: &FlightDescriptor) -> Result<Option<String>, Status> {
         if descriptor.r#type() != DescriptorType::Path {
             return Ok(None);
         }
@@ -364,10 +364,15 @@ impl FlightRouter {
                 if first.eq_ignore_ascii_case("select") || first.eq_ignore_ascii_case("with") {
                     return Ok(Some(name.clone()));
                 }
-                // Parsed like a table name in SQL: `era5.surface` is a
-                // schema-qualified name, and unquoted parts fold to
-                // lowercase.
-                TableReference::parse_str(name)
+                // A registered name matches exactly, as the two- and
+                // three-part forms do. Otherwise it is parsed like a
+                // table name in SQL: `era5.surface` is schema-qualified.
+                let exact = TableReference::bare(name.as_str());
+                if self.sql.ctx.table_exist(exact.clone()).unwrap_or(false) {
+                    exact
+                } else {
+                    TableReference::parse_str(name)
+                }
             }
             [schema, table] => TableReference::partial(schema.as_str(), table.as_str()),
             [catalog, schema, table] => {
@@ -386,8 +391,8 @@ impl FlightRouter {
     }
 
     /// The SQL behind a descriptor: a path, or a Flight SQL statement.
-    fn descriptor_query(descriptor: &FlightDescriptor) -> Result<String, Status> {
-        if let Some(sql) = Self::path_query(descriptor)? {
+    fn descriptor_query(&self, descriptor: &FlightDescriptor) -> Result<String, Status> {
+        if let Some(sql) = self.path_query(descriptor)? {
             return Ok(sql);
         }
         let message = Any::decode(&*descriptor.cmd).map_err(internal_error)?;
@@ -418,7 +423,7 @@ impl FlightService for FlightRouter {
         &self,
         request: Request<FlightDescriptor>,
     ) -> Result<Response<FlightInfo>, Status> {
-        let Some(sql) = Self::path_query(request.get_ref())? else {
+        let Some(sql) = self.path_query(request.get_ref())? else {
             return FlightService::get_flight_info(&self.sql, request).await;
         };
         let schema = self.sql.result_schema(&sql).await?;
@@ -432,7 +437,7 @@ impl FlightService for FlightRouter {
         &self,
         request: Request<FlightDescriptor>,
     ) -> Result<Response<SchemaResult>, Status> {
-        let sql = Self::descriptor_query(request.get_ref())?;
+        let sql = self.descriptor_query(request.get_ref())?;
         let schema = self.sql.result_schema(&sql).await?;
         let result = SchemaAsIpc::new(&schema, &IpcWriteOptions::default())
             .try_into()
@@ -504,7 +509,8 @@ const DROP_GRACE_PERIOD: Duration = Duration::from_secs(5);
 struct Running {
     /// Starts shutdown; carries how long in-flight queries may run on.
     shutdown: oneshot::Sender<Duration>,
-    thread: JoinHandle<()>,
+    /// Ends with the error that stopped the server, if one did.
+    thread: JoinHandle<Result<(), String>>,
 }
 
 /// A Flight SQL server over a native DataFusion session.
@@ -595,15 +601,15 @@ impl FlightSqlServer {
                     Ok(runtime) => runtime,
                     Err(e) => {
                         let _ = ready.send(Err(e.to_string()));
-                        return;
+                        return Ok(());
                     }
                 };
-                runtime.block_on(async move {
+                let result = runtime.block_on(async move {
                     let listener = match tokio::net::TcpListener::from_std(listener) {
                         Ok(listener) => listener,
                         Err(e) => {
                             let _ = ready.send(Err(e.to_string()));
-                            return;
+                            return Ok(());
                         }
                     };
                     let incoming = TcpIncoming::from(listener).with_nodelay(Some(true));
@@ -625,13 +631,14 @@ impl FlightSqlServer {
                         }
                     };
                     tokio::select! {
-                        _ = server => {}
-                        _ = deadline => {}
+                        served = server => served.map_err(|e| e.to_string()),
+                        _ = deadline => Ok(()),
                     }
                 });
                 // Cancels whatever the deadline cut off, closing its
                 // connections, without waiting on it.
                 runtime.shutdown_background();
+                result
             })?;
 
         match ready_rx.recv() {
@@ -652,6 +659,7 @@ impl FlightSqlServer {
 
     /// Stop accepting connections, give in-flight queries up to
     /// ``timeout`` seconds to finish, then close the remaining connections.
+    /// Raises the error that stopped the server, if one did.
     #[pyo3(signature = (timeout=5.0))]
     fn shutdown(&mut self, py: Python<'_>, timeout: f64) -> PyResult<()> {
         let grace = Duration::try_from_secs_f64(timeout)
@@ -660,7 +668,8 @@ impl FlightSqlServer {
             let _ = running.shutdown.send(grace);
             // In-flight partitions may need the GIL to finish.
             py.detach(|| running.thread.join())
-                .map_err(|_| runtime_error("the server thread panicked"))?;
+                .map_err(|_| runtime_error("the server thread panicked"))?
+                .map_err(|e| runtime_error(format!("the server stopped: {e}")))?;
         }
         Ok(())
     }

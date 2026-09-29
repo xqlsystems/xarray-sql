@@ -138,6 +138,43 @@ def test_plain_flight_path_names_a_table(server, ds):
     xr.testing.assert_allclose(out, ds.compute())
 
 
+def test_plain_flight_path_finds_a_mixed_case_name(ds):
+    # ClickHouse's arrowFlight sends the name as given, unquoted.
+    server = xql.FlightSQLServer()
+    with pytest.warns(RuntimeWarning, match="quote"):
+        server.register("Weather", ds)
+    with server.serve():
+        table = _read_path(server, "Weather")
+
+    assert table.num_rows == 8 * 5 * 6
+
+
+def test_plain_flight_path_can_be_schema_qualified(ds):
+    upper = ds.temperature.expand_dims(level=[500, 850]).rename("upper")
+    server = xql.FlightSQLServer()
+    server.register(
+        "era5",
+        ds.assign(upper=upper),
+        table_names={("time", "lat", "lon"): "surface"},
+    )
+    with server.serve():
+        table = _read_path(server, "era5.surface")
+
+    assert table.num_rows == 8 * 5 * 6
+
+
+@pytest.mark.parametrize("via", ["server", "xql"])
+def test_mixed_case_warning_points_at_the_caller(ds, via):
+    server = xql.FlightSQLServer()
+    with pytest.warns(RuntimeWarning, match="quote") as record:
+        if via == "server":
+            server.register("Weather", ds)
+        else:
+            xql.register(server, "Weather", ds)
+
+    assert record[0].filename == __file__
+
+
 def test_plain_flight_path_can_be_a_query(server, ds):
     table = _read_path(
         server,
