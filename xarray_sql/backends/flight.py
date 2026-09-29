@@ -70,8 +70,19 @@ class FlightSQLServer:
     context manager that shuts down on exit.
     """
 
-    def __init__(self) -> None:
-        self._native = _NativeFlightSqlServer()
+    def __init__(self, memory_limit: int | None = None) -> None:
+        """Create a server with no tables.
+
+        Args:
+            memory_limit: Bytes that queries' sorts, joins, and
+                aggregations may hold at once. A query that needs more
+                spills to disk where it can and fails otherwise; the
+                server keeps serving. ``None`` (default) sets no limit.
+                Reading chunks isn't counted, so cap the process
+                externally too (e.g. a container memory limit) before
+                serving untrusted clients.
+        """
+        self._native = _NativeFlightSqlServer(memory_limit)
         self._host: str | None = None
         self._port: int | None = None
 
@@ -129,12 +140,19 @@ class FlightSQLServer:
             self._native.register_table(name, read_xarray_table(ds, chunks))
             return self
 
+        # Every group's table is built before any is registered, so a
+        # failure leaves the server as it was.
         coord_arrays = shared_coord_arrays(ds)
-        for dims, var_names in groups.items():
-            table = read_xarray_table(
-                ds[var_names], chunks, coord_arrays=coord_arrays
+        tables = [
+            (
+                names[dims],
+                read_xarray_table(
+                    ds[var_names], chunks, coord_arrays=coord_arrays
+                ),
             )
-            self._native.register_table(names[dims], table, schema=name)
+            for dims, var_names in groups.items()
+        ]
+        self._native.register_tables(name, tables)
         return self
 
     def serve(self, host: str = "127.0.0.1", port: int = 0) -> FlightSQLServer:
@@ -220,6 +238,7 @@ def serve(
     *,
     chunks: Chunks = None,
     table_names: TableNames = None,
+    memory_limit: int | None = None,
 ) -> FlightSQLServer:
     """Serve Datasets over Arrow Flight SQL, without copying them.
 
@@ -240,11 +259,13 @@ def serve(
         port: The TCP port; ``0`` (default) picks a free one.
         chunks: Chunks specification applied to every Dataset.
         table_names: Dimension-group naming applied to every Dataset.
+        memory_limit: Bytes queries may hold at once; see
+            [FlightSQLServer][xarray_sql.backends.flight.FlightSQLServer].
 
     Returns:
         The running server.
     """
-    server = FlightSQLServer()
+    server = FlightSQLServer(memory_limit)
     for name, ds in datasets.items():
         server.register(name, ds, chunks=chunks, table_names=table_names)
     return server.serve(host, port)

@@ -354,12 +354,14 @@ server over the same lazy tables `XarrayContext` uses.
 ```python
 import xarray_sql as xql
 
-server = xql.serve({"era5": ds}, host="0.0.0.0", port=8815)
+server = xql.serve({"era5": ds}, port=8815)
 server.wait()   # in a script: block until Ctrl+C
 ```
 
-Any Flight SQL client can then query `era5` from another process or
-machine: ADBC's Flight SQL driver (Python, R, Go, Java), the Flight SQL
+Any Flight SQL client on the same machine can then query `era5`; to
+serve other machines, read [exposing a
+server](#things-to-know-before-exposing-a-server) first. Clients include
+ADBC's Flight SQL driver (Python, R, Go, Java), the Flight SQL
 JDBC and ODBC drivers, and the SQL tools built on them. From Python:
 
 ```sh
@@ -369,7 +371,7 @@ pip install adbc-driver-flightsql
 ```python
 import adbc_driver_flightsql.dbapi as flight_sql
 
-con = flight_sql.connect("grpc://server-host:8815")
+con = flight_sql.connect("grpc://localhost:8815")
 cur = con.cursor()
 cur.execute("""
     SELECT time, AVG(t2m) AS t2m FROM era5
@@ -437,18 +439,31 @@ Times arrive without a zone, so ClickHouse parses literals compared
 with them in its server zone. Add `SETTINGS session_timezone = 'UTC'`
 to queries that filter on time.
 
-Things to know before exposing a server:
+### Things to know before exposing a server
 
 - **No authentication or TLS.** The server binds to `127.0.0.1` by
-  default. To accept remote connections, bind `0.0.0.0` inside a
+  default. To accept remote connections, bind `0.0.0.0` only inside a
   trusted network, or put it behind a proxy that authenticates and
-  terminates TLS.
+  terminates TLS:
+
+  ```python
+  server = xql.serve({"era5": ds}, host="0.0.0.0", port=8815, memory_limit=8 * 2**30)
+  ```
 - **Read-only SQL.** DDL, DML, and other statements (`CREATE EXTERNAL
   TABLE`, `COPY`, `SET`, ...) are rejected, so clients cannot read or
   write the server's filesystem.
 - **DataFusion's SQL, without xarray-sql's Python UDFs.** The
   `cftime()` and `reproject()` functions `XarrayContext` registers are
   not available on the server.
+- **Bound its memory.** Any client can send an expensive `ORDER BY`,
+  join, or aggregation. `memory_limit=` (bytes) caps what those hold at
+  once: a query that needs more spills to disk where it can and fails
+  otherwise, and the server keeps serving. It is unbounded by default.
+  Chunk reads aren't counted, so also cap the process itself (a
+  container or cgroup memory limit) before serving untrusted clients.
+- **Only the served Datasets are reachable.** Besides rejecting writes,
+  the server doesn't resolve file paths or URLs as tables
+  (`SELECT * FROM '/etc/hosts'` fails).
 - **One process serves every query.** Chunk reads happen in the server
   process, so size it (and `chunks=`) for the concurrent load you
   expect.

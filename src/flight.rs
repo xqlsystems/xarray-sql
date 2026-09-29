@@ -47,7 +47,8 @@ use datafusion::arrow::record_batch::RecordBatch;
 use datafusion::catalog::{MemorySchemaProvider, SchemaProvider};
 use datafusion::error::DataFusionError;
 use datafusion::execution::context::SQLOptions;
-use datafusion::prelude::{DataFrame, SessionContext};
+use datafusion::execution::runtime_env::RuntimeEnvBuilder;
+use datafusion::prelude::{DataFrame, SessionConfig, SessionContext};
 use datafusion::sql::TableReference;
 use futures::{stream, Stream, TryStreamExt};
 use prost::Message;
@@ -86,8 +87,12 @@ fn internal_error(e: impl std::fmt::Display) -> Status {
     Status::internal(e.to_string())
 }
 
+fn invalid_argument(e: impl std::fmt::Display) -> Status {
+    Status::invalid_argument(e.to_string())
+}
+
 fn utf8(bytes: &[u8]) -> Result<&str, Status> {
-    std::str::from_utf8(bytes).map_err(|e| Status::invalid_argument(e.to_string()))
+    std::str::from_utf8(bytes).map_err(invalid_argument)
 }
 
 /// Encode one metadata batch (catalog, schema, and table listings) as a
@@ -395,8 +400,9 @@ impl FlightRouter {
         if let Some(sql) = self.path_query(descriptor)? {
             return Ok(sql);
         }
-        let message = Any::decode(&*descriptor.cmd).map_err(internal_error)?;
-        match Command::try_from(message).map_err(internal_error)? {
+        // A descriptor that doesn't decode is the client's error.
+        let message = Any::decode(&*descriptor.cmd).map_err(invalid_argument)?;
+        match Command::try_from(message).map_err(invalid_argument)? {
             Command::CommandStatementQuery(query) => Ok(query.query),
             Command::CommandPreparedStatementQuery(query) => {
                 Ok(utf8(&query.prepared_statement_handle)?.to_string())
@@ -530,49 +536,73 @@ fn runtime_error(e: impl std::fmt::Display) -> PyErr {
 
 #[pymethods]
 impl FlightSqlServer {
+    /// ``memory_limit`` caps, in bytes, the memory queries' sorts, joins,
+    /// and aggregations may hold; a query that needs more spills to disk
+    /// where it can and fails otherwise. ``None`` leaves it unbounded.
     #[new]
-    fn new() -> Self {
-        Self {
-            ctx: SessionContext::new(),
-            running: None,
+    #[pyo3(signature = (memory_limit=None))]
+    fn new(memory_limit: Option<usize>) -> PyResult<Self> {
+        let mut runtime = RuntimeEnvBuilder::new();
+        if let Some(limit) = memory_limit {
+            runtime = runtime.with_memory_limit(limit, 1.0);
         }
+        let runtime = runtime.build_arc().map_err(runtime_error)?;
+        Ok(Self {
+            ctx: SessionContext::new_with_config_rt(SessionConfig::new(), runtime),
+            running: None,
+        })
     }
 
-    /// Register ``table`` as ``name``, inside the SQL schema ``schema``
-    /// when one is given (created on first use).
-    #[pyo3(signature = (name, table, schema=None))]
-    fn register_table(
+    /// Register ``table`` as ``name``.
+    fn register_table(&self, name: &str, table: PyRef<'_, LazyArrowStreamTable>) -> PyResult<()> {
+        // Bare, not parsed as SQL: a `&str` would fold `Weather` to
+        // `weather`, and a quoted `"Weather"` could never find it.
+        self.ctx
+            .register_table(TableReference::bare(name), table.table.clone())
+            .map_err(runtime_error)?;
+        Ok(())
+    }
+
+    /// Register ``tables`` (name, table) in the SQL schema ``schema``, all
+    /// or none: a name already taken fails before anything is added.
+    fn register_tables(
         &self,
-        name: &str,
-        table: PyRef<'_, LazyArrowStreamTable>,
-        schema: Option<&str>,
+        schema: &str,
+        tables: Vec<(String, PyRef<'_, LazyArrowStreamTable>)>,
     ) -> PyResult<()> {
-        let provider = table.table.clone();
-        let Some(schema_name) = schema else {
-            // Bare, not parsed as SQL: a `&str` would fold `Weather` to
-            // `weather`, and a quoted `"Weather"` could never find it.
-            self.ctx
-                .register_table(TableReference::bare(name), provider)
-                .map_err(runtime_error)?;
-            return Ok(());
-        };
         let catalog = self
             .ctx
             .catalog("datafusion")
             .ok_or_else(|| runtime_error("the default catalog is missing"))?;
-        let schema_provider = match catalog.schema(schema_name) {
-            Some(existing) => existing,
-            None => {
-                let created: Arc<dyn SchemaProvider> = Arc::new(MemorySchemaProvider::new());
-                catalog
-                    .register_schema(schema_name, Arc::clone(&created))
-                    .map_err(runtime_error)?;
-                created
+        let existing = catalog.schema(schema);
+        if let Some(existing) = &existing {
+            let taken: Vec<&str> = tables
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .filter(|name| existing.table_exist(name))
+                .collect();
+            if !taken.is_empty() {
+                return Err(runtime_error(format!(
+                    "{schema} already has tables named {}",
+                    taken.join(", ")
+                )));
             }
-        };
-        schema_provider
-            .register_table(name.to_string(), provider)
-            .map_err(runtime_error)?;
+        }
+        // A new schema is filled before it is added, so queries never see
+        // it partly registered.
+        let is_new = existing.is_none();
+        let target: Arc<dyn SchemaProvider> =
+            existing.unwrap_or_else(|| Arc::new(MemorySchemaProvider::new()));
+        for (name, table) in &tables {
+            target
+                .register_table(name.clone(), table.table.clone())
+                .map_err(runtime_error)?;
+        }
+        if is_new {
+            catalog
+                .register_schema(schema, target)
+                .map_err(runtime_error)?;
+        }
         Ok(())
     }
 

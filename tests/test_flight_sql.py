@@ -17,6 +17,7 @@ import urllib.request
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pyarrow.flight as flight
 import pytest
 import xarray as xr
@@ -76,11 +77,66 @@ def test_datasets_registered_while_serving_are_visible(server, con, ds):
         "COPY (SELECT 1) TO '/tmp/xarray-sql-flight-leak.csv'",
         "CREATE TABLE copy AS SELECT * FROM weather",
         "SET datafusion.execution.batch_size = 1",
+        # Read-only, but a file outside the served Datasets.
+        "SELECT * FROM '/etc/hosts'",
     ],
 )
-def test_only_queries_are_allowed(con, statement):
+def test_clients_cannot_reach_beyond_the_datasets(con, statement):
     with pytest.raises(flight_sql.Error):
         _query(con, statement).fetchall()
+
+
+def test_a_malformed_descriptor_is_the_clients_error(server):
+    client = flight.FlightClient(server.uri)
+    with pytest.raises(pa.ArrowInvalid):
+        client.get_schema(flight.FlightDescriptor.for_command(b"not a command"))
+
+
+def test_memory_limit_fails_the_query_not_the_server():
+    ds = xr.Dataset(
+        {"v": (["time", "x"], np.random.rand(1_000, 200))},
+        coords={"time": np.arange(1_000), "x": np.arange(200)},
+    ).chunk({"time": 100})
+    with xql.serve({"big": ds}, memory_limit=2**20) as server:
+        con = flight_sql.connect(server.uri)
+        with pytest.raises(flight_sql.Error, match="Resources exhausted"):
+            _query(
+                con,
+                "SELECT COUNT(*) FROM big a JOIN big b "
+                "ON a.time = b.time AND a.x = b.x",
+            ).fetchall()
+        count = _query(con, "SELECT COUNT(*) FROM big").fetchone()[0]
+        con.close()
+
+    assert count == 1_000 * 200
+
+
+def test_a_failed_mixed_dimension_registration_adds_nothing():
+    ds = xr.Dataset(
+        {
+            "t2m": (["time", "lat"], np.random.rand(4, 3)),
+            "temperature": (["time", "level", "lat"], np.random.rand(4, 2, 3)),
+        },
+        coords={"time": np.arange(4), "lat": [0.0, 1.0, 2.0], "level": [1, 2]},
+    ).chunk({"time": 2})
+    surface, atmosphere = ("time", "lat"), ("time", "level", "lat")
+    server = xql.FlightSQLServer()
+    server.register(
+        "era5", ds, table_names={surface: "old", atmosphere: "atmosphere"}
+    )
+
+    # `surface` is new but `atmosphere` is taken: neither is added.
+    with pytest.raises(RuntimeError, match="atmosphere"):
+        server.register(
+            "era5",
+            ds,
+            table_names={surface: "surface", atmosphere: "atmosphere"},
+        )
+    with server.serve():
+        con = flight_sql.connect(server.uri)
+        with pytest.raises(flight_sql.Error, match="surface"):
+            _query(con, "SELECT * FROM era5.surface").fetchall()
+        con.close()
 
 
 def test_tables_are_discoverable(con):
