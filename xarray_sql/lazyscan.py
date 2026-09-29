@@ -271,38 +271,51 @@ class DuckDBHandle:
         self._run(run)
 
 
+def _nanosecond(dtype: Any) -> str | None:
+    """The numpy ``[ns]`` type matching a Polars time column, else ``None``."""
+    import polars as pl
+
+    if isinstance(dtype, pl.Datetime):
+        return "datetime64[ns]"
+    if isinstance(dtype, pl.Duration):
+        return "timedelta64[ns]"
+    return None
+
+
+def _in_zone(expr: Any, dtype: Any) -> Any:
+    """*expr*, a naive UTC time, in *dtype*'s zone if it has one."""
+    zone = getattr(dtype, "time_zone", None)
+    if zone:
+        return expr.dt.replace_time_zone("UTC").dt.convert_time_zone(zone)
+    return expr
+
+
 def _polars_times(values: np.ndarray, dtype: Any) -> Any:
-    """Window times as a Polars Series of the column's own type.
+    """Window times or durations as a Polars Series of the column's type.
 
     Built from the numpy values, so nanoseconds survive: Polars reads a
-    ``pd.Timestamp`` or ``datetime`` literal as microseconds, which never
-    equals a value in a nanosecond column (``is_in`` then matches
-    nothing, or fails as a join on mismatched key types). A naive window
-    time is a UTC instant; it is expressed in the column's zone, if any.
+    ``pd.Timestamp``, ``pd.Timedelta``, or ``datetime`` literal as
+    microseconds, which never equals a value in a nanosecond column
+    (``is_in`` then matches nothing, or fails as a join on mismatched
+    key types). A naive window time is a UTC instant; it is expressed in
+    the column's zone, if any.
     """
     import polars as pl
 
-    series = pl.Series(np.asarray(values, dtype="datetime64[ns]"))
-    if dtype.time_zone:
-        series = series.dt.replace_time_zone("UTC").dt.convert_time_zone(
-            dtype.time_zone
-        )
-    return series.cast(dtype)
+    series = pl.Series(np.asarray(values, dtype=_nanosecond(dtype)))
+    return _in_zone(series, dtype).cast(dtype)
 
 
 def _polars_value(value: Any, dtype: Any) -> Any:
     """One window bound as a Polars literal comparable with *dtype*."""
     import polars as pl
 
-    if isinstance(dtype, pl.Datetime) and isinstance(value, np.datetime64):
-        # From the integer count, which is exact; a Python datetime is not.
-        nanos = int(value.astype("datetime64[ns]").astype("int64"))
-        literal = pl.lit(nanos, dtype=pl.Int64).cast(pl.Datetime("ns"))
-        if dtype.time_zone:
-            literal = literal.dt.replace_time_zone("UTC").dt.convert_time_zone(
-                dtype.time_zone
-            )
-        return literal.cast(dtype)
+    unit = _nanosecond(dtype)
+    if unit and isinstance(value, (np.datetime64, np.timedelta64)):
+        # From the integer count, which is exact; a Python object is not.
+        nanos = int(value.astype(unit).astype("int64"))
+        literal = pl.lit(nanos, dtype=pl.Int64).cast(type(dtype)("ns"))
+        return _in_zone(literal, dtype).cast(dtype)
     return _plain(value)
 
 
@@ -357,7 +370,7 @@ class PolarsHandle:
                         [pl.col(dim).is_between(*(_plain(v),) * 2) for v in a]
                     )
                 )
-            elif isinstance(dtype, pl.Datetime):
+            elif _nanosecond(dtype):
                 exprs.append(pl.col(dim).is_in(_polars_times(a, dtype)))
             else:
                 exprs.append(pl.col(dim).is_in([_plain(v) for v in a]))
