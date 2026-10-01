@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.66">
+      <meta name="generator" content="zensical-0.0.67">
     
     
       
@@ -36,12 +36,12 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.1502b751.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.4ae390e2.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../assets/stylesheets/modern/palette.812a03bb.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/modern/palette.96d1a7e4.min.css">
       
       
 
@@ -488,6 +488,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#serving-over-flight-sql-no-copy" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Serving over Flight SQL (no copy)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Serving over Flight SQL (no copy)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tested-clients" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Tested clients
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#things-to-know-before-exposing-a-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Things to know before exposing a server
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#engine-support-matrix" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -923,6 +962,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#serving-over-flight-sql-no-copy" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Serving over Flight SQL (no copy)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Serving over Flight SQL (no copy)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tested-clients" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Tested clients
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#things-to-know-before-exposing-a-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Things to know before exposing a server
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#engine-support-matrix" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -969,6 +1047,7 @@
               <article class="md-content__inner md-typeset">
                 
                   
+
   
     <a href="https://github.com/xqlsystems/xarray-sql/edit/main/docs/engines.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
@@ -1328,6 +1407,108 @@ stores <code>float32</code> as <code>float64</code> and <code>bool</code> as an 
 keep the result's type.</p>
 <p>The cursor is a one-shot Arrow stream: <code>xql.to_dataset(cur, ...)</code>
 round-trips eagerly, and <code>chunks=</code> needs <code>spill=True</code>.</p>
+<h2 id="serving-over-flight-sql-no-copy">Serving over Flight SQL (no copy)<a class="headerlink" href="#serving-over-flight-sql-no-copy" title="Permanent link">&para;</a></h2>
+<p>The adapters above bring an engine to the data. <code>xql.serve</code> does the
+reverse and brings the data to remote clients: it starts an
+<a href="https://arrow.apache.org/docs/format/FlightSql.html">Arrow Flight SQL</a>
+server over the same lazy tables <code>XarrayContext</code> uses.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">xarray_sql</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xql</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">server</span> <span class="o">=</span> <span class="n">xql</span><span class="o">.</span><span class="n">serve</span><span class="p">({</span><span class="s2">"era5"</span><span class="p">:</span> <span class="n">ds</span><span class="p">},</span> <span class="n">port</span><span class="o">=</span><span class="mi">8815</span><span class="p">)</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">server</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>   <span class="c1"># in a script: block until Ctrl+C</span>
+</span></code></pre></div>
+<p>Any Flight SQL client on the same machine can then query <code>era5</code>; to
+serve other machines, read <a href="#things-to-know-before-exposing-a-server">exposing a
+server</a> first. Clients include
+ADBC's Flight SQL driver (Python, R, Go, Java), the Flight SQL
+JDBC and ODBC drivers, and the SQL tools built on them. From Python:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>pip<span class="w"> </span>install<span class="w"> </span>adbc-driver-flightsql
+</span></code></pre></div>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">adbc_driver_flightsql.dbapi</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">flight_sql</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="n">con</span> <span class="o">=</span> <span class="n">flight_sql</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s2">"grpc://localhost:8815"</span><span class="p">)</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">cur</span> <span class="o">=</span> <span class="n">con</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">"""</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="s2">    SELECT time, AVG(t2m) AS t2m FROM era5</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="s2">    WHERE lat BETWEEN 40 AND 41</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="s2">    GROUP BY time ORDER BY time</span>
+</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="s2">"""</span><span class="p">)</span>
+</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="n">out</span> <span class="o">=</span> <span class="n">xql</span><span class="o">.</span><span class="n">to_dataset</span><span class="p">(</span><span class="n">cur</span><span class="p">,</span> <span class="n">template</span><span class="o">=</span><span class="n">ds</span><span class="p">)</span>   <span class="c1"># template: the same Dataset, opened client-side</span>
+</span></code></pre></div>
+<p>Nothing is copied. Each query is planned by DataFusion on the server
+against lazy tables, so partition pruning on dimension predicates and
+projection pushdown work exactly as they do in process: only the chunks
+and variables a query touches are read from the source, only while the
+query runs, and results stream back as Arrow record batches.</p>
+<p><code>xql.register(server, name, ds, table_names=...)</code> works on a
+<code>xql.FlightSQLServer()</code> like on any other engine, including while it
+serves. Mixed-dimension Datasets are served as <code>name.group</code> tables, and
+clients can list tables with the standard Flight SQL metadata calls
+(e.g. ADBC's <code>adbc_get_objects</code>).</p>
+<h3 id="tested-clients">Tested clients<a class="headerlink" href="#tested-clients" title="Permanent link">&para;</a></h3>
+<p><strong>Spark</strong> reads through the
+<a href="https://arrow.apache.org/docs/java/flight_sql_jdbc_driver.html">Arrow Flight SQL JDBC driver</a>
+and pushes its column selection and filters into the SQL it sends, so
+they reach the server's chunk pruning:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">spark</span> <span class="o">=</span> <span class="p">(</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>    <span class="n">SparkSession</span><span class="o">.</span><span class="n">builder</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>    <span class="o">.</span><span class="n">config</span><span class="p">(</span><span class="s2">"spark.jars"</span><span class="p">,</span> <span class="s2">"flight-sql-jdbc-driver-19.0.0.jar"</span><span class="p">)</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>    <span class="o">.</span><span class="n">config</span><span class="p">(</span><span class="s2">"spark.driver.extraJavaOptions"</span><span class="p">,</span> <span class="s2">"-Duser.timezone=UTC"</span><span class="p">)</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="o">.</span><span class="n">config</span><span class="p">(</span><span class="s2">"spark.sql.session.timeZone"</span><span class="p">,</span> <span class="s2">"UTC"</span><span class="p">)</span>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="o">.</span><span class="n">getOrCreate</span><span class="p">()</span>
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="p">)</span>
+</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="n">era5</span> <span class="o">=</span> <span class="p">(</span>
+</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>    <span class="n">spark</span><span class="o">.</span><span class="n">read</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s2">"jdbc"</span><span class="p">)</span>
+</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>    <span class="o">.</span><span class="n">option</span><span class="p">(</span><span class="s2">"url"</span><span class="p">,</span> <span class="s2">"jdbc:arrow-flight-sql://server-host:8815/?useEncryption=false"</span><span class="p">)</span>
+</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>    <span class="o">.</span><span class="n">option</span><span class="p">(</span><span class="s2">"driver"</span><span class="p">,</span> <span class="s2">"org.apache.arrow.driver.jdbc.ArrowFlightJdbcDriver"</span><span class="p">)</span>
+</span><span id="__span-13-12"><a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>    <span class="o">.</span><span class="n">option</span><span class="p">(</span><span class="s2">"dbtable"</span><span class="p">,</span> <span class="s2">"era5"</span><span class="p">)</span>        <span class="c1"># or "era5.surface", or "(SELECT ...) AS t"</span>
+</span><span id="__span-13-13"><a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>    <span class="o">.</span><span class="n">load</span><span class="p">()</span>
+</span><span id="__span-13-14"><a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a><span class="p">)</span>
+</span><span id="__span-13-15"><a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a><span class="n">xql</span><span class="o">.</span><span class="n">to_dataset</span><span class="p">(</span><span class="n">era5</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="s2">"lat &gt; 40"</span><span class="p">)</span><span class="o">.</span><span class="n">toArrow</span><span class="p">(),</span> <span class="n">template</span><span class="o">=</span><span class="n">ds</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Run Spark's JVM in UTC (<code>-Duser.timezone=UTC</code>, as above). The JDBC
+path shifts timestamps by the JVM's zone otherwise; the session time
+zone alone does not prevent it.</p>
+<p><strong>ClickHouse</strong> (25.8+) reads through its <code>arrowFlight</code> table function,
+which speaks plain Arrow Flight rather than Flight SQL. The dataset name
+is a table, or a query that runs on the server:</p>
+<div class="language-sql highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="k">avg</span><span class="p">(</span><span class="n">temperature</span><span class="p">)</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">arrowFlight</span><span class="p">(</span><span class="s1">'server-host:8815'</span><span class="p">,</span><span class="w"> </span><span class="s1">'era5.surface'</span><span class="p">);</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="c1">-- ClickHouse does not push filters into arrowFlight; put them in the</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="c1">-- name to get the server's chunk pruning:</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">arrowFlight</span><span class="p">(</span><span class="s1">'server-host:8815'</span><span class="p">,</span>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">    </span><span class="s1">'SELECT time, t2m FROM era5.surface WHERE lat BETWEEN 40 AND 41'</span><span class="p">);</span>
+</span></code></pre></div>
+<p>Times arrive without a zone, so ClickHouse parses literals compared
+with them in its server zone. Add <code>SETTINGS session_timezone = 'UTC'</code>
+to queries that filter on time.</p>
+<h3 id="things-to-know-before-exposing-a-server">Things to know before exposing a server<a class="headerlink" href="#things-to-know-before-exposing-a-server" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>No authentication or TLS.</strong> The server binds to <code>127.0.0.1</code> by
+  default. To accept remote connections, bind <code>0.0.0.0</code> only inside a
+  trusted network, or put it behind a proxy that authenticates and
+  terminates TLS:</li>
+</ul>
+<p><div class="language-python highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">server</span> <span class="o">=</span> <span class="n">xql</span><span class="o">.</span><span class="n">serve</span><span class="p">({</span><span class="s2">"era5"</span><span class="p">:</span> <span class="n">ds</span><span class="p">},</span> <span class="n">host</span><span class="o">=</span><span class="s2">"0.0.0.0"</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">8815</span><span class="p">,</span> <span class="n">memory_limit</span><span class="o">=</span><span class="mi">8</span> <span class="o">*</span> <span class="mi">2</span><span class="o">**</span><span class="mi">30</span><span class="p">)</span>
+</span></code></pre></div>
+- <strong>Read-only SQL.</strong> DDL, DML, and other statements (<code>CREATE EXTERNAL
+  TABLE</code>, <code>COPY</code>, <code>SET</code>, ...) are rejected, so clients cannot read or
+  write the server's filesystem.
+- <strong>DataFusion's SQL, without xarray-sql's Python UDFs.</strong> The
+  <code>cftime()</code> and <code>reproject()</code> functions <code>XarrayContext</code> registers are
+  not available on the server.
+- <strong>Bound its memory.</strong> Any client can send an expensive <code>ORDER BY</code>,
+  join, or aggregation. <code>memory_limit=</code> (bytes) caps what those hold at
+  once: a query that needs more spills to disk where it can and fails
+  otherwise, and the server keeps serving. It is unbounded by default.
+  Chunk reads aren't counted, so also cap the process itself (a
+  container or cgroup memory limit) before serving untrusted clients.
+- <strong>Only the served Datasets are reachable.</strong> Besides rejecting writes,
+  the server doesn't resolve file paths or URLs as tables
+  (<code>SELECT * FROM '/etc/hosts'</code> fails).
+- <strong>One process serves every query.</strong> Chunk reads happen in the server
+  process, so size it (and <code>chunks=</code>) for the concurrent load you
+  expect.</p>
 <h2 id="engine-support-matrix">Engine support matrix<a class="headerlink" href="#engine-support-matrix" title="Permanent link">&para;</a></h2>
 <p>What each integration provides. Known issues and constraints live on
 <a href="../limitations/">Known issues &amp; limitations</a>.</p>
@@ -1456,23 +1637,23 @@ Arrow C streams are the common wire; pushdown quality is where adapters
 differ. The round-trip needs no per-engine work as long as the engine
 can hand back Arrow.</p>
 <p>A complete adapter, modeled on the DuckDB one:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">register_adapter</span>
-</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.pyarrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">XarrayPushdownDataset</span>
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
-</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="nd">@register_adapter</span>
-</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">AcmeAdapter</span><span class="p">:</span>
-</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">    </span><span class="sd">"""Registers Datasets on acme.Connection objects."""</span>
-</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>
-</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    <span class="nd">@staticmethod</span>
-</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">matches</span><span class="p">(</span><span class="n">con</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>        <span class="c1"># type inspection only, so `acme` stays an optional dependency</span>
-</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>        <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="n">con</span><span class="p">)</span><span class="o">.</span><span class="vm">__module__</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"."</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"acme"</span>
-</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>
-</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>    <span class="nd">@staticmethod</span>
-</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="n">con</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ds</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>        <span class="n">dataset</span> <span class="o">=</span> <span class="n">XarrayPushdownDataset</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-</span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>        <span class="n">con</span><span class="o">.</span><span class="n">register_arrow</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">dataset</span><span class="p">)</span>  <span class="c1"># the engine's own API</span>
-</span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>        <span class="k">return</span> <span class="n">con</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">register_adapter</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.pyarrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">XarrayPushdownDataset</span>
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="nd">@register_adapter</span>
+</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">AcmeAdapter</span><span class="p">:</span>
+</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">    </span><span class="sd">"""Registers Datasets on acme.Connection objects."""</span>
+</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>
+</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>    <span class="nd">@staticmethod</span>
+</span><span id="__span-16-9"><a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">matches</span><span class="p">(</span><span class="n">con</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+</span><span id="__span-16-10"><a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>        <span class="c1"># type inspection only, so `acme` stays an optional dependency</span>
+</span><span id="__span-16-11"><a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>        <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="n">con</span><span class="p">)</span><span class="o">.</span><span class="vm">__module__</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"."</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"acme"</span>
+</span><span id="__span-16-12"><a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>
+</span><span id="__span-16-13"><a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>    <span class="nd">@staticmethod</span>
+</span><span id="__span-16-14"><a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="n">con</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ds</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+</span><span id="__span-16-15"><a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>        <span class="n">dataset</span> <span class="o">=</span> <span class="n">XarrayPushdownDataset</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</span><span id="__span-16-16"><a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a>        <span class="n">con</span><span class="o">.</span><span class="n">register_arrow</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">dataset</span><span class="p">)</span>  <span class="c1"># the engine's own API</span>
+</span><span id="__span-16-17"><a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a>        <span class="k">return</span> <span class="n">con</span>
 </span></code></pre></div>
 <p><code>xql.register(con, "t", ds)</code> then dispatches here whenever <code>matches</code>
 recognizes the connection. Engines that consume the pyarrow dataset
@@ -1605,7 +1786,7 @@ engine-specific issues worth knowing — is explained on
 </footer>
       
     </div>
-    <div class="md-dialog" data-md-component="dialog">
+    <div class="md-dialog" data-md-component="dialog" role="status" aria-atomic="true">
       <div class="md-dialog__inner md-typeset"></div>
     </div>
     
@@ -1619,10 +1800,10 @@ engine-specific issues worth knowing — is explained on
       
         
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["announce.dismiss","content.action.edit","content.action.view","content.code.annotate","content.code.copy","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.sections","navigation.top","navigation.tracking","search.highlight","search.share","search.suggest","toc.follow"],"redirect":null,"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"provider":"mike"}}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["announce.dismiss","content.action.edit","content.action.view","content.code.annotate","content.code.copy","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.sections","navigation.top","navigation.tracking","search.highlight","search.share","search.suggest","toc.follow"],"redirect":null,"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"provider":"mike"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.b7d3f789.min.js"></script>
+      <script src="../assets/javascripts/bundle.67a597eb.min.js"></script>
       
     
   </body>

@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="./assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.66">
+      <meta name="generator" content="zensical-0.0.67">
     
     
       
@@ -34,12 +34,12 @@
       
         
       
-      <link rel="stylesheet" href="./assets/stylesheets/modern/main.1502b751.min.css">
+      <link rel="stylesheet" href="./assets/stylesheets/modern/main.4ae390e2.min.css">
       
         
           
         
-        <link rel="stylesheet" href="./assets/stylesheets/modern/palette.812a03bb.min.css">
+        <link rel="stylesheet" href="./assets/stylesheets/modern/palette.96d1a7e4.min.css">
       
       
 
@@ -1007,6 +1007,7 @@
               <article class="md-content__inner md-typeset">
                 
                   
+
   
     <a href="https://github.com/xqlsystems/xarray-sql/edit/main/docs/index.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
@@ -1092,7 +1093,9 @@ native lazy table with predicate pushdown, Polars scans the same object:</p>
 <p>Any database with an <a href="https://arrow.apache.org/adbc/">ADBC</a> driver
 (PostgreSQL, SQLite, Snowflake, BigQuery, ...) works too: <code>xql.register</code>
 ingests the Dataset into a table there, and <code>xql.to_dataset(cursor, ...)</code>
-brings results back.</p>
+brings results back. Or go the other way without copying anything:
+<code>xql.serve({'air': ds})</code> starts an Arrow Flight SQL server that any Flight SQL
+client (ADBC, JDBC, ODBC) can query, with the same chunk pruning as in process.</p>
 <p><code>table_names</code> (below) works the same way on every engine, so a query written
 against <code>era5.surface</code> is not tied to the engine it was written for.</p>
 <p>See <a href="https://xqlsystems.github.io/xarray-sql/latest/engines/">Engines</a> for the support matrix, DuckDB/Polars/ADBC details,
@@ -1433,7 +1436,7 @@ in <a href="https://github.com/xqlsystems/xarray-sql/issues/4">#4</a>.</p>
 </footer>
       
     </div>
-    <div class="md-dialog" data-md-component="dialog">
+    <div class="md-dialog" data-md-component="dialog" role="status" aria-atomic="true">
       <div class="md-dialog__inner md-typeset"></div>
     </div>
     
@@ -1447,10 +1450,10 @@ in <a href="https://github.com/xqlsystems/xarray-sql/issues/4">#4</a>.</p>
       
         
         
-      <script id="__config" type="application/json">{"annotate":null,"base":".","features":["announce.dismiss","content.action.edit","content.action.view","content.code.annotate","content.code.copy","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.sections","navigation.top","navigation.tracking","search.highlight","search.share","search.suggest","toc.follow"],"redirect":null,"search":"./assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"provider":"mike"}}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":".","features":["announce.dismiss","content.action.edit","content.action.view","content.code.annotate","content.code.copy","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.sections","navigation.top","navigation.tracking","search.highlight","search.share","search.suggest","toc.follow"],"redirect":null,"search":"./assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"provider":"mike"}}</script>
     
     
-      <script src="./assets/javascripts/bundle.b7d3f789.min.js"></script>
+      <script src="./assets/javascripts/bundle.67a597eb.min.js"></script>
       
     
   </body>
