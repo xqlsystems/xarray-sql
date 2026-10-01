@@ -25,7 +25,7 @@ with forecast horizon" curve.
 That alignment is a relational **JOIN**, and ``valid_time = init + lead`` is just
 timestamp + duration arithmetic the engine does natively::
 
-    SELECT f.model, f.prediction_timedelta AS lead,
+    SELECT f.model, f.prediction_timedelta AS "lead",
            SQRT(AVG(POWER(f.t - e.t, 2))) AS rmse
     FROM forecasts f
     JOIN era5 e
@@ -157,7 +157,7 @@ def main() -> None:
 
     sql = """
         SELECT f.model,
-               f.prediction_timedelta AS lead,
+               f.prediction_timedelta AS "lead",
                SQRT(AVG(POWER(
                    CAST(f."2m_temperature" AS DOUBLE) - e."2m_temperature", 2
                ))) AS rmse
@@ -167,7 +167,7 @@ def main() -> None:
           AND e.latitude  = f.latitude
           AND e.longitude = f.longitude
         GROUP BY f.model, f.prediction_timedelta
-        ORDER BY f.model, lead
+        ORDER BY f.model, "lead"
     """
     show_sql(sql)
 

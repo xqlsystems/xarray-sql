@@ -12,6 +12,11 @@ assertions) can be measured across engines:
   ``xql.arrow_dataset`` (pure Python).
 * ``duckdb`` — DuckDB over the same pyarrow pushdown datasets.
 * ``polars`` — ``polars.SQLContext`` over ``scan_pyarrow_dataset`` frames.
+* ``adbc-<backend>`` — a database behind an ADBC driver, one of the
+  backends the ADBC tests run against (``tests/_adbc.py``: ``sqlite``,
+  ``duckdb``, ``postgresql``, ``mssql``, ...), connected the same way.
+  Registration copies data into the database, so each query's window is
+  ingested when the query runs; see :class:`_ADBC`.
 
 Every case builds one :class:`EngineContext`, registers datasets exactly
 as it always registered them on ``XarrayContext``, and calls
@@ -44,7 +49,7 @@ import xarray as xr
 def engine_name() -> str:
     """The engine selected for this process (``GEOBENCH_ENGINE``)."""
     engine = os.environ.get("GEOBENCH_ENGINE", "datafusion")
-    if engine not in _ENGINES:
+    if engine not in _ENGINES and not engine.startswith("adbc-"):
         raise ValueError(f"GEOBENCH_ENGINE={engine!r}; expected {_ENGINES}")
     return engine
 
@@ -65,7 +70,11 @@ def _to_ns(pdf: pd.DataFrame, dims: list[str]) -> pd.DataFrame:
     """Normalize datetime/timedelta dim columns to ns for label alignment."""
     for col in dims:
         dtype = pdf[col].dtype
-        if pd.api.types.is_datetime64_any_dtype(dtype):
+        if isinstance(dtype, pd.DatetimeTZDtype):
+            # A zone-labeled result (ClickHouse, timestamptz) is compared
+            # with the reference's plain UTC times.
+            pdf[col] = pdf[col].dt.tz_convert("UTC").dt.tz_localize(None)
+        if pd.api.types.is_datetime64_any_dtype(pdf[col].dtype):
             pdf[col] = pdf[col].astype("datetime64[ns]")
         elif pd.api.types.is_timedelta64_dtype(dtype):
             pdf[col] = pdf[col].astype("timedelta64[ns]")
@@ -95,7 +104,8 @@ class EngineContext:
 
     def __new__(cls, engine: str | None = None):
         if cls is EngineContext:
-            cls = _IMPLS[engine or engine_name()]
+            name = engine or engine_name()
+            cls = _ADBC if name.startswith("adbc-") else _IMPLS[name]
         return super().__new__(cls)
 
     def __init__(self, engine: str | None = None):
@@ -265,6 +275,216 @@ class _Polars(EngineContext):
                     )
             ctx.register(flat, lf)
         return ctx.execute(sql, eager=True).to_pandas()
+
+
+def _as_timedelta(value):
+    """A duration a database returned as an interval or text, else as is.
+
+    DuckDB and PostgreSQL return intervals (pandas ``DateOffset``), MySQL
+    and Trino text such as ``'21600s'``; the other engines hand back
+    ``timedelta`` values the reference compares with directly.
+    """
+    if isinstance(value, pd.DateOffset):
+        parts = value.kwds
+        return pd.Timedelta(
+            days=parts.get("days", 0),
+            microseconds=parts.get("microseconds", 0),
+            nanoseconds=parts.get("nanoseconds", 0),
+        )
+    if isinstance(value, str):
+        try:
+            return pd.Timedelta(value)
+        except ValueError:
+            return value
+    return value
+
+
+class _ADBC(EngineContext):
+    """A database behind an ADBC driver, via ``xql.register``.
+
+    ADBC registration copies data into the database, and the cases open
+    the whole ARCO-ERA5 archive, so nothing is ingested at registration.
+    When a query runs, each Dataset is cut to the variables the SQL names
+    and to the window its parameters bound (the same inclusive bounds as
+    the SQL ``WHERE``, which still applies), and that window is ingested.
+
+    The case SQL is written for DataFusion. The few places it differs
+    from another database's SQL are rewritten explicitly in
+    :meth:`_dialect`, since xarray-sql translates data, not queries.
+    """
+
+    _BOUND_PARAMS = _Polars._BOUND_PARAMS
+
+    _HOUR = {
+        "sqlite": "CAST(strftime('%H', {}) AS INTEGER)",
+        "mssql": "DATEPART(hour, {})",
+        "trino": "hour({})",
+        "mysql": "HOUR({})",
+        "mariadb": "HOUR({})",
+        "clickhouse": "toHour({})",
+        "chdb": "toHour({})",
+    }
+    """How each database extracts the hour, where not ``date_part``."""
+
+    _DOUBLE = {"postgresql": "DOUBLE PRECISION", "mssql": "FLOAT"}
+
+    _PLUS_DURATION = {
+        "sqlite": "datetime({t}, '+' || ({d} / 1000000000) || ' seconds')",
+        "clickhouse": "addNanoseconds({t}, {d})",
+        "chdb": "addNanoseconds({t}, {d})",
+        "mssql": "DATEADD(second, {d} / 1000000000, {t})",
+        "mysql": (
+            "DATE_ADD({t}, INTERVAL CAST(REPLACE({d}, 'ns', '') AS SIGNED) "
+            "DIV 1000 MICROSECOND)"
+        ),
+        "mariadb": (
+            "DATE_ADD({t}, INTERVAL CAST(REPLACE({d}, 'ns', '') AS SIGNED) "
+            "DIV 1000 MICROSECOND)"
+        ),
+        "trino": "{t} + parse_duration({d})",
+    }
+    """``time + duration`` where durations are not a native interval: the
+    adapter stores them as integer nanoseconds (SQLite, ClickHouse, SQL
+    Server) or as text such as ``'43200000000000ns'`` (MySQL, MariaDB,
+    Trino)."""
+
+    def _connect(self):
+        import sys
+        from pathlib import Path
+
+        from _harness import CaseSkipped
+
+        # The ADBC tests' backend table: one source of truth for which
+        # databases exist and how to reach them.
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+        from tests._adbc import BACKENDS, Database
+
+        backend_name = self.engine.removeprefix("adbc-")
+        backends = {b.name: b for b in BACKENDS}
+        if backend_name not in backends:
+            raise ValueError(
+                f"GEOBENCH_ENGINE={self.engine!r}; ADBC backends are "
+                f"{sorted('adbc-' + name for name in backends)}"
+            )
+        backend = backends[backend_name]
+        try:
+            con = backend.connect()
+        except BaseException as exc:  # pytest.skip outside pytest
+            if type(exc).__name__ == "Skipped":
+                raise CaseSkipped(str(exc)) from None
+            raise
+        self._db = Database(backend, con)
+        if backend_name == "mariadb":
+            # MariaDB joins by nested loop unless hash joins are enabled;
+            # the forecast-skill join on `time + lead` then runs for hours
+            # (MySQL uses hash joins by default).
+            self._db.query("SET SESSION join_cache_level = 8").close()
+        self._datasets: dict[str, tuple] = {}
+        self.flavor = f"adbc ({backend_name})"
+
+    def from_dataset(self, name, ds, *, chunks=None, table_names=None):
+        self._datasets[name] = (ds, chunks, table_names)
+
+    def _window(self, ds: xr.Dataset, params: dict) -> xr.Dataset:
+        for dim, low, high in self._BOUND_PARAMS:
+            if dim in ds.dims and low in params and high in params:
+                index = ds.indexes[dim]
+                keep = (index >= params[low]) & (index <= params[high])
+                ds = ds.isel({dim: np.flatnonzero(keep)})
+        return ds
+
+    def _ingest(self, sql: str, params: dict) -> str:
+        """Ingests what *sql* reads; returns *sql* naming those tables."""
+        import xarray_sql as xql
+        from xarray_sql.df import group_vars_by_dims, resolve_table_names
+
+        mentioned = {a or b for a, b in re.findall(r'"([^"]+)"|(\w+)', sql)}
+        for name, (ds, chunks, table_names) in self._datasets.items():
+            groups = group_vars_by_dims(ds)
+            names = resolve_table_names(ds, table_names)
+            for dims, var_names in groups.items():
+                wanted = [v for v in var_names if v in mentioned]
+                table = f"{name}.{names[dims]}" if len(groups) > 1 else name
+                if not wanted or not re.search(rf"\b{re.escape(table)}\b", sql):
+                    continue
+                window = self._window(ds[wanted], params)
+                flat = table.replace(".", "_")
+                xql.register(
+                    self._db.con, flat, window, chunks=chunks, mode="replace"
+                )
+                sql = re.sub(rf"\b{re.escape(table)}\b", flat, sql)
+        return sql
+
+    def _literal(self, value) -> str:
+        if isinstance(value, (datetime.datetime, pd.Timestamp, np.datetime64)):
+            text = pd.Timestamp(value).strftime("%Y-%m-%d %H:%M:%S")
+            if self._db.backend.name == "trino":
+                return f"TIMESTAMP '{text}'"
+            return f"'{text}'"
+        return _literal(value)
+
+    def _durations(self) -> set[str]:
+        """Names of the registered timedelta coordinates and variables."""
+        return {
+            str(name)
+            for ds, _, _ in self._datasets.values()
+            for name, var in ds.variables.items()
+            if var.dtype.kind == "m"
+        }
+
+    def _dialect(self, sql: str) -> str:
+        backend = self._db.backend
+        plus = self._PLUS_DURATION.get(backend.name)
+        if plus:
+            for name in self._durations():
+                sql = re.sub(
+                    rf"([\w.]+)\s*\+\s*(\w+\.{re.escape(name)})\b",
+                    lambda m: plus.format(t=m[1], d=m[2]),
+                    sql,
+                )
+        if backend.quote != '"':
+            sql = re.sub(
+                r'"([^"]*)"',
+                lambda m: f"{backend.quote}{m[1]}{backend.quote}",
+                sql,
+            )
+        hour = self._HOUR.get(backend.name)
+        if hour:
+            sql = re.sub(
+                r"date_part\('hour',\s*([\w.]+)\)",
+                lambda m: hour.format(m[1]),
+                sql,
+            )
+        double = self._DOUBLE.get(backend.name)
+        if double:
+            sql = re.sub(r"\bAS DOUBLE\b", f"AS {double}", sql)
+        return sql
+
+    def sql_to_dataset(self, sql, *, dims, param_values=None):
+        params = param_values or {}
+        sql = self._ingest(sql, params)
+        for key, value in params.items():
+            sql = re.sub(rf"\${key}\b", self._literal(value), sql)
+        cur = self._db.query(self._dialect(sql))
+        pdf = cur.fetch_arrow_table().to_pandas()
+        durations = self._durations()
+        # A duration column keeps its meaning under an alias
+        # (`prediction_timedelta AS "lead"`).
+        durations |= {
+            alias
+            for name in durations
+            for alias in re.findall(
+                rf'\b{re.escape(name)}\s+AS\s+[`"]?(\w+)', sql, re.IGNORECASE
+            )
+        }
+        for dim in dims:
+            if pdf[dim].dtype == object:
+                pdf[dim] = pdf[dim].map(_as_timedelta)
+            elif dim in durations and pdf[dim].dtype.kind in "iu":
+                # Stored as integer nanoseconds where there is no
+                # duration type (SQLite, ClickHouse, SQL Server).
+                pdf[dim] = pd.to_timedelta(pdf[dim], unit="ns")
+        return _pandas_to_dataset(pdf, dims)
 
 
 _IMPLS = {
