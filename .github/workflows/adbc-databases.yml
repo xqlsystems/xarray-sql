@@ -2,8 +2,9 @@
 # real database servers in service containers, one job per database so
 # each pulls only its own image and a failure names its database. The
 # main CI job runs the contract on the in-process backends (SQLite,
-# DuckDB, chDB, DataFusion); the "in-process" job here adds their
-# ARCO-ERA5 queries.
+# DuckDB, chDB, DataFusion, and xarray-sql's own Flight SQL server); the
+# in-process job here adds their ARCO-ERA5 queries. The ClickHouse job
+# also has ClickHouse query that Flight SQL server over Arrow Flight.
 name: adbc databases
 
 on:
@@ -13,12 +14,15 @@ on:
     paths:
       - "xarray_sql/backends/adbc.py"
       - "xarray_sql/backends/_adbc_dialects.py"
+      - "xarray_sql/backends/flight.py"
+      - "src/flight.rs"
       - "xarray_sql/ds.py"
       - "xarray_sql/lazyscan.py"
       - "xarray_sql/roundtrip.py"
       - "tests/_adbc.py"
       - "tests/test_adbc_backend.py"
       - "tests/test_adbc_era5_integration.py"
+      - "tests/test_flight_sql.py"
       - ".github/workflows/adbc-databases.yml"
   workflow_dispatch:
 
@@ -35,7 +39,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - backend: sqlite,duckdb,chdb,datafusion
+          - backend: sqlite,duckdb,chdb,datafusion,served
           - backend: postgresql
             image: postgres:18
             port: 5432
@@ -72,6 +76,8 @@ jobs:
         image: ${{ matrix.image }}
         ports:
           - ${{ matrix.port || 1 }}:${{ matrix.port || 1 }}
+        # Lets ClickHouse reach a Flight SQL server the tests start here.
+        options: --add-host=host.docker.internal:host-gateway
         env:
           POSTGRES_PASSWORD: xql
           MYSQL_ROOT_PASSWORD: xql
@@ -154,6 +160,14 @@ jobs:
       - name: Run the ADBC contract tests
         if: matrix.uri
         run: uv run --no-project pytest -v -rs tests/test_adbc_backend.py
+
+      - name: Query xarray-sql's Flight SQL server from ClickHouse
+        if: matrix.backend == 'clickhouse'
+        run: >-
+          uv run --no-project pytest -v -rs tests/test_flight_sql.py
+          -k clickhouse
+        env:
+          XARRAY_SQL_TEST_CLICKHOUSE_FLIGHT_HOST: host.docker.internal
 
       - name: Run realistic ARCO-ERA5 queries
         # Reads a regional subset anonymously from the public bucket.

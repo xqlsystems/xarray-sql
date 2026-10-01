@@ -203,8 +203,13 @@ def _warn_on_lost_precision(ds: xr.Dataset, dialect: Dialect) -> None:
             )
 
 
-def _warn_on_folded_names(names: list[str], dialect: Dialect) -> None:
-    """Warn about names *dialect*'s database would fold if unquoted."""
+def _warn_on_folded_names(
+    names: list[str], dialect: Dialect, stacklevel: int = 4
+) -> None:
+    """Warn about names *dialect*'s database would fold if unquoted.
+
+    *stacklevel* counts frames from here to the user's call.
+    """
     if dialect.folds is None:
         return
     fold = str.lower if dialect.folds == "lower" else str.upper
@@ -215,7 +220,7 @@ def _warn_on_folded_names(names: list[str], dialect: Dialect) -> None:
             f"{dialect.name} folds unquoted names to {dialect.folds}case, "
             f"so quote these in queries: {quoted}.",
             RuntimeWarning,
-            stacklevel=4,
+            stacklevel=stacklevel,
         )
 
 

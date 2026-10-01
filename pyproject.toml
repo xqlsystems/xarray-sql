@@ -53,6 +53,7 @@ geo = [
   "pyproj",
 ]
 test = [
+  "adbc-driver-flightsql>=1.12",
   "adbc-driver-sqlite>=1.12",
   "cftime",
   "xarray-sql[adbc,duckdb,polars,geo]",

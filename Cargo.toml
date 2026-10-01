@@ -19,18 +19,21 @@ exclude = [
 
 [dependencies]
 arrow = { version = "58", features = ["pyarrow"] }
+arrow-flight = { version = "58", features = ["flight-sql"] }
 async-stream = "0.3"
 async-trait = "0.1"
 datafusion = { version = "54.0.0" }
 datafusion-ffi = { version = "54.0.0" }
 futures = { version = "0.3" }
 half = "2.7"
+prost = "0.14"
 # `abi3-py310` builds against CPython's stable ABI, so a single wheel per
 # platform works on all CPython >= 3.10 (matching `requires-python`). Maturin
 # enables `pyo3/extension-module` through pyproject.toml for wheel builds; it
 # must stay disabled for ordinary Cargo test binaries so they link libpython.
 pyo3 = { version = "0.28.0", features = ["abi3-py310"] }
-tokio = { version = "1.46.1", features = ["rt"] }
+tokio = { version = "1.46.1", features = ["macros", "net", "rt", "rt-multi-thread", "sync", "time"] }
+tonic = { version = "0.14", features = ["transport"] }
 
 
 [build-dependencies]
