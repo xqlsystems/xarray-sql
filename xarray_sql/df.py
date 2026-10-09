@@ -1,4 +1,5 @@
 import itertools
+import sys
 from collections import defaultdict
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping
 from typing import Any
@@ -10,6 +11,9 @@ import xarray as xr
 
 from . import cftime as cft
 
+
+_CAN_START_THREADS = sys.platform != "emscripten"
+"""Whether this interpreter can start OS threads; Pyodide cannot."""
 
 Block = dict[Hashable, slice]
 Chunks = dict[str, int] | None

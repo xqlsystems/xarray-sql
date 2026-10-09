@@ -2835,7 +2835,8 @@ name = "xarray-sql"
 source = { editable = "." }
 dependencies = [
     { name = "dask" },
-    { name = "datafusion" },
+    { name = "datafusion", marker = "sys_platform != 'emscripten'" },
+    { name = "pyarrow" },
     { name = "xarray", version = "2025.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "xarray", version = "2025.7.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
@@ -2895,12 +2896,13 @@ requires-dist = [
     { name = "adbc-driver-sqlite", marker = "extra == 'test'", specifier = ">=1.12" },
     { name = "cftime", marker = "extra == 'test'" },
     { name = "dask", specifier = ">=2024.8.0" },
-    { name = "datafusion", specifier = "==54.0.0" },
+    { name = "datafusion", marker = "sys_platform != 'emscripten'", specifier = "==54.0.0" },
     { name = "duckdb", marker = "extra == 'duckdb'", specifier = ">=1.4.0" },
     { name = "gcsfs", marker = "extra == 'test'" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'" },
     { name = "polars", marker = "extra == 'polars'", specifier = ">=1.33" },
     { name = "pre-commit", marker = "extra == 'dev'" },
+    { name = "pyarrow", specifier = ">=16.0.0" },
     { name = "pyproj", marker = "extra == 'geo'" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest", marker = "extra == 'test'" },

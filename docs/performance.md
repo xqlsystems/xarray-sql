@@ -194,7 +194,7 @@ adds value when the question is relational.
 
 === "DataFusion"
 
-    **Two registration paths.** `XarrayContext.from_dataset` uses the
+    **Two registration paths.** `Context.from_dataset` uses the
     native Rust table provider — partition-parallel, with `chunks=`
     controlling partition granularity; the `prefetch`/`coalesce_rows`
     scanner knobs on this page apply to the *pyarrow-dataset* path

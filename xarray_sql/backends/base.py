@@ -109,7 +109,7 @@ def register(
 
     Args:
         con: An engine connection: a ``datafusion.SessionContext`` (or
-            [xarray_sql.XarrayContext][]), a
+            [xarray_sql.Context][]), a
             ``duckdb.DuckDBPyConnection``, or an ADBC DBAPI connection
             (``adbc_driver_manager.dbapi.Connection``), into which the
             Dataset is ingested as a table.

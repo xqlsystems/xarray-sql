@@ -31,7 +31,10 @@ classifiers = [
 ]
 dependencies = [
     "dask>=2024.8.0",
-    "datafusion==54.0.0", # This needs to match the cargo datafusion version!!
+    # This needs to match the cargo datafusion version!! DataFusion's Python
+    # bindings have no Pyodide wheels, so they are optional there.
+    "datafusion==54.0.0; sys_platform != 'emscripten'",
+    "pyarrow>=16.0.0",
     "xarray>=2024.7.0",
 ]
 

@@ -37,7 +37,8 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-from datafusion import col, literal
+
+from .df import _CAN_START_THREADS
 
 DimSpec = tuple[Literal["range", "values"], Any, Any]
 """One dimension's window: ``("range", lo, hi)`` (inclusive bounds; the
@@ -113,6 +114,8 @@ class DataFusionHandle:
         return self._df.schema()
 
     def distinct(self, column: str) -> np.ndarray:
+        from datafusion import col
+
         dim_only = self._df.select(col(f'"{column}"')).distinct()
         batches = [b.to_pyarrow() for b in dim_only.execute_stream()]
         if not batches:
@@ -127,6 +130,8 @@ class DataFusionHandle:
     def fetch(
         self, specs: dict[str, DimSpec], columns: list[str]
     ) -> list[pa.RecordBatch]:
+        from datafusion import col, literal
+
         predicate = None
         for dim, (kind, a, b) in specs.items():
             c = col(f'"{dim}"')
@@ -146,6 +151,8 @@ class DataFusionHandle:
 
     def stream(self, columns: list[str]) -> Iterator[pa.RecordBatch]:
         """Execute once, yielding Arrow batches as the plan produces them."""
+        from datafusion import col
+
         out = self._df.select(*(col(f'"{n}"') for n in columns))
         return (b.to_pyarrow() for b in out.execute_stream())
 
@@ -195,6 +202,11 @@ class DuckDBHandle:
 
     def __init__(self, rel: Any) -> None:
         self._rel = rel
+        self._runner: ThreadPoolExecutor | None = None
+        if not _CAN_START_THREADS:
+            # Single-threaded interpreters (Pyodide) have no other
+            # threads to deadlock against; run engine calls inline.
+            return
         self._runner = ThreadPoolExecutor(max_workers=1)
         self._runner.submit(lambda: None).result()  # start the thread now
         # Stop the dedicated engine thread when the handle dies; it
@@ -206,6 +218,8 @@ class DuckDBHandle:
         )
 
     def _run(self, fn: Any) -> Any:
+        if self._runner is None:
+            return fn()
         return self._runner.submit(fn).result()
 
     @staticmethod

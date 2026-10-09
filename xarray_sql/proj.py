@@ -42,7 +42,7 @@ Design notes:
   would return ``inf``); NULL CRS arguments yield NaN as well.
 
 Requires ``pyproj`` (``pip install xarray-sql[geo]``). When pyproj is
-installed, [xarray_sql.XarrayContext][] registers ``reproject()``
+installed, [xarray_sql.Context][] registers ``reproject()``
 automatically; [register][xarray_sql.proj.register] is the explicit hook for plain
 DataFusion ``SessionContext`` objects or custom UDF names.
 """
@@ -212,7 +212,7 @@ def _reproject(
 def register(ctx, name: str = "reproject") -> None:
     """Register the ``reproject(x, y, src_crs, dst_crs)`` scalar UDF.
 
-    Works on any DataFusion ``SessionContext`` (``XarrayContext``
+    Works on any DataFusion ``SessionContext`` (``Context``
     registers it automatically when pyproj is installed). The UDF
     returns a ``{x, y}`` struct of destination coordinates, so a query
     selects components with subscripts::

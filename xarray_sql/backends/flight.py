@@ -5,7 +5,7 @@ table on a connection in this process. A
 [FlightSQLServer][xarray_sql.backends.flight.FlightSQLServer] turns that
 around and brings the data to remote clients. It hosts a DataFusion
 session over the same lazy tables
-[XarrayContext][xarray_sql.XarrayContext] uses and speaks
+[Context][xarray_sql.Context] uses and speaks
 [Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html), so any
 Flight SQL client — ADBC's Flight SQL driver in Python, R, Go, or Java,
 the Flight SQL JDBC and ODBC drivers, and the SQL tools built on them —
@@ -37,7 +37,6 @@ from typing import Any, TypeGuard
 
 import xarray as xr
 
-from .._native import FlightSqlServer as _NativeFlightSqlServer
 from ..df import (
     Chunks,
     TableNames,
@@ -49,6 +48,11 @@ from ..reader import read_xarray_table
 from ._adbc_dialects import DIALECTS
 from .adbc import _warn_on_folded_names
 from .base import register_adapter
+
+try:
+    from .._native import FlightSqlServer as _NativeFlightSqlServer
+except ImportError:  # WebAssembly builds have no sockets or threads.
+    _NativeFlightSqlServer = None
 
 __all__ = ["FlightSQLServer", "serve"]
 
@@ -82,6 +86,11 @@ class FlightSQLServer:
                 externally too (e.g. a container memory limit) before
                 serving untrusted clients.
         """
+        if _NativeFlightSqlServer is None:
+            raise NotImplementedError(
+                "This build of xarray-sql has no Flight SQL server "
+                "(it is not available under WebAssembly)."
+            )
         self._native = _NativeFlightSqlServer(memory_limit)
         self._host: str | None = None
         self._port: int | None = None
@@ -99,7 +108,7 @@ class FlightSQLServer:
         A Dataset whose variables sit on different dimensions is split
         into one table per dimension group, in a SQL schema named
         ``name`` (``name.group``), exactly as
-        [XarrayContext.from_dataset][xarray_sql.XarrayContext.from_dataset]
+        [Context.from_dataset][xarray_sql.Context.from_dataset]
         registers it.
 
         Names are registered exactly as given. The server's SQL folds

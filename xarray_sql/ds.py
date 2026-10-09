@@ -3,7 +3,7 @@
 The inverse of the forward Dataset-to-table pivot done by
 [xarray_sql.df.pivot][]. Internally defines an [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame]
 wrapper around the DataFusion ``DataFrame`` returned by
-[XarrayContext.sql][xarray_sql.sql.XarrayContext.sql], with a [XarrayDataFrame.to_dataset][xarray_sql.ds.XarrayDataFrame.to_dataset]
+[Context.sql][xarray_sql.sql.Context.sql], with a [XarrayDataFrame.to_dataset][xarray_sql.ds.XarrayDataFrame.to_dataset]
 method that round-trips a query result back to ``xr.Dataset``.
 
 Reconstruction is controlled by the ``chunks`` argument to
@@ -1012,7 +1012,7 @@ def _finish_dataset(
 class XarrayDataFrame:
     """Wrapper around a DataFusion ``DataFrame`` with xarray-aware helpers.
 
-    Returned by [xarray_sql.XarrayContext.sql][]. Forwards every
+    Returned by [xarray_sql.Context.sql][]. Forwards every
     attribute it does not define itself to the wrapped DataFrame, so
     ``.collect()``, ``.schema()``, ``.show()``, ``.count()`` all work
     unchanged.
@@ -1022,7 +1022,7 @@ class XarrayDataFrame:
     dropped by the forward pivot.
 
     Users should not construct this class directly; let
-    [XarrayContext.sql][xarray_sql.sql.XarrayContext.sql] produce it.
+    [Context.sql][xarray_sql.sql.Context.sql] produce it.
     """
 
     def __init__(
@@ -1034,7 +1034,7 @@ class XarrayDataFrame:
 
         Args:
             inner: The underlying ``datafusion.DataFrame`` returned by
-                [XarrayContext.sql][xarray_sql.sql.XarrayContext.sql].
+                [Context.sql][xarray_sql.sql.Context.sql].
             templates: Snapshot of the registered Datasets on the producing
                 context, keyed by the SQL identifier each was registered
                 under. Used by ``to_dataset`` to recover metadata that

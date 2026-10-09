@@ -5,7 +5,12 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+import xarray_sql
 from xarray_sql import XarrayContext
+
+
+def test_context_is_the_xarray_context():
+    assert xarray_sql.Context is XarrayContext
 
 
 def test_sanity(air_dataset_small):

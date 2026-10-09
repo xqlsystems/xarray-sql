@@ -23,7 +23,7 @@ DataFusion is the built-in engine, wrapped in a session:
 ```python
 import xarray_sql as xql
 
-ctx = xql.XarrayContext()
+ctx = xql.Context()
 ctx.from_dataset("era5", ds, chunks={"time": 24})
 result = ctx.sql("SELECT ... FROM era5").to_dataset()
 ```
@@ -349,7 +349,7 @@ round-trips eagerly, and `chunks=` needs `spill=True`.
 The adapters above bring an engine to the data. `xql.serve` does the
 reverse and brings the data to remote clients: it starts an
 [Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html)
-server over the same lazy tables `XarrayContext` uses.
+server over the same lazy tables `Context` uses.
 
 ```python
 import xarray_sql as xql
@@ -453,7 +453,7 @@ to queries that filter on time.
   TABLE`, `COPY`, `SET`, ...) are rejected, so clients cannot read or
   write the server's filesystem.
 - **DataFusion's SQL, without xarray-sql's Python UDFs.** The
-  `cftime()` and `reproject()` functions `XarrayContext` registers are
+  `cftime()` and `reproject()` functions `Context` registers are
   not available on the server.
 - **Bound its memory.** Any client can send an expensive `ORDER BY`,
   join, or aggregation. `memory_limit=` (bytes) caps what those hold at
@@ -475,7 +475,7 @@ What each integration provides. Known issues and constraints live on
 
 | | DataFusion | DuckDB | Polars | ADBC |
 |---|---|---|---|---|
-| Register | `XarrayContext` / any `SessionContext` | `xql.register(con, name, ds)` | `pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))` | `xql.register(con, name, ds)` (copies into the database) |
+| Register | `Context` / any `SessionContext` | `xql.register(con, name, ds)` | `pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))` | `xql.register(con, name, ds)` (copies into the database) |
 | Projection pushdown | yes | yes | yes | n/a (the database's own tables) |
 | Chunk pruning on dim predicates | yes | yes | yes | n/a (the database's own indexes) |
 | Eager round-trip (`xql.to_dataset`) | yes | yes | yes | yes (pass the cursor) |

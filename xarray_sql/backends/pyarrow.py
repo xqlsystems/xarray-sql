@@ -42,6 +42,7 @@ import pyarrow.fs as pafs
 import xarray as xr
 
 from ..df import (
+    _CAN_START_THREADS,
     Block,
     Chunks,
     DEFAULT_BATCH_SIZE,
@@ -57,8 +58,10 @@ from ..df import (
 from ..geometry import GEOMETRY_COLUMN, build_geometry, geometry_field
 from ..reader import XarrayRecordBatchReader
 
-DEFAULT_PREFETCH = 4
-"""Chunk loads kept in flight ahead of the consumer during a scan."""
+DEFAULT_PREFETCH = 4 if _CAN_START_THREADS else 1
+"""Chunk loads kept in flight ahead of the consumer during a scan.
+
+Where threads are unavailable (Pyodide), chunks load one at a time."""
 
 _SHADOW_FANOUT = 1024
 """Maximum fragments per shadow level.
