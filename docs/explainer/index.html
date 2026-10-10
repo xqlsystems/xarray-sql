@@ -106,6 +106,8 @@
   .line { fill: none; stroke: var(--accent); stroke-width: 2; }
   .dot { fill: var(--accent); }
   .axis { stroke: var(--border); }
+  .credit { font-size: 12px; margin: 12px 0 0; }
+  .credit a { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -118,15 +120,24 @@
       chunk becomes a <b>partition</b> of the table, read only when a query needs it.
       Hover over the grid or the table to match cells to rows.
     </p>
-    <pre><span class="kw">import</span> duckdb, xarray <span class="kw">as</span> xr, xarray_sql <span class="kw">as</span> xql
+    <pre><span class="kw">import</span> duckdb, pandas <span class="kw">as</span> pd, xarray <span class="kw">as</span> xr, xarray_sql <span class="kw">as</span> xql
 
-ds = xr.open_zarr(<span class="str">"air.zarr"</span>)  <span class="com"># air(time: 8, lat: 6, lon: 8)</span>
+era5 = xr.open_zarr(
+    <span class="str">"gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"</span>,
+    chunks=<span class="kw">None</span>, storage_options={<span class="str">"token"</span>: <span class="str">"anon"</span>},
+)
+<span class="com"># A grid small enough to see: 12:00 UTC on 8 days, 6 latitudes, 8 longitudes.</span>
+ds = era5[[<span class="str">"2m_temperature"</span>]].rename({<span class="str">"2m_temperature"</span>: <span class="str">"t2m"</span>}).sel(
+    time=pd.date_range(<span class="str">"2024-07-01T12"</span>, periods=8, freq=<span class="str">"D"</span>),
+    latitude=[75, 45, 15, -15, -45, -75],
+    longitude=range(0, 360, 45),
+)
 con = duckdb.connect()
-xql.register(con, <span class="str">"air"</span>, ds, chunks={<span class="str">"time"</span>: 4, <span class="str">"lat"</span>: 3, <span class="str">"lon"</span>: 4})</pre>
+xql.register(con, <span class="str">"era5"</span>, ds, chunks={<span class="str">"time"</span>: 4, <span class="str">"latitude"</span>: 3, <span class="str">"longitude"</span>: 4})</pre>
     <div class="cols">
       <div>
-        <div class="label">ds.air, one time step</div>
-        <svg id="grid" viewBox="0 0 360 250" role="img" aria-label="Map of air temperature with chunk boundaries"></svg>
+        <div class="label">ds.t2m, one time step</div>
+        <svg id="grid" viewBox="0 0 360 250" role="img" aria-label="Map of 2 m temperature with chunk boundaries"></svg>
         <div class="ramp"><span id="ramp-lo"></span><i id="ramp"></i><span id="ramp-hi"></span><span>· lines mark chunks</span></div>
         <label class="slider">time
           <input id="time" type="range" min="0" max="7" value="0">
@@ -134,9 +145,9 @@ xql.register(con, <span class="str">"air"</span>, ds, chunks={<span class="str">
         </label>
       </div>
       <div>
-        <div class="label">table <code>air</code> (<span id="nrows"></span> rows, 8 partitions)</div>
+        <div class="label">table <code>era5</code> (<span id="nrows"></span> rows, 8 partitions)</div>
         <div class="table-wrap" id="table-wrap">
-          <table id="table"><thead><tr><th>time</th><th>lat</th><th>lon</th><th>air</th><th class="part" style="text-align:left">partition</th></tr></thead><tbody></tbody></table>
+          <table id="table"><thead><tr><th>time</th><th>latitude</th><th>longitude</th><th>t2m</th><th class="part" style="text-align:left">partition</th></tr></thead><tbody></tbody></table>
         </div>
       </div>
     </div>
@@ -149,16 +160,21 @@ xql.register(con, <span class="str">"air"</span>, ds, chunks={<span class="str">
       compares them with each partition's coordinate range. A partition that
       cannot match is skipped, so its chunk is never read. Pick a query.
     </p>
+    <p>
+      Partitions follow <code>chunks=</code>. ARCO-ERA5 stores each hour of the
+      whole globe as one chunk, so registered with its storage chunks, a time
+      filter would still skip chunks but a bounding box could not.
+    </p>
     <div class="queries" id="queries" role="group" aria-label="Example queries"></div>
     <pre id="sql"></pre>
     <div class="cols">
       <div>
-        <div class="label">partitions of <code>air</code></div>
+        <div class="label">partitions of <code>era5</code></div>
         <svg id="cube" viewBox="0 0 360 250" role="img" aria-label="The eight partitions, highlighted when read"></svg>
         <div class="legend">
           <span><i style="background: var(--accent)"></i>read</span>
           <span><i style="background: var(--code-bg); outline: 1px solid var(--border)"></i>skipped</span>
-          <span>front: Jan 1–4, back: Jan 5–8</span>
+          <span>front: Jul 1–4, back: Jul 5–8</span>
         </div>
       </div>
       <div>
@@ -189,8 +205,13 @@ xql.register(con, <span class="str">"air"</span>, ds, chunks={<span class="str">
       </div>
     </div>
   </section>
+  <p class="credit">
+    Data: ERA5 2 m temperature from
+    <a href="https://github.com/google-research/arco-era5" target="_blank" rel="noopener">ARCO-ERA5</a>.
+    Contains modified Copernicus Climate Change Service information 2024.
+  </p>
 </main>
-<script>
+<script type="module">
 const $ = (id) => document.getElementById(id);
 const NS = "http://www.w3.org/2000/svg";
 function el(name, attrs = {}, parent) {
@@ -200,19 +221,15 @@ function el(name, attrs = {}, parent) {
   return node;
 }
 
-// ---- A small air-temperature Dataset ---------------------------------
-const TIMES = Array.from({ length: 8 }, (_, i) => `2024-01-0${i + 1}`);
-const LATS = [60, 36, 12, -12, -36, -60];
-const LONS = [-140, -100, -60, -20, 20, 60, 100, 140];
+// ---- A tiny slice of ARCO-ERA5 (see make_snapshot.py) -----------------
+const DATA = await (await fetch(new URL("era5.json", import.meta.url))).json();
+const TIMES = DATA.time;
+const LATS = DATA.latitude;
+const LONS = DATA.longitude;
+const AIR = DATA.values; // t2m in kelvin, indexed [time][latitude][longitude]
+const UNITS = DATA.units;
 const CHUNKS = { time: 4, lat: 3, lon: 4 };
-function airAt(t, i, j) {
-  const lat = LATS[i], lon = LONS[j];
-  const base = 28 - 0.45 * Math.abs(lat) - (lat > 0 ? 4 : 0);
-  const wave = 3 * Math.sin((lon + 40) * Math.PI / 180) * Math.cos(lat * Math.PI / 180);
-  const day = 1.6 * Math.sin((t + i * 0.7) * 0.9) + (lat > 0 ? -0.35 * t : 0.25 * t);
-  return Math.round((base + wave + day) * 10) / 10;
-}
-const AIR = TIMES.map((_, t) => LATS.map((_, i) => LONS.map((_, j) => airAt(t, i, j))));
+const DIM = { time: "time", lat: "latitude", lon: "longitude" };
 const ALL = AIR.flat(2);
 const LO = Math.min(...ALL), HI = Math.max(...ALL);
 const block = (t, i, j) => [Math.floor(t / CHUNKS.time), Math.floor(i / CHUNKS.lat), Math.floor(j / CHUNKS.lon)];
@@ -230,8 +247,8 @@ function color(v, lo = LO, hi = HI) {
   return `rgb(${c})`;
 }
 $("ramp").style.background = `linear-gradient(90deg, ${STOPS.map((c) => `rgb(${c})`).join(",")})`;
-$("ramp-lo").textContent = `${LO.toFixed(0)} °C`;
-$("ramp-hi").textContent = `${HI.toFixed(0)} °C`;
+$("ramp-lo").textContent = `${LO.toFixed(0)} ${UNITS}`;
+$("ramp-hi").textContent = `${HI.toFixed(0)} ${UNITS}`;
 
 // ---- Heat maps --------------------------------------------------------
 // Draws values[i][j] over lats x lons; returns the cell elements.
@@ -311,34 +328,34 @@ drawGrid();
 const QUERIES = [
   {
     title: "Recent days",
-    sql: `SELECT * FROM air\nWHERE time >= '2024-01-05'`,
+    sql: `SELECT * FROM era5\nWHERE time >= '2024-07-05'`,
     where: (t) => t >= 4,
-    why: "Partitions for 2024-01-01 to 01-04 end before the filter starts, so they are skipped.",
+    why: "Partitions for July 1 to 4 end before the filter starts, so they are skipped.",
   },
   {
     title: "Bounding box",
-    sql: `SELECT * FROM air\nWHERE lat > 0 AND lon < 0`,
-    where: (t, i, j) => LATS[i] > 0 && LONS[j] < 0,
-    why: "Only the north-west chunks overlap the box, for both halves of the time range.",
+    sql: `SELECT * FROM era5\nWHERE latitude > 0 AND longitude < 180`,
+    where: (t, i, j) => LATS[i] > 0 && LONS[j] < 180,
+    why: "Only the chunks holding northern latitudes and longitudes 0° to 135° overlap the box, in both halves of the time range.",
   },
   {
     title: "Mean map",
-    sql: `SELECT lat, lon, AVG(air) AS air\nFROM air\nGROUP BY lat, lon`,
+    sql: `SELECT latitude, longitude, AVG(t2m) AS t2m\nFROM era5\nGROUP BY latitude, longitude`,
     where: () => true,
     group: ["lat", "lon"],
-    why: "With no filter, every partition is read. Grouping by lat and lon averages over time.",
+    why: "With no filter, every partition is read. Grouping by latitude and longitude averages over time.",
   },
   {
     title: "Northern time series",
-    sql: `SELECT time, AVG(air) AS air\nFROM air\nWHERE lat BETWEEN 20 AND 70\nGROUP BY time\nORDER BY time`,
-    where: (t, i) => LATS[i] >= 20 && LATS[i] <= 70,
+    sql: `SELECT time, AVG(t2m) AS t2m\nFROM era5\nWHERE latitude BETWEEN 30 AND 80\nGROUP BY time\nORDER BY time`,
+    where: (t, i) => LATS[i] >= 30 && LATS[i] <= 80,
     group: ["time"],
-    why: "The southern chunks hold latitudes 12° and below, so the filter skips them.",
+    why: "The southern chunks hold latitudes −15° and below, so the filter skips them.",
   },
   {
     title: "One point",
-    sql: `SELECT time, air FROM air\nWHERE lat = 36 AND lon = -100\nORDER BY time`,
-    where: (t, i, j) => LATS[i] === 36 && LONS[j] === -100,
+    sql: `SELECT time, t2m FROM era5\nWHERE latitude = 45 AND longitude = 90\nORDER BY time`,
+    where: (t, i, j) => LATS[i] === 45 && LONS[j] === 90,
     why: "One chunk in space holds the point, so one partition is read per time chunk.",
   },
 ];
@@ -370,8 +387,8 @@ function drawCube(read) {
     face([corner(x + 1, y, z), corner(x + 1, y, z + 1), corner(x + 1, y + 1, z + 1), corner(x + 1, y + 1, z)], cls).style.filter = "brightness(0.85)";
   }
   const label = (x, y, text, anchor = "middle") => (el("text", { x, y, "text-anchor": anchor }, svg).textContent = text);
-  label(ox + W, oy + 16, "lon −140° … 140° →");
-  label(ox - 8, oy - H + 4, "lat ↑", "end");
+  label(ox + W, oy + 16, "longitude 0° … 315° →");
+  label(ox - 8, oy - H + 4, "latitude ↑", "end");
   const [tx, ty] = corner(2, 0, 1.15);
   label(tx + 4, ty + 4, "time ↗", "start");
 }
@@ -434,7 +451,7 @@ function showResult(q, cells) {
     lat: idx.lat?.map((i) => LATS[i]),
     lon: idx.lon?.map((j) => LONS[j]),
   };
-  const sizes = dims.map((d) => `${d}: ${idx[d].length}`).join(", ");
+  const sizes = dims.map((d) => `${DIM[d]}: ${idx[d].length}`).join(", ");
   const kinds = { time: "datetime64[ns]", lat: "float64", lon: "float64" };
   const fmts = { time: String, lat: num, lon: num };
   const pad = (s, n) => s.padEnd(n);
@@ -442,11 +459,9 @@ function showResult(q, cells) {
     "<xarray.Dataset>",
     `Dimensions:  (${sizes})`,
     "Coordinates:",
-    ...dims.map((d) => `  * ${pad(d, 7)}(${d}) ${kinds[d]} ${summary(labels[d], fmts[d])}`),
+    ...dims.map((d) => `  * ${pad(DIM[d], 10)}(${DIM[d]}) ${kinds[d]} ${summary(labels[d], fmts[d])}`),
     "Data variables:",
-    `    air      (${dims.join(", ")}) ${q.group ? "float64" : "float32"} ...`,
-    "Attributes:",
-    "    title:    air temperature",
+    `    ${pad("t2m", 11)}(${dims.map((d) => DIM[d]).join(", ")}) ${q.group ? "float64" : "float32"} ...`,
   ];
   $("repr").textContent = lines.join("\n");
 
@@ -478,7 +493,7 @@ function drawResultMap(idx, value) {
   const cells = heatmap($("result"), lats, lons, value);
   cells.forEach((row, i) => row.forEach((cell, j) => {
     cell.onmouseenter = () => {
-      $("result-caption").textContent = `lat ${lats[i]}°, lon ${lons[j]}°: ${value(i, j).toFixed(1)} °C`;
+      $("result-caption").textContent = `latitude ${lats[i]}°, longitude ${lons[j]}°: ${value(i, j).toFixed(1)} ${UNITS}`;
     };
   }));
 }
@@ -492,7 +507,7 @@ function drawLine(svg, xs, ys) {
   el("line", { class: "axis", x1: left, x2: left + w, y1: top + h, y2: top + h }, svg);
   el("line", { class: "axis", x1: left, x2: left, y1: top, y2: top + h }, svg);
   for (const v of [lo, (lo + hi) / 2, hi]) {
-    el("text", { x: left - 6, y: py(v) + 4, "text-anchor": "end" }, svg).textContent = `${v.toFixed(0)}°`;
+    el("text", { x: left - 6, y: py(v) + 4, "text-anchor": "end" }, svg).textContent = `${v.toFixed(0)} ${UNITS}`;
   }
   xs.forEach((x, k) => {
     if (k % 2 === 0 || xs.length <= 4) {
@@ -502,7 +517,7 @@ function drawLine(svg, xs, ys) {
   el("polyline", { class: "line", points: ys.map((y, k) => `${px(k)},${py(y)}`).join(" ") }, svg);
   ys.forEach((y, k) => {
     const dot = el("circle", { class: "dot", cx: px(k), cy: py(y), r: 4 }, svg);
-    dot.onmouseenter = () => { $("result-caption").textContent = `${xs[k]}: ${y.toFixed(1)} °C`; };
+    dot.onmouseenter = () => { $("result-caption").textContent = `${xs[k]}: ${y.toFixed(1)} ${UNITS}`; };
   });
 }
 

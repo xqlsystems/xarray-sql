@@ -2,8 +2,10 @@
 
 xarray-sql lets SQL engines query Xarray Datasets as if they were tables,
 and turns query results back into Datasets. The explainer below walks
-through the three steps with a small air-temperature Dataset. It runs
-entirely in this page; nothing is downloaded.
+through the three steps with a tiny slice of
+[ARCO-ERA5](https://github.com/google-research/arco-era5) 2 m temperature:
+eight days at 48 points on the globe, small enough to show every row. The
+slice is saved with the page, so it loads instantly and needs no Python.
 
 <iframe id="explainer" src="../explainer/" title="How xarray-sql works" loading="lazy"
   style="width: 100%; height: 1500px; border: 0;"></iframe>
