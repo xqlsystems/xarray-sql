@@ -61,6 +61,29 @@ def test_duckdb_chunked_fails_fast_with_guidance(source, registered):
         xql.to_dataset(rel, template=source, chunks={"time": 10})
 
 
+def test_duckdb_lazy_reads_only_the_accessed_window(source, registered):
+    con, reads = registered
+    rel = con.sql("SELECT * FROM t")
+    out = xql.to_dataset(rel, template=source, lazy=True)
+    assert not out.chunks  # no chunk manager involved
+    reads.clear()
+    window = out.t2m.isel(time=slice(0, 5))
+    xr.testing.assert_allclose(window.load(), source.t2m.isel(time=slice(0, 5)))
+    assert len(reads) == 1  # the first of ten time chunks
+    xr.testing.assert_allclose(out.load(), source)
+
+
+def test_lazy_false_with_chunks_raises(source, registered):
+    con, _ = registered
+    with pytest.raises(ValueError, match="lazy=False"):
+        xql.to_dataset(
+            con.sql("SELECT * FROM t"),
+            template=source,
+            chunks={"time": 10},
+            lazy=False,
+        )
+
+
 def test_duckdb_eager_round_trip_through_handle(source, registered):
     con, _ = registered
     rel = con.sql("SELECT * FROM t")

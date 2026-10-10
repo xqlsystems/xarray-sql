@@ -515,6 +515,19 @@ few windows of a huge result. Spill pays one full pass plus temporary
 disk — right when you'll touch most of the result, when the producer
 is a DuckDB relation, or when all you have is a one-shot stream.
 
+**Lazy without a chunk manager:** `lazy=True` without `chunks=` returns
+lazily indexed variables, the way `xr.open_dataset(chunks=None)` does.
+Each access, such as `out.t2m.sel(time="2020-01").values`, re-executes
+the query narrowed to that selection, so it reads only the source chunks
+under it. Nothing is chunked, so dask is not needed, and DuckDB relations
+work too: every access runs on the calling thread, unlike chunked
+windows, which dask computes on worker threads.
+
+```python
+out = xql.to_dataset(con.sql("SELECT * FROM era5"), template=ds, lazy=True)
+out.t2m.sel(time="2020-01-01").mean().item()  # reads one day's chunks
+```
+
 Two knobs matter at scale:
 
 - `coords="template"` trusts the template's coordinate arrays instead of

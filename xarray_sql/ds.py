@@ -915,15 +915,20 @@ def _result_to_xarray(
     fill_value: Any,
     chunks: Mapping[str, int] | str | None,
     templates: dict[str, xr.Dataset] | None = None,
+    lazy: bool = False,
 ) -> xr.Dataset:
     """Reconstruct an ``xr.Dataset`` from a SQL result.
 
     ``chunks`` (already resolved by ``XarrayDataFrame._resolve_chunks``)
-    selects the execution strategy:
+    and ``lazy`` select the execution strategy:
 
     * ``None`` -> eager: execute once and materialize a dense Dataset
       (``_materialize``). Correct for any query and the right default for
       reductions, whose results are small.
+    * ``None`` with ``lazy=True`` -> lazy, unchunked: the data variables
+      are lazily indexed [SQLBackendArray][xarray_sql.ds.SQLBackendArray]s,
+      so each access re-executes the query narrowed to the selection. No
+      chunk manager is involved.
     * a mapping (or ``"auto"``) -> lazy/chunked: build [SQLBackendArray][xarray_sql.ds.SQLBackendArray]
       data variables (``_build_lazy_scan``) and wrap them with
       ``Dataset.chunk`` so each chunk reads its coordinate range via filter
@@ -944,7 +949,7 @@ def _result_to_xarray(
     field_names = [f.name for f in schema]
     field_types = {f.name: f.type for f in schema}
 
-    if chunks is None:
+    if chunks is None and not lazy:
         ds = _materialize(inner_df, dimension_columns, field_names, field_types)
     else:
         ds = _build_lazy_scan(
@@ -1056,6 +1061,7 @@ class XarrayDataFrame:
         sparsity: Sparsity = "result",
         fill_value: Any = np.nan,
         chunks: Mapping[str, int] | str | None = "inherit",
+        lazy: bool | None = None,
     ) -> xr.Dataset:
         """Convert the result to an ``xr.Dataset``.
 
@@ -1098,6 +1104,15 @@ class XarrayDataFrame:
                   union of source partitions. Useful for finely partitioned
                   sources (e.g. ERA5 ``chunks={"time": 1}``), coarsening many
                   tiny partitions into memory-sized, aligned chunks.
+            lazy: Whether to defer execution until the data is accessed.
+                ``None`` (default) is lazy exactly when ``chunks`` resolves
+                to a chunking. ``True`` without chunking returns lazily
+                indexed variables: each access, such as
+                ``out.t2m.sel(time="2020-01").values``, re-executes the query
+                narrowed to that selection. This needs no chunk manager
+                (dask is not required). ``sparsity="template"`` loads the
+                data to reindex it. ``False`` is always eager and cannot be
+                combined with an explicit chunking.
 
         Returns:
             An ``xr.Dataset`` with ``dims`` as dimensions and the
@@ -1115,7 +1130,15 @@ class XarrayDataFrame:
             template = self._resolve_template(template)
         if dims is None:
             dims = self._infer_dimension_columns(preferred_template=template)
-        resolved_chunks = self._resolve_chunks(chunks, template, dims)
+        if lazy is False:
+            if chunks not in (None, "inherit"):
+                raise ValueError(
+                    "lazy=False cannot be combined with chunks="
+                    f"{chunks!r}: chunked output is always lazy."
+                )
+            resolved_chunks = None
+        else:
+            resolved_chunks = self._resolve_chunks(chunks, template, dims)
         return _result_to_xarray(
             inner_df=self._inner,
             dimension_columns=dims,
@@ -1124,6 +1147,7 @@ class XarrayDataFrame:
             fill_value=fill_value,
             chunks=resolved_chunks,
             templates=self._templates,
+            lazy=bool(lazy),
         )
 
     # ------------------------------------------------------------------

@@ -166,6 +166,7 @@ def to_dataset(
     coords: Literal["discover", "template"] = "discover",
     max_result_bytes: int | None = None,
     spill: bool | str | os.PathLike = False,
+    lazy: bool | None = None,
 ) -> xr.Dataset:
     """Convert an engine's Arrow result into a labeled ``xr.Dataset``.
 
@@ -238,11 +239,23 @@ def to_dataset(
             to the system temp dir; a path spills into that directory.
             The file is removed when the returned Dataset is garbage
             collected. Requires Polars; only valid with ``chunks=``.
+        lazy: Whether to defer execution until the data is accessed.
+            ``None`` (default) is lazy exactly when ``chunks`` is given.
+            ``True`` without ``chunks`` returns lazily indexed variables:
+            each access, such as ``out.t2m.sel(time="2020-01").values``,
+            re-executes the query narrowed to that selection. This needs
+            no chunk manager (dask is not required) and, unlike
+            ``chunks=``, works with DuckDB relations, since every access
+            runs on the calling thread. Requires a re-executable
+            ``result``, as ``chunks=`` does. ``sparsity="template"``
+            loads the data to reindex it. ``False`` is always eager and
+            cannot be combined with ``chunks``.
 
     Returns:
         An ``xr.Dataset`` with ``dims`` as dimensions and the remaining
         result columns as data variables — dense and in-memory by
-        default, lazily chunked when ``chunks`` is given.
+        default, lazily indexed with ``lazy=True``, and lazily chunked
+        when ``chunks`` is given.
 
     Raises:
         ValueError: When neither ``dims`` nor ``template`` resolves the
@@ -268,6 +281,11 @@ def to_dataset(
         raise ValueError(
             "spill= only applies to chunked reconstruction; pass chunks=."
         )
+    if lazy is False and chunks is not None:
+        raise ValueError(
+            "lazy=False cannot be combined with chunks=: chunked output is "
+            "always lazy."
+        )
 
     if chunks is not None:
         if spill:
@@ -283,6 +301,10 @@ def to_dataset(
             )
         return _to_dataset_lazy(
             result, dims, template, sparsity, fill_value, chunks, coords
+        )
+    if lazy:
+        return _to_dataset_lazy(
+            result, dims, template, sparsity, fill_value, None, coords
         )
 
     schema, batches = _result_to_batches(result, max_result_bytes)
@@ -367,20 +389,25 @@ def _to_dataset_lazy(
     template: xr.Dataset | None,
     sparsity: Sparsity,
     fill_value: Any,
-    chunks: Mapping[str, int] | str,
+    chunks: Mapping[str, int] | str | None,
     coords: Literal["discover", "template"],
     _handle: LazyResultHandle | None = None,
 ) -> xr.Dataset:
-    """The chunked reconstruction behind ``to_dataset(chunks=...)``."""
+    """The lazy reconstruction behind ``to_dataset(chunks=...)``.
+
+    ``chunks=None`` (from ``lazy=True``) returns lazily indexed variables
+    without chunking them.
+    """
     handle = _handle if _handle is not None else resolve_lazy_handle(result)
     if handle is None:
         raise TypeError(
-            "chunks= requires a re-executable engine result (a Polars "
-            "LazyFrame/DataFrame or a DataFusion DataFrame); got "
+            "Lazy reconstruction requires a re-executable engine result (a "
+            "DuckDB relation, Polars LazyFrame/DataFrame, or DataFusion "
+            "DataFrame); got "
             f"{type(result).__qualname__}, which is a one-shot stream. "
             "Pass the engine's lazy handle instead of a materialized "
             "result, add spill=True to reconstruct from a one-pass "
-            "on-disk spill, or use chunks=None."
+            "on-disk spill, or reconstruct eagerly (the default)."
         )
     schema = handle.schema()
     field_names = [f.name for f in schema]
@@ -398,6 +425,16 @@ def _to_dataset_lazy(
             )
         coord_arrays = {d: np.asarray(template.coords[d].values) for d in dims}
 
+    if chunks is None:
+        # Lazily indexed and unchunked: every access runs on the calling
+        # thread, so even handles that refuse chunking can serve it.
+        ds = _build_lazy_scan(
+            handle, dims, field_names, field_types, coord_arrays=coord_arrays
+        )
+        return _finish_dataset(
+            ds, dims, template, sparsity, fill_value, None, field_types
+        )
+
     resolved = XarrayDataFrame._resolve_chunks(chunks, template, dims)
     if resolved is None:
         # "inherit" with no chunked source dimension to inherit from:
@@ -414,8 +451,10 @@ def _to_dataset_lazy(
             "relation from worker threads intermittently deadlocks in "
             "duckdb-python when the query scans a Python-backed table "
             "(see xarray_sql.lazyscan.DuckDBHandle.supports_chunked). "
-            "Add spill=True to reconstruct from a one-pass on-disk "
-            "spill, use chunks=None (eager), or run the query through "
+            "Use lazy=True without chunks= (each access runs on the "
+            "calling thread), add spill=True to reconstruct from a "
+            "one-pass on-disk spill, use chunks=None (eager), or run the "
+            "query through "
             "Polars (pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))) "
             "or a DataFusion context."
         )
