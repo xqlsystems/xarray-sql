@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.67">
+      <meta name="generator" content="zensical-0.0.69">
     
     
       
@@ -34,12 +34,12 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.4ae390e2.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.e15858d4.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../assets/stylesheets/modern/palette.96d1a7e4.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/modern/palette.b27955a4.min.css">
       
       
 
@@ -79,14 +79,11 @@
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
-    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <label class="md-overlay" for="__drawer" aria-hidden="true"></label>
     <div data-md-component="skip">
-      
-        
-        <a href="#contributing-guide" class="md-skip">
-          Skip to content
-        </a>
-      
+      <a href="#__skip" class="md-skip">
+        Skip to content
+      </a>
     </div>
     <div data-md-component="announce">
       
@@ -694,6 +691,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Developer setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#building-for-webassembly-pyodide" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Building for WebAssembly (Pyodide)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -834,6 +848,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Developer setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#building-for-webassembly-pyodide" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Building for WebAssembly (Pyodide)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -909,6 +940,7 @@
             <div class="md-content" data-md-component="content">
               
               <article class="md-content__inner md-typeset">
+                <a id="__skip" tabindex="-1"></a>
                 
                   
 
@@ -981,6 +1013,25 @@ already on `PATH`) and start at step 2.
 <p>This will automatically run code formatting and type checking before each commit.
    You can also run the hooks manually with: <code>uvx pre-commit run --all-files</code>
 7. Build and serve docs locally: <code>uvx zensical serve</code></p>
+<h3 id="building-for-webassembly-pyodide">Building for WebAssembly (Pyodide)<a class="headerlink" href="#building-for-webassembly-pyodide" title="Permanent link">&para;</a></h3>
+<p>The <code>ci-wasm</code> workflow builds a Pyodide wheel. The target Pyodide release
+fixes the Python version, the exact Emscripten version, and the Rust
+toolchain. The Flight SQL server needs sockets and threads, so wasm builds
+turn off the <code>flight</code> cargo feature.</p>
+<p>To build the wheel locally, set <code>PYODIDE_VERSION</code> to the value in
+<code>.github/workflows/ci-wasm.yml</code>. pyodide-build must run on the same Python
+version as that Pyodide release (for example, Python 3.14 for Pyodide 314),
+which <code>uv tool install --python</code> sets up. The <code>pyodide</code> command comes from
+<code>pyodide-cli</code>, so install it with <code>pyodide-build</code>:</p>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.14<span class="w"> </span>pyodide-cli<span class="w"> </span>--with<span class="w"> </span>pyodide-build
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>pyodide<span class="w"> </span>xbuildenv<span class="w"> </span>install<span class="w"> </span><span class="s2">"</span><span class="nv">$PYODIDE_VERSION</span><span class="s2">"</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>rustup<span class="w"> </span>toolchain<span class="w"> </span>install<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>pyodide<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>rust_toolchain<span class="k">)</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>--target<span class="w"> </span>wasm32-unknown-emscripten
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>pyodide<span class="w"> </span>xbuildenv<span class="w"> </span>install-emscripten
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="nv">MATURIN_PEP517_ARGS</span><span class="o">=</span><span class="s2">"--no-default-features --profile wasm"</span><span class="w"> </span>pyodide<span class="w"> </span>build<span class="w"> </span>-o<span class="w"> </span>dist
+</span></code></pre></div>
+<p>On NixOS, run these commands in <code>nix run .#wasm-shell</code>. This shell is an
+FHS environment, which lets the prebuilt Emscripten and rustup binaries run.</p>
 <h2 id="before-submitting-a-pull-request">Before submitting a pull request...<a class="headerlink" href="#before-submitting-a-pull-request" title="Permanent link">&para;</a></h2>
 <p>Thanks so much for your contribution! For a volunteer led project, we so
 appreciate your help. A few things to keep in mind:</p>
@@ -1044,8 +1095,8 @@ tag does not undo its docs deployment. To roll the docs back:</p>
    with the same pinned mike fork the workflow uses (the <code>mike</code> on PyPI is
    not Zensical-compatible):</li>
 </ol>
-<div class="language-shell highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>uvx<span class="w"> </span>--from<span class="w"> </span><span class="s2">"git+https://github.com/squidfunk/mike.git@2d4ad799442f4592db8ad53b179bfb33db8c69ac"</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--with<span class="w"> </span><span class="s2">"mkdocstrings[python]"</span><span class="w"> </span>mike<span class="w"> </span>delete<span class="w"> </span>--push<span class="w"> </span>XX.YY
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>uvx<span class="w"> </span>--from<span class="w"> </span><span class="s2">"git+https://github.com/squidfunk/mike.git@2d4ad799442f4592db8ad53b179bfb33db8c69ac"</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--with<span class="w"> </span><span class="s2">"mkdocstrings[python]"</span><span class="w"> </span>mike<span class="w"> </span>delete<span class="w"> </span>--push<span class="w"> </span>XX.YY
 </span></code></pre></div>
 <ol>
 <li>Re-run the docs workflow on <code>main</code> with "ref" set to the last good tag,
@@ -1167,7 +1218,8 @@ To recover from this, please do the following and then try the above steps again
       <div class="md-dialog__inner md-typeset"></div>
     </div>
     
-      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+      
+<div class="md-progress" data-md-component="progress" role="progressbar" aria-label="Loading"></div>
     
     
     
@@ -1180,7 +1232,7 @@ To recover from this, please do the following and then try the above steps again
       <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["announce.dismiss","content.action.edit","content.action.view","content.code.annotate","content.code.copy","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.sections","navigation.top","navigation.tracking","search.highlight","search.share","search.suggest","toc.follow"],"redirect":null,"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"provider":"mike"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.67a597eb.min.js"></script>
+      <script src="../assets/javascripts/bundle.8b1c90bd.min.js"></script>
       
     
   </body>

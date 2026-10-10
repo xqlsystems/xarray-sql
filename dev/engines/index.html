@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.67">
+      <meta name="generator" content="zensical-0.0.69">
     
     
       
@@ -36,12 +36,12 @@
       
         
       
-      <link rel="stylesheet" href="../assets/stylesheets/modern/main.4ae390e2.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.e15858d4.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../assets/stylesheets/modern/palette.96d1a7e4.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/modern/palette.b27955a4.min.css">
       
       
 
@@ -81,14 +81,11 @@
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
-    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <label class="md-overlay" for="__drawer" aria-hidden="true"></label>
     <div data-md-component="skip">
-      
-        
-        <a href="#engines" class="md-skip">
-          Skip to content
-        </a>
-      
+      <a href="#__skip" class="md-skip">
+        Skip to content
+      </a>
     </div>
     <div data-md-component="announce">
       
@@ -1045,6 +1042,7 @@
             <div class="md-content" data-md-component="content">
               
               <article class="md-content__inner md-typeset">
+                <a id="__skip" tabindex="-1"></a>
                 
                   
 
@@ -1085,7 +1083,7 @@ optimizers — belongs to the engine.</p>
 <p>DataFusion is the built-in engine, wrapped in a session:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">xarray_sql</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xql</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">ctx</span> <span class="o">=</span> <span class="n">xql</span><span class="o">.</span><span class="n">XarrayContext</span><span class="p">()</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">ctx</span> <span class="o">=</span> <span class="n">xql</span><span class="o">.</span><span class="n">Context</span><span class="p">()</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">ctx</span><span class="o">.</span><span class="n">from_dataset</span><span class="p">(</span><span class="s2">"era5"</span><span class="p">,</span> <span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="p">{</span><span class="s2">"time"</span><span class="p">:</span> <span class="mi">24</span><span class="p">})</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">sql</span><span class="p">(</span><span class="s2">"SELECT ... FROM era5"</span><span class="p">)</span><span class="o">.</span><span class="n">to_dataset</span><span class="p">()</span>
 </span></code></pre></div>
@@ -1406,12 +1404,12 @@ stores <code>float32</code> as <code>float64</code> and <code>bool</code> as an 
 <code>SELECT</code> back to the template's type; derived values such as an <code>AVG</code>
 keep the result's type.</p>
 <p>The cursor is a one-shot Arrow stream: <code>xql.to_dataset(cur, ...)</code>
-round-trips eagerly, and <code>chunks=</code> needs <code>spill=True</code>.</p>
+reads it into memory, and <code>chunks=</code> needs <code>spill=True</code>.</p>
 <h2 id="serving-over-flight-sql-no-copy">Serving over Flight SQL (no copy)<a class="headerlink" href="#serving-over-flight-sql-no-copy" title="Permanent link">&para;</a></h2>
 <p>The adapters above bring an engine to the data. <code>xql.serve</code> does the
 reverse and brings the data to remote clients: it starts an
 <a href="https://arrow.apache.org/docs/format/FlightSql.html">Arrow Flight SQL</a>
-server over the same lazy tables <code>XarrayContext</code> uses.</p>
+server over the same lazy tables <code>Context</code> uses.</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">xarray_sql</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xql</span>
 </span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
 </span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">server</span> <span class="o">=</span> <span class="n">xql</span><span class="o">.</span><span class="n">serve</span><span class="p">({</span><span class="s2">"era5"</span><span class="p">:</span> <span class="n">ds</span><span class="p">},</span> <span class="n">port</span><span class="o">=</span><span class="mi">8815</span><span class="p">)</span>
@@ -1495,7 +1493,7 @@ to queries that filter on time.</p>
   TABLE</code>, <code>COPY</code>, <code>SET</code>, ...) are rejected, so clients cannot read or
   write the server's filesystem.
 - <strong>DataFusion's SQL, without xarray-sql's Python UDFs.</strong> The
-  <code>cftime()</code> and <code>reproject()</code> functions <code>XarrayContext</code> registers are
+  <code>cftime()</code> and <code>reproject()</code> functions <code>Context</code> registers are
   not available on the server.
 - <strong>Bound its memory.</strong> Any client can send an expensive <code>ORDER BY</code>,
   join, or aggregation. <code>memory_limit=</code> (bytes) caps what those hold at
@@ -1525,7 +1523,7 @@ to queries that filter on time.</p>
 <tbody>
 <tr>
 <td>Register</td>
-<td><code>XarrayContext</code> / any <code>SessionContext</code></td>
+<td><code>Context</code> / any <code>SessionContext</code></td>
 <td><code>xql.register(con, name, ds)</code></td>
 <td><code>pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))</code></td>
 <td><code>xql.register(con, name, ds)</code> (copies into the database)</td>
@@ -1597,7 +1595,9 @@ back into chunk pruning at the source — accessing one output chunk reads
 only the source chunks it maps onto.</p>
 <pre class="mermaid"><code>flowchart TB
     R["xql.to_dataset(result, ...)"] --&gt; K{"chunks=?"}
-    K -- "None (default)" --&gt; E["eager: materialize once&lt;br/&gt;max_result_bytes= guards both the&lt;br/&gt;Arrow stream and the dense grid"]
+    K -- "None (default)" --&gt; LZ{"result type"}
+    LZ -- "re-executable&lt;br/&gt;(DuckDB, Polars, DataFusion)" --&gt; LI["lazily indexed, no dask:&lt;br/&gt;each access re-runs the query&lt;br/&gt;for its selection; .load() runs it&lt;br/&gt;once per variable (small results:&lt;br/&gt;read in one pass)"]
+    LZ -- "one-shot Arrow stream,&lt;br/&gt;or max_result_bytes=" --&gt; E["in memory: read once&lt;br/&gt;max_result_bytes= guards both the&lt;br/&gt;Arrow stream and the dense grid"]
     K -- "mapping / auto / inherit" --&gt; SP{"spill=?"}
     SP -- "False (default)" --&gt; HD{"result type"}
     HD -- "Polars LazyFrame/DataFrame&lt;br/&gt;DataFusion DataFrame" --&gt; RX["re-execution: each window&lt;br/&gt;re-runs the query narrowed to its&lt;br/&gt;coordinate range (flows back into&lt;br/&gt;chunk pruning at the source)"]
@@ -1608,6 +1608,35 @@ only the source chunks it maps onto.</p>
 few windows of a huge result. Spill pays one full pass plus temporary
 disk — right when you'll touch most of the result, when the producer
 is a DuckDB relation, or when all you have is a one-shot stream.</p>
+<p><strong>Without chunks:</strong> <code>chunks=None</code>, the default, returns lazily indexed
+variables, as <code>xr.open_dataset(chunks=None)</code> does. Each access, such as
+<code>out.t2m.sel(time="2020-01").values</code>, re-executes the query narrowed to
+that selection and projected to the variable it reads, so it reads only
+the source chunks under it, and <code>.load()</code> executes the query once per
+variable. Nothing is chunked, so dask is not needed, and DuckDB
+relations work too: every access runs on the calling thread, unlike
+chunked windows, which dask computes on worker threads.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">out</span> <span class="o">=</span> <span class="n">xql</span><span class="o">.</span><span class="n">to_dataset</span><span class="p">(</span><span class="n">con</span><span class="o">.</span><span class="n">sql</span><span class="p">(</span><span class="s2">"SELECT * FROM era5"</span><span class="p">),</span> <span class="n">template</span><span class="o">=</span><span class="n">ds</span><span class="p">)</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="n">out</span><span class="o">.</span><span class="n">t2m</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="s2">"2020-01-01"</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>  <span class="c1"># reads one day's chunks</span>
+</span></code></pre></div>
+<p>A lazy result must know its coordinates before any data is read, so
+unless <code>coords="template"</code> supplies them, the query is first streamed
+once. A small result (up to 64 MiB) is kept in memory from that pass,
+so an aggregation, which no window filter can push below, executes
+once. A larger one keeps only each dimension's distinct values and
+stays lazy. One-shot Arrow streams, which cannot re-execute, and calls
+with <code>max_result_bytes=</code> are read into memory directly.</p>
+<p>Because a lazy result re-executes its query on access:</p>
+<ul>
+<li>the connection must stay open while the result is used: after
+  <code>con.close()</code>, reading a variable raises;</li>
+<li>changes to the source tables after <code>to_dataset</code> show through in
+  later reads;</li>
+<li>a query whose rows vary between runs, such as <code>LIMIT</code> without
+  <code>ORDER BY</code> or random sampling, can disagree with the coordinates
+  discovered for it. Read such a result once, in memory, with
+  <code>max_result_bytes=</code>.</li>
+</ul>
 <p>Two knobs matter at scale:</p>
 <ul>
 <li><code>coords="template"</code> trusts the template's coordinate arrays instead of
@@ -1637,23 +1666,23 @@ Arrow C streams are the common wire; pushdown quality is where adapters
 differ. The round-trip needs no per-engine work as long as the engine
 can hand back Arrow.</p>
 <p>A complete adapter, modeled on the DuckDB one:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">register_adapter</span>
-</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.pyarrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">XarrayPushdownDataset</span>
-</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
-</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="nd">@register_adapter</span>
-</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">AcmeAdapter</span><span class="p">:</span>
-</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">    </span><span class="sd">"""Registers Datasets on acme.Connection objects."""</span>
-</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>
-</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>    <span class="nd">@staticmethod</span>
-</span><span id="__span-16-9"><a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">matches</span><span class="p">(</span><span class="n">con</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-</span><span id="__span-16-10"><a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>        <span class="c1"># type inspection only, so `acme` stays an optional dependency</span>
-</span><span id="__span-16-11"><a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>        <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="n">con</span><span class="p">)</span><span class="o">.</span><span class="vm">__module__</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"."</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"acme"</span>
-</span><span id="__span-16-12"><a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>
-</span><span id="__span-16-13"><a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>    <span class="nd">@staticmethod</span>
-</span><span id="__span-16-14"><a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="n">con</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ds</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-</span><span id="__span-16-15"><a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>        <span class="n">dataset</span> <span class="o">=</span> <span class="n">XarrayPushdownDataset</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-</span><span id="__span-16-16"><a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a>        <span class="n">con</span><span class="o">.</span><span class="n">register_arrow</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">dataset</span><span class="p">)</span>  <span class="c1"># the engine's own API</span>
-</span><span id="__span-16-17"><a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a>        <span class="k">return</span> <span class="n">con</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">register_adapter</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">xarray_sql.backends.pyarrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">XarrayPushdownDataset</span>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="nd">@register_adapter</span>
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">AcmeAdapter</span><span class="p">:</span>
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="w">    </span><span class="sd">"""Registers Datasets on acme.Connection objects."""</span>
+</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>
+</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>    <span class="nd">@staticmethod</span>
+</span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">matches</span><span class="p">(</span><span class="n">con</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+</span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>        <span class="c1"># type inspection only, so `acme` stays an optional dependency</span>
+</span><span id="__span-17-11"><a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>        <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="n">con</span><span class="p">)</span><span class="o">.</span><span class="vm">__module__</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"."</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"acme"</span>
+</span><span id="__span-17-12"><a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>
+</span><span id="__span-17-13"><a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>    <span class="nd">@staticmethod</span>
+</span><span id="__span-17-14"><a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="n">con</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ds</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+</span><span id="__span-17-15"><a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a>        <span class="n">dataset</span> <span class="o">=</span> <span class="n">XarrayPushdownDataset</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">chunks</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</span><span id="__span-17-16"><a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a>        <span class="n">con</span><span class="o">.</span><span class="n">register_arrow</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">dataset</span><span class="p">)</span>  <span class="c1"># the engine's own API</span>
+</span><span id="__span-17-17"><a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a>        <span class="k">return</span> <span class="n">con</span>
 </span></code></pre></div>
 <p><code>xql.register(con, "t", ds)</code> then dispatches here whenever <code>matches</code>
 recognizes the connection. Engines that consume the pyarrow dataset
@@ -1790,7 +1819,8 @@ engine-specific issues worth knowing — is explained on
       <div class="md-dialog__inner md-typeset"></div>
     </div>
     
-      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+      
+<div class="md-progress" data-md-component="progress" role="progressbar" aria-label="Loading"></div>
     
     
     
@@ -1803,7 +1833,7 @@ engine-specific issues worth knowing — is explained on
       <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["announce.dismiss","content.action.edit","content.action.view","content.code.annotate","content.code.copy","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.sections","navigation.top","navigation.tracking","search.highlight","search.share","search.suggest","toc.follow"],"redirect":null,"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"provider":"mike"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.67a597eb.min.js"></script>
+      <script src="../assets/javascripts/bundle.8b1c90bd.min.js"></script>
       
     
   </body>
