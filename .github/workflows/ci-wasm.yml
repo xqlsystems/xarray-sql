@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+  # publish.yml calls this to add the Pyodide wheel to each release.
+  workflow_call:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,7 +23,7 @@ jobs:
     name: Pyodide wheel
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # pyodide-build requires the host Python to match Pyodide's Python.
       - uses: actions/setup-python@v5
@@ -90,7 +92,7 @@ jobs:
           EOF
           node smoke.mjs
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
-          name: wheels-pyodide
+          name: dist-pyodide
           path: dist/*.whl
