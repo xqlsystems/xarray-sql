@@ -67,11 +67,13 @@ toolchain. The Flight SQL server needs sockets and threads, so wasm builds
 turn off the `flight` cargo feature.
 
 To build the wheel locally, set `PYODIDE_VERSION` to the value in
-`.github/workflows/ci-wasm.yml`. You need a Python interpreter with the same
-version as that Pyodide release (for example, Python 3.14 for Pyodide 314).
+`.github/workflows/ci-wasm.yml`. pyodide-build must run on the same Python
+version as that Pyodide release (for example, Python 3.14 for Pyodide 314),
+which `uv tool install --python` sets up. The `pyodide` command comes from
+`pyodide-cli`, so install it with `pyodide-build`:
 
 ```shell
-pip install pyodide-build
+uv tool install --python 3.14 pyodide-cli --with pyodide-build
 pyodide xbuildenv install "$PYODIDE_VERSION"
 rustup toolchain install "$(pyodide config get rust_toolchain)" \
   --target wasm32-unknown-emscripten
