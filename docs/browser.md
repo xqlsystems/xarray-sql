@@ -11,10 +11,24 @@ The demo needs Chrome or Edge 137 or newer. It takes about 15 seconds to
 start, most of it downloading and loading Pyodide, pyarrow, DuckDB, and
 pandas.
 
-<iframe src="demo/" title="xarray-sql browser demo" loading="lazy"
+<iframe id="demo" src="demo/" title="xarray-sql browser demo" loading="lazy"
   style="width: 100%; height: 1150px; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 8px;"></iframe>
 
-[Open the demo in its own page](demo/){ target="_blank" }
+[Open the demo in its own page](demo/){ #demo-link target="_blank" }
+
+<script>
+  // Pass ?wheel=<url> through to the demo, to try a locally built wheel.
+  (() => {
+    const wheel = new URLSearchParams(location.search).get("wheel");
+    if (!wheel) return;
+    for (const [id, attr] of [["demo", "src"], ["demo-link", "href"]]) {
+      const el = document.getElementById(id);
+      const url = new URL(el.getAttribute(attr), location.href);
+      url.searchParams.set("wheel", new URL(wheel, location.href).href);
+      el.setAttribute(attr, url.href);
+    }
+  })();
+</script>
 
 ## Install in Pyodide
 
@@ -23,6 +37,10 @@ adapter works in Pyodide, including the round-trip back to a Dataset with
 [to_dataset][xarray_sql.to_dataset]. DataFusion does not yet, because its
 Python bindings have no Pyodide build, so [Context][xarray_sql.Context] is
 unavailable there.
+
+xarray-sql does not need dask. Unchunked Datasets register along their
+storage chunks, and `lazy=True` gives a lazy result without a chunk
+manager:
 
 ```python
 import micropip
@@ -33,9 +51,16 @@ import xarray_sql as xql
 
 con = duckdb.connect()
 xql.register(con, "air", ds)
+
+# Each access re-runs the query for just the selected window.
+out = xql.to_dataset(con.sql("SELECT * FROM air"), template=ds, lazy=True)
+out.air.isel(time=slice(0, 24)).mean().item()
 ```
 
 Pyodide cannot start threads, so xarray-sql loads chunks one at a time there.
+Each lazy access runs the query again inside DuckDB, so in the browser the
+registered Dataset must be in memory or read through a cache like the
+demo's (next section): remote Zarr reads cannot happen during a scan.
 
 ## How lazy reads work in the browser
 
@@ -87,6 +112,11 @@ URL:
 ```
 http://localhost:8000/?wheel=./xarray_sql-0.5.0-cp310-abi3-pyemscripten_2026_0_wasm32.whl
 ```
+
+On this docs page, `?wheel=` is passed through to the embedded demo, so a
+locally built docs site can use a local wheel too (for example,
+`/browser/?wheel=../demo/xarray_sql-...whl` after copying the wheel into the
+built `demo/` directory).
 
 To run the examples without a browser:
 
