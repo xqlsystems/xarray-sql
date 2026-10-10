@@ -39,8 +39,8 @@ Python bindings have no Pyodide build, so [Context][xarray_sql.Context] is
 unavailable there.
 
 xarray-sql does not need dask. Unchunked Datasets register along their
-storage chunks, and `lazy=True` gives a lazy result without a chunk
-manager:
+storage chunks, and [to_dataset][xarray_sql.to_dataset] returns a lazy
+result without a chunk manager, as `xr.open_dataset(chunks=None)` does:
 
 ```python
 import micropip
@@ -53,8 +53,9 @@ con = duckdb.connect()
 xql.register(con, "air", ds)
 
 # Each access re-runs the query for just the selected window.
-out = xql.to_dataset(con.sql("SELECT * FROM air"), template=ds, lazy=True)
+out = xql.to_dataset(con.sql("SELECT * FROM air"), template=ds)
 out.air.isel(time=slice(0, 24)).mean().item()
+out.load()  # or read everything in one execution
 ```
 
 Pyodide cannot start threads, so xarray-sql loads chunks one at a time there.
