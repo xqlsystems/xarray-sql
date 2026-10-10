@@ -12,7 +12,6 @@ import json
 import pathlib
 
 import numpy as np
-import pandas as pd
 import xarray as xr
 
 ARCO_ERA5 = "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"
@@ -22,7 +21,7 @@ ds = (
     era5[["2m_temperature"]]
     .rename({"2m_temperature": "t2m"})
     .sel(
-        time=pd.date_range("2024-07-01T12", periods=8, freq="D"),
+        time=xr.date_range("2024-07-01T12", periods=8, freq="D"),
         latitude=[75, 45, 15, -15, -45, -75],
         longitude=range(0, 360, 45),
     )

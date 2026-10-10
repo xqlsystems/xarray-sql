@@ -120,7 +120,7 @@
       chunk becomes a <b>partition</b> of the table, read only when a query needs it.
       Hover over the grid or the table to match cells to rows.
     </p>
-    <pre><span class="kw">import</span> duckdb, pandas <span class="kw">as</span> pd, xarray <span class="kw">as</span> xr, xarray_sql <span class="kw">as</span> xql
+    <pre><span class="kw">import</span> duckdb, xarray <span class="kw">as</span> xr, xarray_sql <span class="kw">as</span> xql
 
 era5 = xr.open_zarr(
     <span class="str">"gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"</span>,
@@ -128,7 +128,7 @@ era5 = xr.open_zarr(
 )
 <span class="com"># A grid small enough to see: 12:00 UTC on 8 days, 6 latitudes, 8 longitudes.</span>
 ds = era5[[<span class="str">"2m_temperature"</span>]].rename({<span class="str">"2m_temperature"</span>: <span class="str">"t2m"</span>}).sel(
-    time=pd.date_range(<span class="str">"2024-07-01T12"</span>, periods=8, freq=<span class="str">"D"</span>),
+    time=xr.date_range(<span class="str">"2024-07-01T12"</span>, periods=8, freq=<span class="str">"D"</span>),
     latitude=[75, 45, 15, -15, -45, -75],
     longitude=range(0, 360, 45),
 )
