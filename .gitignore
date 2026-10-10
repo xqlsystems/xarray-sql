@@ -15,3 +15,5 @@ CHANGELOG.md
 *.ipynb
 /site
 .direnv
+# Pyodide wheels copied in to test the browser demo locally
+docs/demo/*.whl

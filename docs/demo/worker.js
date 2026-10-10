@@ -42,8 +42,17 @@ async function start() {
   return app;
 }
 
+// Python errors carry the full traceback. Show the exception line (some
+// messages add hints after it) and keep the rest for the console.
+const describe = (error) => {
+  const detail = String(error.message ?? error).trim();
+  const lines = detail.split("\n");
+  const exception = lines.findLast((line) => /^[\w.]*(Error|Exception)\b/.test(line));
+  return { error: exception ?? lines.at(-1), detail };
+};
+
 const app = start().catch((error) => {
-  postMessage({ type: "failed", error: String(error.message ?? error) });
+  postMessage({ type: "failed", ...describe(error) });
 });
 
 onmessage = async ({ data: { id, sql } }) => {
@@ -52,8 +61,6 @@ onmessage = async ({ data: { id, sql } }) => {
   try {
     postMessage({ type: "result", id, result: JSON.parse(await loaded.run(sql)) });
   } catch (error) {
-    // Python errors carry the full traceback; the last line is the message.
-    const message = String(error.message ?? error).trim().split("\n");
-    postMessage({ type: "error", id, error: message.at(-1), detail: message.join("\n") });
+    postMessage({ type: "error", id, ...describe(error) });
   }
 };

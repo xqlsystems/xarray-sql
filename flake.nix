@@ -49,7 +49,7 @@
             xz
             zlib
             # Shared libraries for Playwright's headless Chromium, which
-            # drives the browser demo in benchmarks/browser.
+            # drives the browser demo in docs/demo.
             alsa-lib
             at-spi2-atk
             at-spi2-core

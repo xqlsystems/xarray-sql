@@ -15,6 +15,7 @@ nav = [
   {"Guides" = [
     {"Geospatial in SQL" = "geospatial.md"},
     {"Performance" = "performance.md"},
+    {"Run in the browser" = "browser.md"},
   ]},
   {"Reference" = [
     {"API" = "reference/xarray_sql.md"},

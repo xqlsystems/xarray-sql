@@ -107,7 +107,7 @@ class FetchStore(Store):
 
     async def exists(self, key: str) -> bool:
         response = await pyfetch(f"{self.url}/{key}", method="HEAD")
-        return response.ok
+        return bool(response.ok)
 
     async def set(self, key: str, value: Buffer) -> None:
         raise NotImplementedError("FetchStore is read-only")

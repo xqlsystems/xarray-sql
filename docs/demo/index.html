@@ -84,6 +84,9 @@
   th, td { padding: 5px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
   th { position: sticky; top: 0; background: var(--panel); font-family: var(--mono); font-weight: 600; }
   .note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  /* Embedded in the docs, which already introduce the demo. */
+  .embedded main > h1, .embedded .lede { display: none; }
+  .embedded main { padding-top: 16px; }
 </style>
 </head>
 <body>
@@ -128,6 +131,7 @@
 </main>
 <script type="module">
 const $ = (id) => document.getElementById(id);
+if (window.self !== window.top) document.documentElement.classList.add("embedded");
 const wheel = new URLSearchParams(location.search).get("wheel");
 const workerURL = new URL("worker.js", location.href);
 if (wheel) workerURL.searchParams.set("wheel", new URL(wheel, location.href).href);
@@ -142,7 +146,10 @@ function setStatus(message, isError = false) {
 
 worker.onmessage = ({ data }) => {
   if (data.type === "status") setStatus(data.message);
-  else if (data.type === "failed") setStatus(data.error, true);
+  else if (data.type === "failed") {
+    setStatus(data.error, true);
+    console.error(data.detail);
+  }
   else if (data.type === "ready") ready(data.info);
   else {
     const { resolve, reject } = pending.get(data.id);
