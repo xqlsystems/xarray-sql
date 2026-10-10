@@ -11,7 +11,7 @@ The demo needs Chrome or Edge 137 or newer. It takes about 15 seconds to
 start, most of it downloading and loading Pyodide, pyarrow, DuckDB, and
 pandas.
 
-<iframe id="demo" src="demo/" title="xarray-sql browser demo" loading="lazy"
+<iframe id="demo" src="../demo/" title="xarray-sql browser demo" loading="lazy"
   style="width: 100%; height: 1150px; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 8px;"></iframe>
 
 [Open the demo in its own page](demo/){ #demo-link target="_blank" }
@@ -38,30 +38,42 @@ adapter works in Pyodide, including the round-trip back to a Dataset with
 Python bindings have no Pyodide build, so [Context][xarray_sql.Context] is
 unavailable there.
 
-xarray-sql does not need dask. Unchunked Datasets register along their
-storage chunks, and [to_dataset][xarray_sql.to_dataset] returns a lazy
-result without a chunk manager, as `xr.open_dataset(chunks=None)` does:
+Copy [`fetch_store.py`](https://github.com/xqlsystems/xarray-sql/tree/main/docs/demo/fetch_store.py)
+from the demo to open Zarr stores over HTTP in Pyodide, since fsspec's HTTP
+filesystem needs sockets. Then open a window of the dataset, read it into
+memory, and query it:
 
 ```python
 import micropip
-await micropip.install(["xarray-sql", "duckdb"])
+await micropip.install(["xarray-sql", "duckdb", "zarr"])
 
 import duckdb
+import xarray as xr
 import xarray_sql as xql
+from fetch_store import FetchStore
+
+store = FetchStore("https://data.dynamical.org/noaa/gfs/forecast/latest.zarr")
+ds = (
+    xr.open_zarr(store, chunks=None)[["temperature_2m"]]
+    .isel(init_time=-1, lead_time=slice(0, 24))
+    .sel(latitude=slice(50, 25), longitude=slice(-100, -75))
+)
+ds = await ds.load_async()
 
 con = duckdb.connect()
-xql.register(con, "air", ds)
-
-# Each access re-runs the query for just the selected window.
-out = xql.to_dataset(con.sql("SELECT * FROM air"), template=ds)
-out.air.isel(time=slice(0, 24)).mean().item()
-out.load()  # reads every variable, one query each
+xql.register(con, "gfs", ds)
+hottest = con.sql("""
+    SELECT latitude, longitude, max(temperature_2m) AS t2m_max
+    FROM gfs
+    GROUP BY latitude, longitude
+""")
+out = xql.to_dataset(hottest, template=ds)  # dims latitude, longitude
 ```
 
-Pyodide cannot start threads, so xarray-sql loads chunks one at a time there.
-Each lazy access runs the query again inside DuckDB, so in the browser the
-registered Dataset must be in memory or read through a cache like the
-demo's (next section): remote Zarr reads cannot happen during a scan.
+The window is read into memory first because a DuckDB scan cannot wait on
+the network in Pyodide (see the next section). Pyodide also cannot start
+threads, so xarray-sql loads chunks one at a time there. To query a larger
+store, read it through a cache like the demo's.
 
 ## How lazy reads work in the browser
 

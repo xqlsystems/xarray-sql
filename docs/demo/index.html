@@ -85,6 +85,30 @@
   th, td { padding: 5px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
   th { position: sticky; top: 0; background: var(--panel); font-family: var(--mono); font-weight: 600; }
   .note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  /* Shown while Pyodide and the app start. */
+  .boot { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 36px 0 28px; }
+  .boot[hidden] { display: none; }
+  .boot svg { width: 150px; height: auto; overflow: visible; }
+  .boot .cell { fill: var(--border); animation: chunk 1.8s ease-in-out infinite; }
+  @keyframes chunk {
+    0%, 100% { fill: var(--border); }
+    35%, 55% { fill: var(--accent); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .boot .cell { animation: none; }
+    .boot .cell:nth-child(3n) { fill: var(--accent); }
+  }
+  .steps { list-style: none; margin: 0; padding: 0; font-size: 13px; color: var(--muted); }
+  .steps li { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+  .steps li::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%;
+    border: 1.5px solid currentColor; flex: none;
+  }
+  .steps li.active { color: var(--text); }
+  .steps li.active::before { border-color: var(--accent); border-top-color: transparent; animation: spin .8s linear infinite; }
+  .steps li.done::before { background: var(--accent); border-color: var(--accent); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .elapsed { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
   /* Embedded in the docs, which already introduce the demo. */
   .embedded main > h1, .embedded .lede { display: none; }
   .embedded main { padding-top: 16px; }
@@ -117,6 +141,15 @@
         <button id="run" class="run" disabled>Run</button>
         <span id="status" class="status" role="status">Starting…</span>
       </div>
+      <div id="boot" class="boot" aria-hidden="true">
+        <svg id="boot-art" viewBox="0 0 164 92" role="presentation"></svg>
+        <ol class="steps">
+          <li>Download Python, DuckDB, and pyarrow</li>
+          <li>Install xarray-sql</li>
+          <li>Open the GFS forecast store</li>
+        </ol>
+        <span id="elapsed" class="elapsed"></span>
+      </div>
       <div id="stats" class="stats"></div>
       <figure id="map" hidden>
         <div id="map-view" class="map-view" aria-label="Map of the query result"></div>
@@ -138,6 +171,41 @@ const workerURL = new URL("worker.js", location.href);
 if (wheel) workerURL.searchParams.set("wheel", new URL(wheel, location.href).href);
 const worker = new Worker(workerURL, { type: "module" });
 
+// The loading animation: a grid of chunks lighting up in a wave, as if
+// being fetched.
+(() => {
+  const ns = "http://www.w3.org/2000/svg";
+  const art = $("boot-art");
+  for (let row = 0; row < 4; row++) {
+    for (let col = 0; col < 7; col++) {
+      const cell = document.createElementNS(ns, "rect");
+      cell.setAttribute("class", "cell");
+      cell.setAttribute("x", col * 24);
+      cell.setAttribute("y", row * 24);
+      cell.setAttribute("width", 20);
+      cell.setAttribute("height", 20);
+      cell.setAttribute("rx", 4);
+      cell.style.animationDelay = `${((col + row) * 0.12).toFixed(2)}s`;
+      art.append(cell);
+    }
+  }
+})();
+const bootStart = performance.now();
+const elapsedTimer = setInterval(() => {
+  $("elapsed").textContent = `${Math.round((performance.now() - bootStart) / 1000)} s`;
+}, 1000);
+function bootStep(step) {
+  document.querySelectorAll(".steps li").forEach((li, i) => {
+    li.classList.toggle("done", i < step);
+    li.classList.toggle("active", i === step);
+  });
+}
+function bootDone() {
+  clearInterval(elapsedTimer);
+  $("boot").hidden = true;
+}
+bootStep(0);
+
 let nextId = 0;
 const pending = new Map();
 function setStatus(message, isError = false) {
@@ -146,12 +214,19 @@ function setStatus(message, isError = false) {
 }
 
 worker.onmessage = ({ data }) => {
-  if (data.type === "status") setStatus(data.message);
+  if (data.type === "status") {
+    setStatus(data.message);
+    bootStep(data.step);
+  }
   else if (data.type === "failed") {
+    bootDone();
     setStatus(data.error, true);
     console.error(data.detail);
   }
-  else if (data.type === "ready") ready(data.info);
+  else if (data.type === "ready") {
+    bootDone();
+    ready(data.info);
+  }
   else {
     const { resolve, reject } = pending.get(data.id);
     pending.delete(data.id);
