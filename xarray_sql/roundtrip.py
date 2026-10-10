@@ -7,17 +7,16 @@ Dataset as a *template* is enough to rebuild a labeled, metadata-carrying
 Dataset. Nothing here is engine-specific: results arrive as Arrow record
 batches regardless of which engine executed the SQL.
 
-Reconstruction is eager by default (the result is materialized once
-into a dense in-memory Dataset). Passing ``chunks=`` selects the
-lazy/chunked path instead: data variables are reconstructed on access,
-window by window, by re-executing the engine's query narrowed to each
-chunk's coordinate range. That requires the result to be
-*re-executable* — a Polars LazyFrame (or eager DataFrame) or a
-DataFusion DataFrame — not a one-shot Arrow stream; see
-[xarray_sql.lazyscan][]. DuckDB relations are re-executable but
-refuse the chunked path (a thread-safety limitation noted on
+Reconstruction of a *re-executable* result — a DuckDB relation, a
+Polars LazyFrame (or eager DataFrame), or a DataFusion DataFrame; see
+[xarray_sql.lazyscan][] — is lazy by default: data variables are read
+on access by re-executing the engine's query narrowed to the selection.
+Passing ``chunks=`` additionally wraps them in a chunk manager, one
+window per chunk. DuckDB relations refuse the chunked path (a
+thread-safety limitation noted on
 [DuckDBHandle][xarray_sql.lazyscan.DuckDBHandle]); pair them with
-``spill=True`` instead.
+``spill=True`` instead. One-shot Arrow streams have nothing to
+re-execute and are materialized once into a dense in-memory Dataset.
 """
 
 from __future__ import annotations
@@ -41,7 +40,7 @@ from .ds import (
     _build_lazy_scan,
     _dataset_from_batches,
     _finish_dataset,
-    _read_small_result,
+    _read_or_discover,
     _result_dims,
 )
 from .lazyscan import LazyResultHandle, PolarsHandle, resolve_lazy_handle
@@ -205,12 +204,17 @@ def to_dataset(
         fill_value: Fill for ``sparsity="template"``. Defaults to NaN.
         chunks: ``None`` (default) is lazy without a chunk manager, as
             with ``xr.open_dataset(chunks=None)``: each access
-            re-executes the query narrowed to the selection, and
-            ``.load()`` executes it once for all variables. Dask is not
-            required, and DuckDB relations work, since every access runs
-            on the calling thread. One-shot streams (Arrow tables,
-            readers, ADBC cursors) have nothing to re-execute and are
-            read eagerly. A mapping
+            re-executes the query narrowed to the selection and
+            projected to the variable read, so ``.load()`` executes it
+            once per variable. Dask is not required, and DuckDB
+            relations work, since every access runs on the calling
+            thread. Because reads re-execute, the connection must stay
+            open while the result is used, later changes to the source
+            show through, and a query whose rows vary between runs
+            (``LIMIT`` without ``ORDER BY``, random sampling) should be
+            read once with ``max_result_bytes=`` instead. One-shot
+            streams (Arrow tables, readers, ADBC cursors) have nothing
+            to re-execute and are read eagerly. A mapping
             (e.g. ``{"time": 100}``), ``"auto"``, or ``"inherit"``
             selects the lazy/chunked path: data variables are
             reconstructed window by window on access, each window
@@ -393,10 +397,10 @@ def _to_dataset_lazy(
     coords: Literal["discover", "template"],
     _handle: LazyResultHandle | None = None,
 ) -> xr.Dataset:
-    """The lazy reconstruction behind ``to_dataset(chunks=...)``.
+    """The lazy reconstruction behind ``to_dataset``.
 
-    ``chunks=None`` (from ``lazy=True``) returns lazily indexed variables
-    without chunking them.
+    ``chunks=None`` returns lazily indexed variables without chunking
+    them.
     """
     handle = _handle if _handle is not None else resolve_lazy_handle(result)
     if handle is None:
@@ -431,7 +435,7 @@ def _to_dataset_lazy(
         # small result is cheaper to read once than to discover lazily.
         batches = None
         if coord_arrays is None:
-            batches = _read_small_result(handle, field_names)
+            batches, coord_arrays = _read_or_discover(handle, field_names, dims)
         if batches is not None:
             ds = _dataset_from_batches(batches, dims, field_names, field_types)
         else:
@@ -462,10 +466,9 @@ def _to_dataset_lazy(
             "relation from worker threads intermittently deadlocks in "
             "duckdb-python when the query scans a Python-backed table "
             "(see xarray_sql.lazyscan.DuckDBHandle.supports_chunked). "
-            "Use lazy=True without chunks= (each access runs on the "
+            "Use chunks=None (lazy and unchunked: each access runs on the "
             "calling thread), add spill=True to reconstruct from a "
-            "one-pass on-disk spill, use chunks=None (eager), or run the "
-            "query through "
+            "one-pass on-disk spill, or run the query through "
             "Polars (pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))) "
             "or a DataFusion context."
         )

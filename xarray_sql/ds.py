@@ -30,7 +30,6 @@ result is partitioned -- rather than by reflecting on the query plan:
 
 from __future__ import annotations
 
-import threading
 import warnings
 from collections.abc import Mapping
 from typing import Any, Literal, cast
@@ -38,6 +37,7 @@ from typing import Any, Literal, cast
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.compute as pc
 import xarray as xr
 
 from .lazyscan import DataFusionHandle, DimSpec, LazyResultHandle
@@ -145,7 +145,8 @@ def _restore_dtype(var: xr.DataArray, template: xr.DataArray) -> xr.DataArray:
     keeps the result's dtype too.
     """
     dtype = template.dtype
-    if var.dtype == dtype or not isinstance(var.data, np.ndarray):
+    # ``var.data`` would load a lazy variable; check without reading it.
+    if var.dtype == dtype or not var.variable._in_memory:
         return var
     if set(var.dims) != set(template.dims):
         return var
@@ -784,76 +785,51 @@ _ONE_PASS_BYTES = 64 * 2**20
 read in a single pass instead."""
 
 
-def _read_small_result(
-    handle: LazyResultHandle, columns: list[str]
-) -> list[pa.RecordBatch] | None:
-    """The whole result if it fits in ``_ONE_PASS_BYTES``, else ``None``.
+def _read_or_discover(
+    handle: LazyResultHandle, columns: list[str], dimension_columns: list[str]
+) -> tuple[list[pa.RecordBatch] | None, dict[str, np.ndarray] | None]:
+    """Execute the query once: the whole result if small, else its coordinates.
 
-    Discovering a lazy result's coordinates executes the query once per
-    dimension, and loading it executes the query again. For a small
-    result -- an aggregation, which no window filter can push below, or a
-    narrow selection -- one streamed pass is cheaper than both. A result
-    that outgrows the budget stops streaming and stays lazy.
+    A lazy result must know each dimension's coordinates before any data
+    is read. One streamed pass serves both cases. A result that fits in
+    ``_ONE_PASS_BYTES`` -- an aggregation, which no window filter can push
+    below, or a narrow selection -- is returned whole, to be built in
+    memory. Past the budget, the pass keeps going but keeps only each
+    dimension's distinct values, so discovery executes the query once
+    rather than once per dimension. Returns ``(None, None)`` for handles
+    that cannot stream, which then discover one dimension at a time.
     """
     stream = getattr(handle, "stream", None)
     if stream is None:
-        return None
+        return None, None
     batches: list[pa.RecordBatch] = []
     total = 0
-    it = stream(columns)
-    try:
-        for batch in it:
+    distinct: dict[str, pa.Array] | None = None
+    for batch in stream(columns):
+        if distinct is None:
             total += batch.nbytes
-            if total > _ONE_PASS_BYTES:
-                return None
             batches.append(batch)
-    finally:
-        close = getattr(it, "close", None)
-        if close is not None:
-            close()
-    return batches
-
-
-class _SharedFullFetch:
-    """Shares one full-extent fetch among a lazy Dataset's variables.
-
-    Loading a whole lazy Dataset (``.load()``, or ``.values`` on every
-    variable) reads each variable at full extent. Fetched separately, that
-    executes the query once per variable -- for an aggregation, once per
-    variable over the whole source. Instead, the first full-extent read
-    fetches every result column, and the other variables take theirs from
-    it; the batches are released once every variable has. Windowed reads
-    still fetch only their own column, so projection pushdown is kept.
-    """
-
-    def __init__(
-        self, handle: LazyResultHandle, columns: list[str], variables: list[str]
-    ) -> None:
-        self._handle = handle
-        self._columns = columns
-        self._variables = frozenset(variables)
-        self._pending: set[str] = set()
-        self._batches: list[pa.RecordBatch] | None = None
-        self._lock = threading.Lock()
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._handle, name)
-
-    def fetch(
-        self, specs: dict[str, DimSpec], columns: list[str]
-    ) -> list[pa.RecordBatch]:
-        if specs:
-            return self._handle.fetch(specs, columns)
-        (variable,) = (c for c in columns if c in self._variables)
-        with self._lock:
-            if self._batches is None:
-                self._batches = self._handle.fetch({}, self._columns)
-                self._pending = set(self._variables)
-            batches = self._batches
-            self._pending.discard(variable)
-            if not self._pending:
-                self._batches = None
-        return batches
+            if total <= _ONE_PASS_BYTES:
+                continue
+            # Over budget: from here on, keep only distinct coordinates.
+            distinct = {}
+            pending, batches = batches, []
+        else:
+            pending = [batch]
+        for b in pending:
+            for d in dimension_columns:
+                values = pc.unique(b.column(b.schema.names.index(d)))
+                if d in distinct:
+                    values = pc.unique(pa.concat_arrays([distinct[d], values]))
+                distinct[d] = values
+    if distinct is None:
+        return batches, None
+    return None, {
+        # Sorted, as from ``distinct``, so positional slices map onto
+        # contiguous value ranges.
+        d: np.sort(distinct[d].to_numpy(zero_copy_only=False))
+        for d in dimension_columns
+    }
 
 
 def _build_lazy_scan(
@@ -881,8 +857,6 @@ def _build_lazy_scan(
             # positional slices map onto contiguous value ranges.
             coord_arrays[d] = np.sort(handle.distinct(d))
     shape = tuple(len(coord_arrays[d]) for d in dimension_columns)
-    variables = [n for n in field_names if n not in dimension_columns]
-    shared = _SharedFullFetch(handle, dimension_columns + variables, variables)
 
     data_vars: dict[str, xr.Variable] = {}
     for name in field_names:
@@ -890,7 +864,7 @@ def _build_lazy_scan(
             continue
         np_dtype = field_types[name].to_pandas_dtype()
         backend = SQLBackendArray(
-            handle=shared,
+            handle=handle,
             var_name=name,
             dimension_columns=dimension_columns,
             coord_arrays=coord_arrays,
@@ -982,10 +956,10 @@ def _result_to_xarray(
 
     * ``None`` -> lazy, unchunked: the data variables are lazily indexed
       [SQLBackendArray][xarray_sql.ds.SQLBackendArray]s, so each access
-      re-executes the query narrowed to the selection, and ``.load()``
-      executes it once for every variable. No chunk manager is involved.
-      A result whose coordinates must be discovered is first streamed in
-      one pass and kept in memory if small (``_read_small_result``), so an
+      re-executes the query narrowed to the selection and projected to
+      the variable read. No chunk manager is involved. A result whose
+      coordinates must be discovered is first streamed in one pass, which
+      keeps it in memory if small (``_read_or_discover``), so an
       aggregation executes once.
     * a mapping (or ``"auto"``) -> lazy/chunked: build [SQLBackendArray][xarray_sql.ds.SQLBackendArray]
       data variables (``_build_lazy_scan``) and wrap them with
@@ -1013,7 +987,9 @@ def _result_to_xarray(
     )
     batches = None
     if chunks is None and coord_arrays is None:
-        batches = _read_small_result(handle, field_names)
+        batches, coord_arrays = _read_or_discover(
+            handle, field_names, dimension_columns
+        )
     if batches is not None:
         ds = _dataset_from_batches(
             batches, dimension_columns, field_names, field_types
@@ -1159,8 +1135,10 @@ class XarrayDataFrame:
                   both are returned as with ``None``.
                 * ``None``: lazy without a chunk manager, as with
                   ``xr.open_dataset(chunks=None)``. Each access re-executes
-                  the query narrowed to the selection; ``.load()`` executes
-                  it once for all variables. Dask is not required.
+                  the query narrowed to the selection and projected to the
+                  variable read, so ``.load()`` executes it once per
+                  variable. Dask is not required. The context must stay
+                  usable while the result is read.
                 * a mapping (e.g. ``{"time": 100}``): chunk explicitly. Each
                   chunk reads its coordinate range lazily via filter pushdown on
                   access, through xarray's configured chunk manager (dask,

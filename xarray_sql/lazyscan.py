@@ -276,13 +276,21 @@ class DuckDBHandle:
         )
 
     def stream(self, columns: list[str]) -> Iterator[pa.RecordBatch]:
-        """Execute once, yielding Arrow batches as DuckDB produces them."""
+        """Execute once, yielding Arrow batches as DuckDB produces them.
+
+        The reader is closed on the engine thread, even when the consumer
+        stops early, so the query is never torn down from another thread.
+        """
         import duckdb
 
         rel = self._rel.project(*(duckdb.ColumnExpression(n) for n in columns))
-        batches = self._run(lambda: iter(self._to_arrow_reader(rel)))
-        while (batch := self._run(lambda: next(batches, None))) is not None:
-            yield batch
+        reader = self._run(lambda: self._to_arrow_reader(rel))
+        batches = iter(reader)
+        try:
+            while (batch := self._run(lambda: next(batches, None))) is not None:
+                yield batch
+        finally:
+            self._run(reader.close)
 
     def spill_parquet(self, path: str) -> None:
         def run() -> None:

@@ -121,10 +121,11 @@ def register(
         ds: An xarray Dataset.
         chunks: Xarray-like chunks specification controlling partition
             granularity. Defaults to the Dataset's existing chunks. An
-            unchunked Dataset (in memory, or opened lazily with
-            ``chunks=None``) is split along the storage chunks its backend
-            recorded in ``encoding["preferred_chunks"]``, and is one chunk
-            along other dimensions; dask is not required.
+            unchunked Dataset opened lazily with ``chunks=None`` is split
+            along the storage chunks its backend recorded in
+            ``encoding["preferred_chunks"]``, and is one chunk along other
+            dimensions; one built in memory, which records none, is split
+            into partitions of about a million rows. Dask is not required.
         table_names: Maps a dimension group's exact dim tuple to the name
             its table takes. Groups left unnamed take their dimensions
             joined by underscores (``time_latitude_longitude``); the

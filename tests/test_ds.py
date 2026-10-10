@@ -353,12 +353,11 @@ def test_chunks_argument_controls_partitioning(synthetic_dataset):
 def test_chunks_none_is_lazy_without_a_chunk_manager(synthetic_dataset):
     ctx = XarrayContext()
     ctx.from_dataset("t", synthetic_dataset)
-    out = ctx.sql("SELECT * FROM t").to_dataset(chunks=None)
-    assert not out.chunks
-    xr.testing.assert_allclose(
-        out.load().sortby(["time", "lat", "lon"]),
-        synthetic_dataset.compute().sortby(["time", "lat", "lon"]),
+    out = ctx.sql("SELECT * FROM t ORDER BY time, lat, lon").to_dataset(
+        chunks=None
     )
+    assert not out.chunks
+    xr.testing.assert_allclose(out.load(), synthetic_dataset.compute())
 
 
 def test_chunks_auto_snaps_to_source_partitions():

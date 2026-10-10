@@ -502,7 +502,7 @@ only the source chunks it maps onto.
 flowchart TB
     R["xql.to_dataset(result, ...)"] --> K{"chunks=?"}
     K -- "None (default)" --> LZ{"result type"}
-    LZ -- "re-executable<br/>(DuckDB, Polars, DataFusion)" --> LI["lazily indexed, no dask:<br/>each access re-runs the query<br/>for its selection; .load() runs it once<br/>(small results: read in one pass)"]
+    LZ -- "re-executable<br/>(DuckDB, Polars, DataFusion)" --> LI["lazily indexed, no dask:<br/>each access re-runs the query<br/>for its selection; .load() runs it<br/>once per variable (small results:<br/>read in one pass)"]
     LZ -- "one-shot Arrow stream,<br/>or max_result_bytes=" --> E["in memory: read once<br/>max_result_bytes= guards both the<br/>Arrow stream and the dense grid"]
     K -- "mapping / auto / inherit" --> SP{"spill=?"}
     SP -- "False (default)" --> HD{"result type"}
@@ -520,23 +520,35 @@ is a DuckDB relation, or when all you have is a one-shot stream.
 **Without chunks:** `chunks=None`, the default, returns lazily indexed
 variables, as `xr.open_dataset(chunks=None)` does. Each access, such as
 `out.t2m.sel(time="2020-01").values`, re-executes the query narrowed to
-that selection, so it reads only the source chunks under it, and
-`.load()` reads the whole result in one execution. Nothing is chunked,
-so dask is not needed, and DuckDB relations work too: every access runs
-on the calling thread, unlike chunked windows, which dask computes on
-worker threads.
+that selection and projected to the variable it reads, so it reads only
+the source chunks under it, and `.load()` executes the query once per
+variable. Nothing is chunked, so dask is not needed, and DuckDB
+relations work too: every access runs on the calling thread, unlike
+chunked windows, which dask computes on worker threads.
 
 ```python
 out = xql.to_dataset(con.sql("SELECT * FROM era5"), template=ds)
 out.t2m.sel(time="2020-01-01").mean().item()  # reads one day's chunks
 ```
 
-Discovering a lazy result's coordinates executes the query once per
-dimension, so a result whose coordinates must be discovered is first
-streamed in one pass and kept in memory if it is small (up to 64 MiB).
-An aggregation, which no window filter can push below, therefore
-executes once. One-shot Arrow streams, which cannot re-execute, and
-calls with `max_result_bytes=` are read into memory directly.
+A lazy result must know its coordinates before any data is read, so
+unless `coords="template"` supplies them, the query is first streamed
+once. A small result (up to 64 MiB) is kept in memory from that pass,
+so an aggregation, which no window filter can push below, executes
+once. A larger one keeps only each dimension's distinct values and
+stays lazy. One-shot Arrow streams, which cannot re-execute, and calls
+with `max_result_bytes=` are read into memory directly.
+
+Because a lazy result re-executes its query on access:
+
+- the connection must stay open while the result is used: after
+  `con.close()`, reading a variable raises;
+- changes to the source tables after `to_dataset` show through in
+  later reads;
+- a query whose rows vary between runs, such as `LIMIT` without
+  `ORDER BY` or random sampling, can disagree with the coordinates
+  discovered for it. Read such a result once, in memory, with
+  `max_result_bytes=`.
 
 Two knobs matter at scale:
 

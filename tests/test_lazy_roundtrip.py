@@ -8,6 +8,8 @@ laziness is real, and that one-shot
 streams are rejected with a clear error.
 """
 
+import pickle
+
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -88,6 +90,37 @@ def test_duckdb_small_result_scans_source_once(source, registered):
     assert len(reads) == 10
 
 
+def test_duckdb_large_result_discovers_coords_in_one_pass(
+    source, registered, monkeypatch
+):
+    con, reads = registered
+    # A result over the one-pass budget stays lazy.
+    monkeypatch.setattr("xarray_sql.ds._ONE_PASS_BYTES", 0)
+    rel = con.sql("SELECT * FROM t WHERE lat > 0")
+    out = xql.to_dataset(rel, template=source)
+    assert len(reads) == 10  # one pass over the source finds every dim
+    xr.testing.assert_allclose(out.load(), source.sel(lat=source.lat > 0))
+
+
+def test_lazy_result_keeps_widened_dtype_without_reading(source, registered):
+    con, reads = registered
+    rel = con.sql("SELECT time, lat, CAST(t2m AS FLOAT) AS t2m FROM t")
+    out = xql.to_dataset(rel, template=source, coords="template")
+    assert reads == []
+    assert out.t2m.dtype == np.float32
+    np.testing.assert_allclose(out.t2m.values, source.t2m.values, rtol=1e-6)
+
+
+def test_duckdb_lazy_result_needs_an_open_connection(source, registered):
+    con, _ = registered
+    out = xql.to_dataset(
+        con.sql("SELECT * FROM t"), template=source, coords="template"
+    )
+    con.close()
+    with pytest.raises(Exception, match="closed"):
+        out.t2m.values
+
+
 def test_duckdb_eager_round_trip_through_handle(source, registered):
     con, _ = registered
     rel = con.sql("SELECT * FROM t")
@@ -134,6 +167,20 @@ def test_polars_eager_frame_is_reexecutable(source):
     )
     out = xql.to_dataset(frame, template=source, chunks={"time": 50})
     xr.testing.assert_allclose(out.compute(), source)
+
+
+def test_chunked_polars_result_pickles(source):
+    pl = pytest.importorskip("polars")
+
+    frame = pl.DataFrame(
+        {
+            "time": np.repeat(source.time.values, 6),
+            "lat": np.tile(source.lat.values, 100),
+            "t2m": source.t2m.values.ravel(),
+        }
+    )
+    out = xql.to_dataset(frame.lazy(), template=source, chunks={"time": 50})
+    xr.testing.assert_allclose(pickle.loads(pickle.dumps(out)).load(), source)
 
 
 def test_one_shot_stream_with_chunks_raises(source, registered):
