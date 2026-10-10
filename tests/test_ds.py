@@ -350,6 +350,16 @@ def test_chunks_argument_controls_partitioning(synthetic_dataset):
     )
 
 
+def test_chunks_none_is_lazy_without_a_chunk_manager(synthetic_dataset):
+    ctx = XarrayContext()
+    ctx.from_dataset("t", synthetic_dataset)
+    out = ctx.sql("SELECT * FROM t ORDER BY time, lat, lon").to_dataset(
+        chunks=None
+    )
+    assert not out.chunks
+    xr.testing.assert_allclose(out.load(), synthetic_dataset.compute())
+
+
 def test_chunks_auto_snaps_to_source_partitions():
     """``chunks="auto"`` coarsens to the byte budget but snaps chunk boundaries
     to whole source partitions (so no chunk splits a source partition)."""

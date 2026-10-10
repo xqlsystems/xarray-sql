@@ -59,6 +59,31 @@ already on `PATH`) and start at step 2.
    You can also run the hooks manually with: `uvx pre-commit run --all-files`
 7. Build and serve docs locally: `uvx zensical serve`
 
+### Building for WebAssembly (Pyodide)
+
+The `ci-wasm` workflow builds a Pyodide wheel. The target Pyodide release
+fixes the Python version, the exact Emscripten version, and the Rust
+toolchain. The Flight SQL server needs sockets and threads, so wasm builds
+turn off the `flight` cargo feature.
+
+To build the wheel locally, set `PYODIDE_VERSION` to the value in
+`.github/workflows/ci-wasm.yml`. pyodide-build must run on the same Python
+version as that Pyodide release (for example, Python 3.14 for Pyodide 314),
+which `uv tool install --python` sets up. The `pyodide` command comes from
+`pyodide-cli`, so install it with `pyodide-build`:
+
+```shell
+uv tool install --python 3.14 pyodide-cli --with pyodide-build
+pyodide xbuildenv install "$PYODIDE_VERSION"
+rustup toolchain install "$(pyodide config get rust_toolchain)" \
+  --target wasm32-unknown-emscripten
+pyodide xbuildenv install-emscripten
+MATURIN_PEP517_ARGS="--no-default-features --profile wasm" pyodide build -o dist
+```
+
+On NixOS, run these commands in `nix run .#wasm-shell`. This shell is an
+FHS environment, which lets the prebuilt Emscripten and rustup binaries run.
+
 
 ## Before submitting a pull request...
 

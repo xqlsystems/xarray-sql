@@ -125,6 +125,30 @@ def test_get_fragments_prunes_and_scans(ds):
     assert dataset.get_fragments(filter=pc.field("lat") > 100) == []
 
 
+def test_unchunked_zarr_scans_by_storage_chunks(ds, tmp_path):
+    ds.to_zarr(tmp_path / "store.zarr")
+    opened = xr.open_zarr(tmp_path / "store.zarr", chunks=None)
+    dataset = xql.arrow_dataset(opened)
+    assert len(dataset.get_fragments()) == 4  # stored with time chunks of 5
+    xr.testing.assert_identical(
+        xql.to_dataset(dataset.to_table(), template=ds), ds.compute()
+    )
+
+
+def test_unchunked_in_memory_dataset_is_partitioned():
+    big = xr.Dataset(
+        {"v": (["time", "y", "x"], np.zeros((40, 256, 256), np.float32))},
+        coords={
+            "time": np.arange(40),
+            "y": np.arange(256),
+            "x": np.arange(256),
+        },
+    )
+    dataset = xql.arrow_dataset(big)
+    assert len(dataset.get_fragments()) > 1
+    assert dataset.count_rows() == big.v.size
+
+
 def test_scanner_honors_batch_size(ds):
     dataset = xql.arrow_dataset(ds)
     batches = list(dataset.scanner(batch_size=7).to_batches())

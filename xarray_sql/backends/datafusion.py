@@ -5,15 +5,17 @@ Rust ``LazyArrowStreamTable`` table provider gives partition pruning on
 dimension predicates, projection pushdown, and exact per-partition
 statistics for the optimizer. This module only routes the generic
 [xarray_sql.register][] seam onto that existing machinery.
+
+Like the other adapters, it never imports ``datafusion`` until a
+DataFusion connection is registered, so the rest of xarray-sql works
+where DataFusion's Python bindings are unavailable (e.g. Pyodide).
 """
 
 from __future__ import annotations
 
-from typing import Any, TypeGuard
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 import xarray as xr
-from datafusion import SessionContext
-from datafusion.catalog import Schema
 
 from ..df import (
     Chunks,
@@ -23,8 +25,10 @@ from ..df import (
     shared_coord_arrays,
 )
 from ..reader import read_xarray_table
-from ..sql import XarrayContext
 from .base import register_adapter
+
+if TYPE_CHECKING:
+    from datafusion import SessionContext
 
 
 @register_adapter
@@ -33,7 +37,12 @@ class DataFusionAdapter:
 
     @staticmethod
     def matches(con: object) -> TypeGuard[SessionContext]:
-        return isinstance(con, SessionContext)
+        # Context and any other subclass carry this in their MRO.
+        return any(
+            cls.__module__ == "datafusion.context"
+            and cls.__qualname__ == "SessionContext"
+            for cls in type(con).__mro__
+        )
 
     @staticmethod
     def register(
@@ -45,10 +54,14 @@ class DataFusionAdapter:
         table_names: TableNames = None,
         **kwargs: Any,
     ) -> SessionContext:
-        # XarrayContext.from_dataset adds cftime UDF registration and
+        from datafusion.catalog import Schema
+
+        from ..sql import Context
+
+        # Context.from_dataset adds cftime UDF registration and
         # round-trip metadata tracking on top of the split below; use it
         # when available.
-        if isinstance(con, XarrayContext):
+        if isinstance(con, Context):
             return con.from_dataset(
                 name, ds, chunks=chunks, table_names=table_names, **kwargs
             )
@@ -60,7 +73,7 @@ class DataFusionAdapter:
             return con
 
         # A mixed-dimension Dataset becomes one table per dimension group
-        # in a schema named after the Dataset, exactly as XarrayContext
+        # in a schema named after the Dataset, exactly as Context
         # registers it — so ``name.group`` is the same SQL either way.
         coord_arrays = shared_coord_arrays(ds)
         schema = Schema.memory_schema(con)

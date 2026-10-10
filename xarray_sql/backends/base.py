@@ -109,7 +109,7 @@ def register(
 
     Args:
         con: An engine connection: a ``datafusion.SessionContext`` (or
-            [xarray_sql.XarrayContext][]), a
+            [xarray_sql.Context][]), a
             ``duckdb.DuckDBPyConnection``, or an ADBC DBAPI connection
             (``adbc_driver_manager.dbapi.Connection``), into which the
             Dataset is ingested as a table.
@@ -120,7 +120,12 @@ def register(
             spelling, since its registration namespace is flat).
         ds: An xarray Dataset.
         chunks: Xarray-like chunks specification controlling partition
-            granularity. Defaults to the Dataset's existing chunks.
+            granularity. Defaults to the Dataset's existing chunks. An
+            unchunked Dataset opened lazily with ``chunks=None`` is split
+            along the storage chunks its backend recorded in
+            ``encoding["preferred_chunks"]``, and is one chunk along other
+            dimensions; one built in memory, which records none, is split
+            into partitions of about a million rows. Dask is not required.
         table_names: Maps a dimension group's exact dim tuple to the name
             its table takes. Groups left unnamed take their dimensions
             joined by underscores (``time_latitude_longitude``); the

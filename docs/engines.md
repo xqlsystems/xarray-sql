@@ -23,7 +23,7 @@ DataFusion is the built-in engine, wrapped in a session:
 ```python
 import xarray_sql as xql
 
-ctx = xql.XarrayContext()
+ctx = xql.Context()
 ctx.from_dataset("era5", ds, chunks={"time": 24})
 result = ctx.sql("SELECT ... FROM era5").to_dataset()
 ```
@@ -342,14 +342,14 @@ stores `float32` as `float64` and `bool` as an integer, MySQL `bool` as
 keep the result's type.
 
 The cursor is a one-shot Arrow stream: `xql.to_dataset(cur, ...)`
-round-trips eagerly, and `chunks=` needs `spill=True`.
+reads it into memory, and `chunks=` needs `spill=True`.
 
 ## Serving over Flight SQL (no copy)
 
 The adapters above bring an engine to the data. `xql.serve` does the
 reverse and brings the data to remote clients: it starts an
 [Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html)
-server over the same lazy tables `XarrayContext` uses.
+server over the same lazy tables `Context` uses.
 
 ```python
 import xarray_sql as xql
@@ -453,7 +453,7 @@ to queries that filter on time.
   TABLE`, `COPY`, `SET`, ...) are rejected, so clients cannot read or
   write the server's filesystem.
 - **DataFusion's SQL, without xarray-sql's Python UDFs.** The
-  `cftime()` and `reproject()` functions `XarrayContext` registers are
+  `cftime()` and `reproject()` functions `Context` registers are
   not available on the server.
 - **Bound its memory.** Any client can send an expensive `ORDER BY`,
   join, or aggregation. `memory_limit=` (bytes) caps what those hold at
@@ -475,7 +475,7 @@ What each integration provides. Known issues and constraints live on
 
 | | DataFusion | DuckDB | Polars | ADBC |
 |---|---|---|---|---|
-| Register | `XarrayContext` / any `SessionContext` | `xql.register(con, name, ds)` | `pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))` | `xql.register(con, name, ds)` (copies into the database) |
+| Register | `Context` / any `SessionContext` | `xql.register(con, name, ds)` | `pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))` | `xql.register(con, name, ds)` (copies into the database) |
 | Projection pushdown | yes | yes | yes | n/a (the database's own tables) |
 | Chunk pruning on dim predicates | yes | yes | yes | n/a (the database's own indexes) |
 | Eager round-trip (`xql.to_dataset`) | yes | yes | yes | yes (pass the cursor) |
@@ -501,7 +501,9 @@ only the source chunks it maps onto.
 ```mermaid
 flowchart TB
     R["xql.to_dataset(result, ...)"] --> K{"chunks=?"}
-    K -- "None (default)" --> E["eager: materialize once<br/>max_result_bytes= guards both the<br/>Arrow stream and the dense grid"]
+    K -- "None (default)" --> LZ{"result type"}
+    LZ -- "re-executable<br/>(DuckDB, Polars, DataFusion)" --> LI["lazily indexed, no dask:<br/>each access re-runs the query<br/>for its selection; .load() runs it<br/>once per variable (small results:<br/>read in one pass)"]
+    LZ -- "one-shot Arrow stream,<br/>or max_result_bytes=" --> E["in memory: read once<br/>max_result_bytes= guards both the<br/>Arrow stream and the dense grid"]
     K -- "mapping / auto / inherit" --> SP{"spill=?"}
     SP -- "False (default)" --> HD{"result type"}
     HD -- "Polars LazyFrame/DataFrame<br/>DataFusion DataFrame" --> RX["re-execution: each window<br/>re-runs the query narrowed to its<br/>coordinate range (flows back into<br/>chunk pruning at the source)"]
@@ -514,6 +516,39 @@ flowchart TB
 few windows of a huge result. Spill pays one full pass plus temporary
 disk — right when you'll touch most of the result, when the producer
 is a DuckDB relation, or when all you have is a one-shot stream.
+
+**Without chunks:** `chunks=None`, the default, returns lazily indexed
+variables, as `xr.open_dataset(chunks=None)` does. Each access, such as
+`out.t2m.sel(time="2020-01").values`, re-executes the query narrowed to
+that selection and projected to the variable it reads, so it reads only
+the source chunks under it, and `.load()` executes the query once per
+variable. Nothing is chunked, so dask is not needed, and DuckDB
+relations work too: every access runs on the calling thread, unlike
+chunked windows, which dask computes on worker threads.
+
+```python
+out = xql.to_dataset(con.sql("SELECT * FROM era5"), template=ds)
+out.t2m.sel(time="2020-01-01").mean().item()  # reads one day's chunks
+```
+
+A lazy result must know its coordinates before any data is read, so
+unless `coords="template"` supplies them, the query is first streamed
+once. A small result (up to 64 MiB) is kept in memory from that pass,
+so an aggregation, which no window filter can push below, executes
+once. A larger one keeps only each dimension's distinct values and
+stays lazy. One-shot Arrow streams, which cannot re-execute, and calls
+with `max_result_bytes=` are read into memory directly.
+
+Because a lazy result re-executes its query on access:
+
+- the connection must stay open while the result is used: after
+  `con.close()`, reading a variable raises;
+- changes to the source tables after `to_dataset` show through in
+  later reads;
+- a query whose rows vary between runs, such as `LIMIT` without
+  `ORDER BY` or random sampling, can disagree with the coordinates
+  discovered for it. Read such a result once, in memory, with
+  `max_result_bytes=`.
 
 Two knobs matter at scale:
 

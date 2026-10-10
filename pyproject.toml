@@ -30,12 +30,18 @@ classifiers = [
   "Topic :: Database :: Front-Ends",
 ]
 dependencies = [
-    "dask>=2024.8.0",
-    "datafusion==54.0.0", # This needs to match the cargo datafusion version!!
+    # This needs to match the cargo datafusion version!! DataFusion's Python
+    # bindings have no Pyodide wheels, so they are optional there.
+    "datafusion==54.0.0; sys_platform != 'emscripten'",
+    "pyarrow>=16.0.0",
     "xarray>=2024.7.0",
 ]
 
 [project.optional-dependencies]
+# Lazy, chunked results from `to_dataset(chunks=...)` need a chunk manager.
+dask = [
+  "dask>=2024.8.0",
+]
 adbc = [
   # Plus a driver package for your database, e.g. adbc-driver-postgresql.
   "adbc-driver-manager>=1.12",
@@ -56,7 +62,7 @@ test = [
   "adbc-driver-flightsql>=1.12",
   "adbc-driver-sqlite>=1.12",
   "cftime",
-  "xarray-sql[adbc,duckdb,polars,geo]",
+  "xarray-sql[adbc,dask,duckdb,polars,geo]",
   "pytest",
   "xarray[io]",
   "gcsfs",

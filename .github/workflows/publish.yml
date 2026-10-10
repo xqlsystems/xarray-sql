@@ -124,6 +124,12 @@ jobs:
           name: dist-manylinux-aarch64
           path: dist/*
 
+  # Runs the Pyodide smoke test too, so a release never ships an untested
+  # wasm wheel. PyPI accepts these wheels under PEP 783, so Pyodide users
+  # can `await micropip.install("xarray-sql")`.
+  build-artifacts-pyodide:
+    uses: ./.github/workflows/ci-wasm.yml
+
   build-sdist:
     name: Source distribution
     runs-on: ubuntu-latest
@@ -193,7 +199,7 @@ jobs:
           uv pip install --extra-index-url https://test.pypi.org/simple --upgrade de
           python -c "import xarray_sql; print(xarray_sql.__version__)"
   upload-to-pypi:
-    needs: verify-built-dist
+    needs: [verify-built-dist, build-artifacts-pyodide]
     runs-on: ubuntu-latest
     # Only publish for real releases. `workflow_dispatch` runs build and
     # verify the wheels (uploaded as artifacts) without pushing to PyPI, so
@@ -211,3 +217,13 @@ jobs:
 
       - name: Publish package to PyPI
         run: uv publish --token ${{ secrets.PYPI_TOKEN }}
+
+      # Uploaded separately and after the native wheels, so a rejected wasm
+      # wheel cannot leave a partial release.
+      - uses: actions/download-artifact@v6
+        with:
+          name: pyodide-dist
+          path: pyodide-dist
+
+      - name: Publish Pyodide wheel to PyPI
+        run: uv publish --token ${{ secrets.PYPI_TOKEN }} pyodide-dist/*

@@ -41,6 +41,7 @@
 //! Will skip loading partitions whose time ranges are entirely before 2020-02-01.
 //! Supported operators: `=`, `<`, `>`, `<=`, `>=`, `BETWEEN`, `IN`, `AND`, `OR`.
 
+#[cfg(feature = "flight")]
 mod flight;
 
 use std::collections::{HashMap, HashSet};
@@ -1645,6 +1646,7 @@ impl LazyArrowStreamTable {
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<LazyArrowStreamTable>()?;
+    #[cfg(feature = "flight")]
     m.add_class::<flight::FlightSqlServer>()?;
     Ok(())
 }

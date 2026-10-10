@@ -15,7 +15,7 @@ this module handles the conversion in two tiers:
   with ``xarray:units`` and ``xarray:calendar`` metadata on the Arrow field.
   This preserves the original CF-convention encoding losslessly.  A
   ``cftime()`` DataFusion UDF (registered automatically by
-  ``XarrayContext.from_dataset``) provides ergonomic SQL filtering.
+  ``Context.from_dataset``) provides ergonomic SQL filtering.
 """
 
 from __future__ import annotations

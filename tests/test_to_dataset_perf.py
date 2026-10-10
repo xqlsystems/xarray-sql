@@ -44,8 +44,8 @@ def test_lazy_chunk_peak_memory_is_bounded(air_source):
 
     Reference observation: lazy chunk peak is ~1.8 MB on a 31 MB
     dense source. A regression that quietly buffers the whole result
-    would push past 10 MB. Eager ``to_dataset(chunks=None)`` is
-    measured too as a sanity floor for the gap: the eager path should
+    would push past 10 MB. Loading ``to_dataset(chunks=None)`` whole is
+    measured too as a sanity floor for the gap: loading the whole grid should
     be at least an order of magnitude heavier than the lazy chunk,
     otherwise the lazy path isn't actually lazy.
     """
@@ -62,7 +62,7 @@ def test_lazy_chunk_peak_memory_is_bounded(air_source):
     )
 
     _, eager_peak = _peak_mb(
-        lambda: ctx.sql('SELECT * FROM "air"').to_dataset(chunks=None)
+        lambda: ctx.sql('SELECT * FROM "air"').to_dataset(chunks=None).load()
     )
     assert eager_peak > 50.0, (
         f"eager whole-grid materialization should peak above 50 MB; "

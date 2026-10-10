@@ -215,7 +215,7 @@ paradigm. They split cleanly along one line: **is the operation row-independent?
 that coordinate, so it is a *scalar function* — exactly what PostGIS and
 DuckDB-spatial already ship as `ST_Transform`. xarray-sql ships it as an
 optional geo extension (`pip install xarray-sql[geo]`): with pyproj
-installed, every `XarrayContext` registers a PROJ-backed
+installed, every `Context` registers a PROJ-backed
 `reproject(x, y, src_crs, dst_crs)` scalar UDF, so the CRS pair — any CRS
 pyproj understands — is part of the query rather than baked into the function:
 

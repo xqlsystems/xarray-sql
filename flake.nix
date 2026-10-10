@@ -20,8 +20,48 @@
           zlib
           openssl
         ];
+
+        # Pyodide pins an exact Emscripten release and Rust toolchain, both of
+        # which ship as prebuilt generic-Linux binaries (emsdk's clang/node,
+        # rustup toolchains). An FHS sandbox lets those binaries run unmodified
+        # on NixOS. See "Building for WebAssembly" in CONTRIBUTING.md.
+        #
+        #   nix run .#wasm-shell                          # interactive
+        #   nix run .#wasm-shell -- -c 'pyodide build'    # one-shot
+        wasmShell = pkgs.buildFHSEnv {
+          name = "xarray-sql-wasm";
+          targetPkgs = p: with p; [
+            bash
+            bzip2
+            cacert
+            coreutils
+            curl
+            git
+            gnumake
+            gnutar
+            nodejs
+            python314
+            rustup
+            stdenv.cc
+            stdenv.cc.cc.lib
+            uv
+            which
+            xz
+            zlib
+          ];
+          runScript = "bash";
+          profile = ''
+            export UV_PYTHON_PREFERENCE=only-system
+            export SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt
+          '';
+        };
       in
       {
+        # buildFHSEnv relies on Linux namespaces.
+        packages = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          wasm-shell = wasmShell;
+        };
+
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             uv

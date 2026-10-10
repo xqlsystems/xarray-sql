@@ -23,8 +23,11 @@ except ImportError:  # pragma: no cover - depends on the environment
     _proj = None
 
 
-class XarrayContext(SessionContext):
-    """A datafusion `SessionContext` that also supports `xarray.Dataset`s."""
+class Context(SessionContext):
+    """A datafusion `SessionContext` that also supports `xarray.Dataset`s.
+
+    Also available under its original name, ``XarrayContext``.
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -86,7 +89,7 @@ class XarrayContext(SessionContext):
             non-Gregorian calendars (e.g. one 360_day and one julian), the
             UDF from the first registration will be used for all subsequent
             ``cftime()`` calls and may produce incorrect offsets for the
-            other dataset. In that case, create a separate ``XarrayContext``
+            other dataset. In that case, create a separate ``Context``
             for each calendar.
 
         Args:
@@ -100,7 +103,8 @@ class XarrayContext(SessionContext):
                 table names within the schema, used when the dataset has
                 variables with differing dimensions.
             chunks: Xarray-like chunks specification. If not provided, uses
-                the Dataset's existing chunks.
+                the Dataset's existing chunks, or for an unchunked Dataset
+                its storage chunks (see [register][xarray_sql.register]).
 
         Returns:
             self, to allow chaining.
@@ -190,3 +194,7 @@ class XarrayContext(SessionContext):
         """
         inner = super().sql(query, *args, **kwargs)
         return XarrayDataFrame(inner, templates=self._registered_datasets)
+
+
+XarrayContext = Context
+"""The original name of [Context][xarray_sql.Context], kept for compatibility."""

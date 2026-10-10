@@ -15,7 +15,7 @@ import xarray_sql as xql
 
 ds = xr.tutorial.open_dataset('air_temperature')
 
-ctx = xql.XarrayContext()
+ctx = xql.Context()
 ctx.from_dataset('air', ds, chunks=dict(time=100))
 
 clim = ctx.sql('''
@@ -66,17 +66,17 @@ url = 'gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3'
 full = xr.open_zarr(url, chunks=None, storage_options={'token': 'anon'})
 
 # A full year of hourly ERA5 — all 273 variables. No spatial slicing on the
-# xarray side; SQL WHERE clauses below express the filters. `chunks={'time': 1}`
-# aligns Dask chunks to native Zarr chunks of shape (1, 37, 721, 1440) so
-# chunk reads from GCS happen concurrently.
+# xarray side; SQL WHERE clauses below express the filters. Each table
+# partition is one native Zarr chunk of shape (1, 37, 721, 1440); pass
+# `chunks=` to `from_dataset` to group several into one partition.
 #
 # Heads up: 262 of those variables are surface and 11 are atmospheric. The
 # library pushes column projection down, so SELECT only fetches what you ask
 # for — but `SELECT * FROM era5.surface` would try to pull every variable
 # across the year (terabytes from GCS). Always SELECT specific columns.
-ds = full.sel(time='2020').chunk({'time': 1})
+ds = full.sel(time='2020')
 
-ctx = xql.XarrayContext()
+ctx = xql.Context()
 ctx.from_dataset('era5', ds, table_names={
     ('time', 'latitude', 'longitude'): 'surface',
     ('time', 'level', 'latitude', 'longitude'): 'atmosphere',
@@ -123,7 +123,7 @@ scalars into a single one-row table named `scalar`:
 ```python
 import fsspec
 import xarray as xr
-from xarray_sql import XarrayContext
+from xarray_sql import Context
 
 # A real GOES-16 ABI cloud-and-moisture file from NOAA's public bucket:
 # (y, x) image bands alongside dozens of scalar metadata variables.
@@ -135,7 +135,7 @@ ds = xr.open_dataset(fsspec.open_local(f'simplecache::{url}')).chunk(
     {'y': 250, 'x': 250}
 )
 
-ctx = XarrayContext()
+ctx = Context()
 ctx.from_dataset('goes', ds)
 
 # The gridded bands and the scalar metadata are separate tables.
@@ -153,7 +153,7 @@ A runnable version of the ERA5 example lives at
 
 ## The same tables on DuckDB and Polars
 
-Every example above registers through an `XarrayContext`, but the tables are
+Every example above registers through a `Context`, but the tables are
 not DataFusion-specific: `xql.register(con, name, ds)` attaches the same lazy,
 pushdown-scanned table to a DuckDB connection, and
 `pl.scan_pyarrow_dataset(xql.arrow_dataset(ds))` serves Polars — same

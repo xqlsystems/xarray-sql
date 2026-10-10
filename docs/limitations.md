@@ -33,8 +33,9 @@ Pick your engine:
       `spill=True` provides the chunked path without ever
       re-executing: the result is streamed once (bounded memory, on
       the handle's dedicated engine thread) into a temporary Parquet
-      file that windows re-execute against. The eager round-trip is
-      unaffected.
+      file that windows re-execute against. The unchunked round-trip
+      (`chunks=None`) is unaffected: every access runs on the calling
+      thread.
 
     **Derived relations break under concurrent materialization.**
 
@@ -183,11 +184,11 @@ scans accept the extra reads.
 
 ### Sparse results can explode the dense grid
 
-The eager round-trip reconstructs the coordinate-product grid: a
+Loading a round-trip reconstructs the coordinate-product grid: a
 diagonal of n rows becomes an n×n array that can dwarf its Arrow
-payload. `max_result_bytes=` raises cleanly at both danger points
-(stream collection and dense allocation); it is opt-in and unlimited
-by default.
+payload. `max_result_bytes=` reads the result into memory and raises
+cleanly at both danger points (stream collection and dense
+allocation); it is opt-in and unlimited by default.
 
 ### One-shot Arrow streams cannot re-execute
 

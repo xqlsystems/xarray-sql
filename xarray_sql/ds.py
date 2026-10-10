@@ -3,7 +3,7 @@
 The inverse of the forward Dataset-to-table pivot done by
 [xarray_sql.df.pivot][]. Internally defines an [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame]
 wrapper around the DataFusion ``DataFrame`` returned by
-[XarrayContext.sql][xarray_sql.sql.XarrayContext.sql], with a [XarrayDataFrame.to_dataset][xarray_sql.ds.XarrayDataFrame.to_dataset]
+[Context.sql][xarray_sql.sql.Context.sql], with a [XarrayDataFrame.to_dataset][xarray_sql.ds.XarrayDataFrame.to_dataset]
 method that round-trips a query result back to ``xr.Dataset``.
 
 Reconstruction is controlled by the ``chunks`` argument to
@@ -37,6 +37,7 @@ from typing import Any, Literal, cast
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.compute as pc
 import xarray as xr
 
 from .lazyscan import DataFusionHandle, DimSpec, LazyResultHandle
@@ -144,7 +145,8 @@ def _restore_dtype(var: xr.DataArray, template: xr.DataArray) -> xr.DataArray:
     keeps the result's dtype too.
     """
     dtype = template.dtype
-    if var.dtype == dtype or not isinstance(var.data, np.ndarray):
+    # ``var.data`` would load a lazy variable; check without reading it.
+    if var.dtype == dtype or not var.variable._in_memory:
         return var
     if set(var.dims) != set(template.dims):
         return var
@@ -705,27 +707,6 @@ def _dataset_from_batches(
     return xr.Dataset(data_vars=data_vars, coords=coords_arg)
 
 
-def _materialize(
-    inner_df: Any,
-    dimension_columns: list[str],
-    field_names: list[str],
-    field_types: dict[str, Any],
-) -> xr.Dataset:
-    """Execute the query once and build a dense in-memory Dataset.
-
-    Runs the plan exactly once via ``execute_stream()`` -- streaming the result
-    as Arrow ``RecordBatch`` es (``datafusion.RecordBatch.to_pyarrow()``) -- then
-    derives both the coordinates and every data variable from that single pass.
-    This is the eager path, used when no output chunking is requested. It never
-    re-executes, so an aggregation over a remote Zarr scan costs exactly one
-    scan, regardless of how many dimensions or variables the result has.
-    """
-    batches = [b.to_pyarrow() for b in inner_df.execute_stream()]
-    return _dataset_from_batches(
-        batches, dimension_columns, field_names, field_types
-    )
-
-
 _PURE_SCAN_NODES = {"Projection", "Sort", "TableScan", "SubqueryAlias"}
 
 
@@ -799,6 +780,58 @@ def _maybe_template_coords(
     return {d: np.asarray(source.coords[d].values) for d in dimension_columns}
 
 
+_ONE_PASS_BYTES = 64 * 2**20
+"""Size up to which a lazy result that must discover its coordinates is
+read in a single pass instead."""
+
+
+def _read_or_discover(
+    handle: LazyResultHandle, columns: list[str], dimension_columns: list[str]
+) -> tuple[list[pa.RecordBatch] | None, dict[str, np.ndarray] | None]:
+    """Execute the query once: the whole result if small, else its coordinates.
+
+    A lazy result must know each dimension's coordinates before any data
+    is read. One streamed pass serves both cases. A result that fits in
+    ``_ONE_PASS_BYTES`` -- an aggregation, which no window filter can push
+    below, or a narrow selection -- is returned whole, to be built in
+    memory. Past the budget, the pass keeps going but keeps only each
+    dimension's distinct values, so discovery executes the query once
+    rather than once per dimension. Returns ``(None, None)`` for handles
+    that cannot stream, which then discover one dimension at a time.
+    """
+    stream = getattr(handle, "stream", None)
+    if stream is None:
+        return None, None
+    batches: list[pa.RecordBatch] = []
+    total = 0
+    distinct: dict[str, pa.Array] | None = None
+    for batch in stream(columns):
+        if distinct is None:
+            total += batch.nbytes
+            batches.append(batch)
+            if total <= _ONE_PASS_BYTES:
+                continue
+            # Over budget: from here on, keep only distinct coordinates.
+            distinct = {}
+            pending, batches = batches, []
+        else:
+            pending = [batch]
+        for b in pending:
+            for d in dimension_columns:
+                values = pc.unique(b.column(b.schema.names.index(d)))
+                if d in distinct:
+                    values = pc.unique(pa.concat_arrays([distinct[d], values]))
+                distinct[d] = values
+    if distinct is None:
+        return batches, None
+    return None, {
+        # Sorted, as from ``distinct``, so positional slices map onto
+        # contiguous value ranges.
+        d: np.sort(distinct[d].to_numpy(zero_copy_only=False))
+        for d in dimension_columns
+    }
+
+
 def _build_lazy_scan(
     handle: LazyResultHandle,
     dimension_columns: list[str],
@@ -808,9 +841,9 @@ def _build_lazy_scan(
 ) -> xr.Dataset:
     """Build a lazy Dataset whose data vars are [SQLBackendArray][xarray_sql.ds.SQLBackendArray].
 
-    Used when output chunking is requested: each data variable stays lazy and,
-    once wrapped by ``Dataset.chunk``, every chunk reads its coordinate range
-    via a pushdown filter on first access. Coordinates come either from the
+    Each data variable stays lazy: every access reads its coordinate range
+    via a pushdown filter, either directly or, once wrapped by
+    ``Dataset.chunk``, one chunk at a time. Coordinates come either from the
     caller (the scanned table's registered Dataset for unfiltered DataFusion
     scans -- see ``_maybe_template_coords`` -- or an explicitly trusted
     template) or from per-dim distinct queries through the handle; over a
@@ -921,9 +954,13 @@ def _result_to_xarray(
     ``chunks`` (already resolved by ``XarrayDataFrame._resolve_chunks``)
     selects the execution strategy:
 
-    * ``None`` -> eager: execute once and materialize a dense Dataset
-      (``_materialize``). Correct for any query and the right default for
-      reductions, whose results are small.
+    * ``None`` -> lazy, unchunked: the data variables are lazily indexed
+      [SQLBackendArray][xarray_sql.ds.SQLBackendArray]s, so each access
+      re-executes the query narrowed to the selection and projected to
+      the variable read. No chunk manager is involved. A result whose
+      coordinates must be discovered is first streamed in one pass, which
+      keeps it in memory if small (``_read_or_discover``), so an
+      aggregation executes once.
     * a mapping (or ``"auto"``) -> lazy/chunked: build [SQLBackendArray][xarray_sql.ds.SQLBackendArray]
       data variables (``_build_lazy_scan``) and wrap them with
       ``Dataset.chunk`` so each chunk reads its coordinate range via filter
@@ -944,17 +981,26 @@ def _result_to_xarray(
     field_names = [f.name for f in schema]
     field_types = {f.name: f.type for f in schema}
 
-    if chunks is None:
-        ds = _materialize(inner_df, dimension_columns, field_names, field_types)
+    handle = DataFusionHandle(inner_df)
+    coord_arrays = _maybe_template_coords(
+        templates, dimension_columns, inner_df
+    )
+    batches = None
+    if chunks is None and coord_arrays is None:
+        batches, coord_arrays = _read_or_discover(
+            handle, field_names, dimension_columns
+        )
+    if batches is not None:
+        ds = _dataset_from_batches(
+            batches, dimension_columns, field_names, field_types
+        )
     else:
         ds = _build_lazy_scan(
-            DataFusionHandle(inner_df),
+            handle,
             dimension_columns,
             field_names,
             field_types,
-            coord_arrays=_maybe_template_coords(
-                templates, dimension_columns, inner_df
-            ),
+            coord_arrays=coord_arrays,
         )
     return _finish_dataset(
         ds,
@@ -1012,7 +1058,7 @@ def _finish_dataset(
 class XarrayDataFrame:
     """Wrapper around a DataFusion ``DataFrame`` with xarray-aware helpers.
 
-    Returned by [xarray_sql.XarrayContext.sql][]. Forwards every
+    Returned by [xarray_sql.Context.sql][]. Forwards every
     attribute it does not define itself to the wrapped DataFrame, so
     ``.collect()``, ``.schema()``, ``.show()``, ``.count()`` all work
     unchanged.
@@ -1022,7 +1068,7 @@ class XarrayDataFrame:
     dropped by the forward pivot.
 
     Users should not construct this class directly; let
-    [XarrayContext.sql][xarray_sql.sql.XarrayContext.sql] produce it.
+    [Context.sql][xarray_sql.sql.Context.sql] produce it.
     """
 
     def __init__(
@@ -1034,7 +1080,7 @@ class XarrayDataFrame:
 
         Args:
             inner: The underlying ``datafusion.DataFrame`` returned by
-                [XarrayContext.sql][xarray_sql.sql.XarrayContext.sql].
+                [Context.sql][xarray_sql.sql.Context.sql].
             templates: Snapshot of the registered Datasets on the producing
                 context, keyed by the SQL identifier each was registered
                 under. Used by ``to_dataset`` to recover metadata that
@@ -1084,11 +1130,15 @@ class XarrayDataFrame:
                   sizes, but only for dimensions that were genuinely split into
                   multiple chunks in the input -- so the output chunk grid maps
                   onto the source partitions. A reduction that drops the chunked
-                  dimension (e.g. a global aggregation) inherits nothing and so
-                  is materialized eagerly. Falls back to eager when no source
-                  Dataset is resolvable.
-                * ``None``: eager. Execute the query once and return a dense
-                  in-memory Dataset. Best for reductions (small results).
+                  dimension (e.g. a global aggregation) inherits nothing, and
+                  neither does a result with no resolvable source Dataset;
+                  both are returned as with ``None``.
+                * ``None``: lazy without a chunk manager, as with
+                  ``xr.open_dataset(chunks=None)``. Each access re-executes
+                  the query narrowed to the selection and projected to the
+                  variable read, so ``.load()`` executes it once per
+                  variable. Dask is not required. The context must stay
+                  usable while the result is read.
                 * a mapping (e.g. ``{"time": 100}``): chunk explicitly. Each
                   chunk reads its coordinate range lazily via filter pushdown on
                   access, through xarray's configured chunk manager (dask,
@@ -1138,11 +1188,11 @@ class XarrayDataFrame:
     ) -> Mapping[str, int] | str | None:
         """Resolve the ``chunks`` argument to a concrete spec or ``None``.
 
-        ``None`` selects the eager path; anything else selects the lazy/chunked
-        path. ``"inherit"`` reuses the source Dataset's chunk sizes -- but only
-        for dimensions actually split into more than one chunk in the input
-        (a single full chunk is not "chunked"), so reductions that drop the
-        chunked dimension resolve to ``None`` (eager) automatically. Mappings
+        ``None`` selects the lazy, unchunked path; anything else selects the
+        chunked path. ``"inherit"`` reuses the source Dataset's chunk sizes --
+        but only for dimensions actually split into more than one chunk in the
+        input (a single full chunk is not "chunked"), so reductions that drop
+        the chunked dimension resolve to ``None`` automatically. Mappings
         pass through unchanged; ``"auto"`` passes through here and is snapped to
         source partition boundaries later (see ``_auto_chunks``).
         """

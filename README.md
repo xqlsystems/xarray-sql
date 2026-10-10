@@ -40,7 +40,7 @@ import xarray_sql as xql
 # 4x-daily surface air temperature on a lat/lon grid, 2013-2014.
 ds = xr.tutorial.open_dataset('air_temperature')
 
-ctx = xql.XarrayContext()
+ctx = xql.Context()
 ctx.from_dataset('air', ds, chunks=dict(time=100))
 
 # A climatology — the mean annual cycle — computed in SQL: average air
@@ -110,8 +110,9 @@ ds = xr.open_zarr(
   storage_options={'token': 'anon'}  # Anonymous read from the public GCS bucket — no auth required.
 )
 
-ctx = xql.XarrayContext()
-# Make sure to pass `chunks`!
+ctx = xql.Context()
+# `chunks` sets the partition size; without it, partitions follow the
+# store's own chunks (one hour each here).
 ctx.from_dataset('era5', ds, chunks=dict(time=6), table_names={
     ('time', 'latitude', 'longitude'): 'surface',
     ('time', 'level', 'latitude', 'longitude'): 'atmosphere',

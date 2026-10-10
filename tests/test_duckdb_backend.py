@@ -271,9 +271,14 @@ def test_or_and_in_filters_round_trip(ds):
     xr.testing.assert_allclose(out, expected)
 
 
-def test_pushdown_dataset_rejects_unchunked_dataset(ds):
-    with pytest.raises(ValueError, match="must be chunked"):
-        XarrayPushdownDataset(ds.compute())
+def test_unchunked_dataset_round_trips(ds):
+    con = duckdb.connect()
+    xql.register(con, "weather", ds.compute())
+    rel = con.sql(
+        "SELECT time, lat, lon, temperature, precipitation FROM weather "
+        "ORDER BY time, lat, lon"
+    )
+    xr.testing.assert_identical(xql.to_dataset(rel, template=ds), ds.compute())
 
 
 def test_fully_pruned_scan_returns_empty(con, ds):

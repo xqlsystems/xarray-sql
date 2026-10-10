@@ -1,0 +1,102 @@
+name: ci-wasm
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  # publish.yml calls this to add the Pyodide wheel to each release.
+  workflow_call:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The Pyodide release to build for. Its Python version, Emscripten version,
+  # and Rust toolchain all come from this release's cross-build environment.
+  PYODIDE_VERSION: "314.0.7"
+
+jobs:
+  build:
+    name: Pyodide wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # pyodide-build requires the host Python to match Pyodide's Python.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install pyodide-build and the cross-build environment
+        run: |
+          pip install pyodide-build
+          pyodide xbuildenv install "$PYODIDE_VERSION"
+          echo "RUST_TOOLCHAIN=$(pyodide config get rust_toolchain)" >> "$GITHUB_ENV"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-emscripten
+
+      - name: Install Emscripten
+        run: pyodide xbuildenv install-emscripten
+
+      - name: Build
+        env:
+          # The Flight SQL server needs sockets and threads; the wasm
+          # profile optimizes for download size (see Cargo.toml).
+          MATURIN_PEP517_ARGS: --no-default-features --profile wasm
+        run: pyodide build -o dist
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Query a Dataset with DuckDB in Pyodide
+        run: |
+          npm install --no-save "pyodide@$PYODIDE_VERSION"
+          cat > smoke.mjs <<'EOF'
+          import { loadPyodide } from "pyodide";
+          import { readdirSync, readFileSync } from "node:fs";
+          const wheel = readdirSync("dist").find((f) => f.endsWith(".whl"));
+          const py = await loadPyodide();
+          await py.loadPackage("micropip");
+          py.FS.writeFile(`/tmp/${wheel}`, readFileSync(`dist/${wheel}`));
+          await py.runPythonAsync(`
+          import micropip
+          await micropip.install(["emfs:/tmp/${wheel}", "duckdb"])
+
+          import importlib.util
+
+          import duckdb
+          import numpy as np
+          import pandas as pd
+          import xarray as xr
+          import xarray_sql as xql
+
+          ds = xr.Dataset(
+              {"air": (("time", "lat"), np.arange(12.0).reshape(4, 3))},
+              coords={
+                  "time": pd.date_range("2020-01-01", periods=4),
+                  "lat": [10.0, 20.0, 30.0],
+              },
+          )
+          con = duckdb.connect()
+          xql.register(con, "air", ds, chunks={"time": 2})
+          rel = con.sql("SELECT time, lat, air FROM air ORDER BY time, lat")
+          xr.testing.assert_identical(xql.to_dataset(rel, template=ds), ds)
+          assert not hasattr(xql, "Context")
+          assert importlib.util.find_spec("dask") is None
+          `);
+          console.log(`${wheel} round-trips through DuckDB in Pyodide ${py.version}`);
+          EOF
+          node smoke.mjs
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: pyodide-dist
+          path: dist/*.whl

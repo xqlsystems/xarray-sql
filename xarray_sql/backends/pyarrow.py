@@ -42,6 +42,7 @@ import pyarrow.fs as pafs
 import xarray as xr
 
 from ..df import (
+    _CAN_START_THREADS,
     Block,
     Chunks,
     DEFAULT_BATCH_SIZE,
@@ -57,8 +58,10 @@ from ..df import (
 from ..geometry import GEOMETRY_COLUMN, build_geometry, geometry_field
 from ..reader import XarrayRecordBatchReader
 
-DEFAULT_PREFETCH = 4
-"""Chunk loads kept in flight ahead of the consumer during a scan."""
+DEFAULT_PREFETCH = 4 if _CAN_START_THREADS else 1
+"""Chunk loads kept in flight ahead of the consumer during a scan.
+
+Where threads are unavailable (Pyodide), chunks load one at a time."""
 
 _SHADOW_FANOUT = 1024
 """Maximum fragments per shadow level.
@@ -340,10 +343,6 @@ class XarrayPushdownDataset(pads.Dataset):
                 geometry_field(geometry_encoding, geometry_crs)
             )
         self._resolved = resolve_chunks(ds, chunks)
-        if not self._resolved and ds.sizes:
-            raise ValueError(
-                "Dataset `ds` must be chunked or `chunks` must be provided."
-            )
         self._chunk_bounds = {
             d: np.cumsum((0, *sizes)) for d, sizes in self._resolved.items()
         }
@@ -1102,7 +1101,8 @@ def arrow_dataset(
         ds: An xarray Dataset. All data variables must share the same
             dimensions (select a variable subset first otherwise).
         chunks: Xarray-like chunks specification controlling partition
-            granularity. Defaults to the Dataset's existing chunks.
+            granularity. Defaults to the Dataset's existing chunks, or for
+            an unchunked Dataset its storage chunks.
         batch_size: Maximum rows per emitted Arrow RecordBatch.
         prefetch: Chunk loads kept in flight ahead of the consumer
             (memory scales with ``prefetch`` x pivoted chunk size).
@@ -1186,7 +1186,7 @@ def arrow_datasets(
         chunks: Xarray-like chunks specification controlling partition
             granularity. Keys naming dimensions a group does not have are
             ignored for that group. Defaults to the Dataset's existing
-            chunks.
+            chunks, or for an unchunked Dataset its storage chunks.
         table_names: Maps a dimension group's exact dim tuple to the name
             its table takes, e.g.
             ``{('time', 'latitude', 'longitude'): 'surface'}``. Groups
