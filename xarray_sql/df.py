@@ -67,8 +67,10 @@ def resolve_chunks(
 
     Filters out keys for dims this dataset doesn't have (sub-datasets in a
     heterogeneous group need not contain every dimension named in the
-    spec), then either rechunks arithmetically via ``compute_chunks`` or
-    falls back to the dataset's existing dask chunks.
+    spec), then rechunks arithmetically via ``compute_chunks``. Without a
+    spec, a chunked dataset keeps its chunks; an unchunked one (in memory,
+    or opened lazily without a chunk manager) is split along the storage
+    chunks its backend recorded, and is one chunk along other dimensions.
 
     Returns an empty mapping for scalar datasets; callers should treat that
     as "one block covering everything".
@@ -77,7 +79,22 @@ def resolve_chunks(
         chunks = {dim: size for dim, size in chunks.items() if dim in ds.sizes}
     if chunks:
         return compute_chunks(ds, chunks)
-    return {d: tuple(c) for d, c in ds.chunks.items()}
+    if ds.chunks:
+        return {d: tuple(c) for d, c in ds.chunks.items()}
+    return compute_chunks(ds, _storage_chunks(ds))
+
+
+def _storage_chunks(ds: xr.Dataset) -> dict[str, int]:
+    """Chunk sizes from the backend's ``preferred_chunks`` encoding.
+
+    Zarr and NetCDF backends record each variable's on-disk chunking there.
+    Where variables disagree on a dimension, the first one wins.
+    """
+    chunks: dict[str, int] = {}
+    for var in ds.data_vars.values():
+        for dim, size in var.encoding.get("preferred_chunks", {}).items():
+            chunks.setdefault(dim, size)
+    return chunks
 
 
 def _ensure_default_indexes(ds: xr.Dataset) -> xr.Dataset:
@@ -103,12 +120,8 @@ def _block_slices_from_resolved(
 ) -> Iterator[Block]:
     """Emit blocks given pre-resolved per-dim chunk tuples."""
     if not resolved:
-        # No chunkable dimensions. A dimensionless dataset (e.g. scalar
-        # metadata variables) is a single block; a dataset that has
-        # dimensions but no chunking is a user error.
-        assert not ds.sizes, (
-            "Dataset `ds` must be chunked or `chunks` must be provided."
-        )
+        # A dimensionless dataset (e.g. scalar metadata variables) is a
+        # single block.
         yield {}
         return
 

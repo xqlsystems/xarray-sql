@@ -2834,7 +2834,6 @@ io = [
 name = "xarray-sql"
 source = { editable = "." }
 dependencies = [
-    { name = "dask" },
     { name = "datafusion", marker = "sys_platform != 'emscripten'" },
     { name = "pyarrow" },
     { name = "xarray", version = "2025.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -2844,6 +2843,9 @@ dependencies = [
 [package.optional-dependencies]
 adbc = [
     { name = "adbc-driver-manager" },
+]
+dask = [
+    { name = "dask" },
 ]
 dev = [
     { name = "mkdocstrings", extra = ["python"] },
@@ -2871,6 +2873,7 @@ test = [
     { name = "adbc-driver-manager" },
     { name = "adbc-driver-sqlite" },
     { name = "cftime" },
+    { name = "dask" },
     { name = "duckdb" },
     { name = "gcsfs" },
     { name = "polars" },
@@ -2895,7 +2898,7 @@ requires-dist = [
     { name = "adbc-driver-manager", marker = "extra == 'adbc'", specifier = ">=1.12" },
     { name = "adbc-driver-sqlite", marker = "extra == 'test'", specifier = ">=1.12" },
     { name = "cftime", marker = "extra == 'test'" },
-    { name = "dask", specifier = ">=2024.8.0" },
+    { name = "dask", marker = "extra == 'dask'", specifier = ">=2024.8.0" },
     { name = "datafusion", marker = "sys_platform != 'emscripten'", specifier = "==54.0.0" },
     { name = "duckdb", marker = "extra == 'duckdb'", specifier = ">=1.4.0" },
     { name = "gcsfs", marker = "extra == 'test'" },
@@ -2909,11 +2912,11 @@ requires-dist = [
     { name = "watchfiles", marker = "extra == 'dev'" },
     { name = "xarray", specifier = ">=2024.7.0" },
     { name = "xarray", extras = ["io"], marker = "extra == 'test'" },
-    { name = "xarray-sql", extras = ["adbc", "duckdb", "polars", "geo"], marker = "extra == 'test'" },
+    { name = "xarray-sql", extras = ["adbc", "dask", "duckdb", "polars", "geo"], marker = "extra == 'test'" },
     { name = "xarray-sql", extras = ["docs"], marker = "extra == 'dev'" },
     { name = "zensical", marker = "extra == 'docs'" },
 ]
-provides-extras = ["adbc", "dev", "docs", "duckdb", "geo", "polars", "test"]
+provides-extras = ["adbc", "dask", "dev", "docs", "duckdb", "geo", "polars", "test"]
 
 [package.metadata.requires-dev]
 dev = [

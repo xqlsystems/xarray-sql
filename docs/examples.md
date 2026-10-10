@@ -66,15 +66,15 @@ url = 'gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3'
 full = xr.open_zarr(url, chunks=None, storage_options={'token': 'anon'})
 
 # A full year of hourly ERA5 — all 273 variables. No spatial slicing on the
-# xarray side; SQL WHERE clauses below express the filters. `chunks={'time': 1}`
-# aligns Dask chunks to native Zarr chunks of shape (1, 37, 721, 1440) so
-# chunk reads from GCS happen concurrently.
+# xarray side; SQL WHERE clauses below express the filters. Each table
+# partition is one native Zarr chunk of shape (1, 37, 721, 1440); pass
+# `chunks=` to `from_dataset` to group several into one partition.
 #
 # Heads up: 262 of those variables are surface and 11 are atmospheric. The
 # library pushes column projection down, so SELECT only fetches what you ask
 # for — but `SELECT * FROM era5.surface` would try to pull every variable
 # across the year (terabytes from GCS). Always SELECT specific columns.
-ds = full.sel(time='2020').chunk({'time': 1})
+ds = full.sel(time='2020')
 
 ctx = xql.Context()
 ctx.from_dataset('era5', ds, table_names={

@@ -77,7 +77,8 @@ class XarrayRecordBatchReader:
         Args:
             ds: An xarray Dataset. All data_vars must share the same dimensions.
             chunks: Xarray-like chunks specification. If not provided, uses
-                the Dataset's existing chunks.
+                the Dataset's existing chunks, or for an unchunked Dataset
+                its storage chunks.
             batch_size: Maximum rows per emitted Arrow RecordBatch.  Smaller
                 values let DataFusion start processing earlier at the cost of
                 more Python→Arrow conversion calls.
@@ -179,7 +180,8 @@ def read_xarray(ds: xr.Dataset, chunks: Chunks = None) -> pa.RecordBatchReader:
     Args:
       ds: An Xarray Dataset. All `data_vars` must share the same dimensions.
       chunks: Xarray-like chunks. If not provided, will default to the
-        Dataset's chunks. The product of the chunk sizes becomes the
+        Dataset's chunks, or for an unchunked Dataset its storage chunks.
+        The product of the chunk sizes becomes the
         standard length of each dataframe partition.
 
     Returns:
@@ -223,7 +225,8 @@ def read_xarray_table(
     Args:
         ds: An xarray Dataset. All data_vars must share the same dimensions.
         chunks: Xarray-like chunks specification. If not provided, uses
-            the Dataset's existing chunks.
+            the Dataset's existing chunks, or for an unchunked Dataset its
+            storage chunks.
         batch_size: Maximum rows per Arrow RecordBatch emitted per partition.
             Smaller values let DataFusion start processing earlier; the default
             (65 536) works well for most datasets.

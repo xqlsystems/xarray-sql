@@ -111,7 +111,8 @@ ds = xr.open_zarr(
 )
 
 ctx = xql.Context()
-# Make sure to pass `chunks`!
+# `chunks` sets the partition size; without it, partitions follow the
+# store's own chunks (one hour each here).
 ctx.from_dataset('era5', ds, chunks=dict(time=6), table_names={
     ('time', 'latitude', 'longitude'): 'surface',
     ('time', 'level', 'latitude', 'longitude'): 'atmosphere',

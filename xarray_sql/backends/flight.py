@@ -120,7 +120,8 @@ class FlightSQLServer:
                 mixed-dimension Dataset.
             ds: An xarray Dataset.
             chunks: Xarray-like chunks specification controlling partition
-                granularity. Defaults to the Dataset's existing chunks.
+                granularity. Defaults to the Dataset's existing chunks, or
+                for an unchunked Dataset its storage chunks.
             table_names: Maps a dimension group's exact dim tuple to the
                 name its table takes.
 

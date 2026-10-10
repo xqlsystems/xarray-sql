@@ -88,11 +88,9 @@ def test_block_slices_filters_chunk_keys_to_dataset_dims(air_small):
     assert len(extra) == len(base)
 
 
-def test_block_slices_dimensional_unchunked_raises():
-    # A dataset with dimensions but no chunking is still a user error.
+def test_block_slices_unchunked_is_one_block():
     ds = xr.Dataset({"v": (["x"], np.arange(3))}, coords={"x": np.arange(3)})
-    with pytest.raises(AssertionError):
-        list(block_slices(ds))
+    assert list(block_slices(ds)) == [{"x": slice(0, 3)}]
 
 
 def test_from_map_basic():

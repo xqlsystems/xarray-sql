@@ -70,6 +70,8 @@ jobs:
           import micropip
           await micropip.install(["emfs:/tmp/${wheel}", "duckdb"])
 
+          import importlib.util
+
           import duckdb
           import numpy as np
           import pandas as pd
@@ -82,12 +84,13 @@ jobs:
                   "time": pd.date_range("2020-01-01", periods=4),
                   "lat": [10.0, 20.0, 30.0],
               },
-          ).chunk({"time": 2})
+          )
           con = duckdb.connect()
-          xql.register(con, "air", ds)
+          xql.register(con, "air", ds, chunks={"time": 2})
           rel = con.sql("SELECT time, lat, air FROM air ORDER BY time, lat")
-          xr.testing.assert_identical(xql.to_dataset(rel, template=ds), ds.compute())
+          xr.testing.assert_identical(xql.to_dataset(rel, template=ds), ds)
           assert not hasattr(xql, "Context")
+          assert importlib.util.find_spec("dask") is None
           `);
           console.log(`${wheel} round-trips through DuckDB in Pyodide ${py.version}`);
           EOF

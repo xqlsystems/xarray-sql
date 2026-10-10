@@ -103,7 +103,8 @@ class Context(SessionContext):
                 table names within the schema, used when the dataset has
                 variables with differing dimensions.
             chunks: Xarray-like chunks specification. If not provided, uses
-                the Dataset's existing chunks.
+                the Dataset's existing chunks, or for an unchunked Dataset
+                its storage chunks (see [register][xarray_sql.register]).
 
         Returns:
             self, to allow chaining.
