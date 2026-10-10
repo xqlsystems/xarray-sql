@@ -20,16 +20,22 @@ async function start() {
         "available in Chrome and Edge 137 or newer.",
     );
   }
-  status("Loading Pyodide…");
-  const py = await loadPyodide();
-  await py.loadPackage("micropip");
-  status("Installing xarray-sql, DuckDB, and zarr…");
-  for (const module of ["app.py", "chunk_cache.py", "fetch_store.py"]) {
-    const response = await fetch(new URL(module, import.meta.url));
-    py.FS.writeFile(module, await response.text());
-  }
+  status("Loading Pyodide and packages…");
+  // Everything Pyodide ships is fetched in parallel while the runtime
+  // boots; micropip then only resolves xarray-sql and dask from PyPI.
+  const modules = Promise.all(
+    ["app.py", "chunk_cache.py", "fetch_store.py"].map(async (name) => {
+      const response = await fetch(new URL(name, import.meta.url));
+      return [name, await response.text()];
+    }),
+  );
+  const py = await loadPyodide({
+    packages: ["micropip", "duckdb", "pyarrow", "xarray", "zarr", "toolz", "click", "cloudpickle", "fsspec", "pyyaml"],
+  });
+  for (const [name, source] of await modules) py.FS.writeFile(name, source);
+  status("Installing xarray-sql…");
   const micropip = py.pyimport("micropip");
-  await micropip.install([wheel ?? "xarray-sql", "duckdb", "zarr"]);
+  await micropip.install([wheel ?? "xarray-sql", "dask"]);
   status("Opening the dataset…");
   const app = py.pyimport("app");
   postMessage({ type: "ready", info: JSON.parse(await app.setup()) });
