@@ -76,7 +76,7 @@ pyodide xbuildenv install "$PYODIDE_VERSION"
 rustup toolchain install "$(pyodide config get rust_toolchain)" \
   --target wasm32-unknown-emscripten
 pyodide xbuildenv install-emscripten
-MATURIN_PEP517_ARGS=--no-default-features pyodide build -o dist
+MATURIN_PEP517_ARGS="--no-default-features --profile wasm" pyodide build -o dist
 ```
 
 On NixOS, run these commands in `nix run .#wasm-shell`. This shell is an

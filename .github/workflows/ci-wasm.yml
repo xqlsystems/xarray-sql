@@ -47,8 +47,9 @@ jobs:
 
       - name: Build
         env:
-          # The Flight SQL server needs sockets and threads.
-          MATURIN_PEP517_ARGS: --no-default-features
+          # The Flight SQL server needs sockets and threads; the wasm
+          # profile optimizes for download size (see Cargo.toml).
+          MATURIN_PEP517_ARGS: --no-default-features --profile wasm
         run: pyodide build -o dist
 
       - uses: actions/setup-node@v4
