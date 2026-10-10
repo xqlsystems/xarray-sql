@@ -64,24 +64,28 @@ def test_duckdb_chunked_fails_fast_with_guidance(source, registered):
 def test_duckdb_lazy_reads_only_the_accessed_window(source, registered):
     con, reads = registered
     rel = con.sql("SELECT * FROM t")
-    out = xql.to_dataset(rel, template=source, lazy=True)
+    # Trusting the template's coords skips discovery, so nothing is read
+    # until the data is accessed.
+    out = xql.to_dataset(rel, template=source, coords="template")
     assert not out.chunks  # no chunk manager involved
-    reads.clear()
+    assert reads == []
     window = out.t2m.isel(time=slice(0, 5))
     xr.testing.assert_allclose(window.load(), source.t2m.isel(time=slice(0, 5)))
     assert len(reads) == 1  # the first of ten time chunks
     xr.testing.assert_allclose(out.load(), source)
 
 
-def test_lazy_false_with_chunks_raises(source, registered):
-    con, _ = registered
-    with pytest.raises(ValueError, match="lazy=False"):
-        xql.to_dataset(
-            con.sql("SELECT * FROM t"),
-            template=source,
-            chunks={"time": 10},
-            lazy=False,
-        )
+def test_duckdb_small_result_scans_source_once(source, registered):
+    con, reads = registered
+    rel = con.sql(
+        "SELECT lat, AVG(t2m) AS t2m FROM t GROUP BY lat ORDER BY lat"
+    )
+    out = xql.to_dataset(rel, template=source)
+    assert len(reads) == 10  # each source chunk once
+    xr.testing.assert_allclose(
+        out.t2m.load(), source.t2m.mean("time"), check_dim_order=False
+    )
+    assert len(reads) == 10
 
 
 def test_duckdb_eager_round_trip_through_handle(source, registered):

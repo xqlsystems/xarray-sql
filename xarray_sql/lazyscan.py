@@ -275,6 +275,15 @@ class DuckDBHandle:
             self._run(lambda: list(self._to_arrow_reader(rel))),
         )
 
+    def stream(self, columns: list[str]) -> Iterator[pa.RecordBatch]:
+        """Execute once, yielding Arrow batches as DuckDB produces them."""
+        import duckdb
+
+        rel = self._rel.project(*(duckdb.ColumnExpression(n) for n in columns))
+        batches = self._run(lambda: iter(self._to_arrow_reader(rel)))
+        while (batch := self._run(lambda: next(batches, None))) is not None:
+            yield batch
+
     def spill_parquet(self, path: str) -> None:
         def run() -> None:
             reader = self._to_arrow_reader(self._rel)

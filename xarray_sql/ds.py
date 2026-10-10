@@ -30,6 +30,7 @@ result is partitioned -- rather than by reflecting on the query plan:
 
 from __future__ import annotations
 
+import threading
 import warnings
 from collections.abc import Mapping
 from typing import Any, Literal, cast
@@ -705,27 +706,6 @@ def _dataset_from_batches(
     return xr.Dataset(data_vars=data_vars, coords=coords_arg)
 
 
-def _materialize(
-    inner_df: Any,
-    dimension_columns: list[str],
-    field_names: list[str],
-    field_types: dict[str, Any],
-) -> xr.Dataset:
-    """Execute the query once and build a dense in-memory Dataset.
-
-    Runs the plan exactly once via ``execute_stream()`` -- streaming the result
-    as Arrow ``RecordBatch`` es (``datafusion.RecordBatch.to_pyarrow()``) -- then
-    derives both the coordinates and every data variable from that single pass.
-    This is the eager path, used when no output chunking is requested. It never
-    re-executes, so an aggregation over a remote Zarr scan costs exactly one
-    scan, regardless of how many dimensions or variables the result has.
-    """
-    batches = [b.to_pyarrow() for b in inner_df.execute_stream()]
-    return _dataset_from_batches(
-        batches, dimension_columns, field_names, field_types
-    )
-
-
 _PURE_SCAN_NODES = {"Projection", "Sort", "TableScan", "SubqueryAlias"}
 
 
@@ -799,6 +779,83 @@ def _maybe_template_coords(
     return {d: np.asarray(source.coords[d].values) for d in dimension_columns}
 
 
+_ONE_PASS_BYTES = 64 * 2**20
+"""Size up to which a lazy result that must discover its coordinates is
+read in a single pass instead."""
+
+
+def _read_small_result(
+    handle: LazyResultHandle, columns: list[str]
+) -> list[pa.RecordBatch] | None:
+    """The whole result if it fits in ``_ONE_PASS_BYTES``, else ``None``.
+
+    Discovering a lazy result's coordinates executes the query once per
+    dimension, and loading it executes the query again. For a small
+    result -- an aggregation, which no window filter can push below, or a
+    narrow selection -- one streamed pass is cheaper than both. A result
+    that outgrows the budget stops streaming and stays lazy.
+    """
+    stream = getattr(handle, "stream", None)
+    if stream is None:
+        return None
+    batches: list[pa.RecordBatch] = []
+    total = 0
+    it = stream(columns)
+    try:
+        for batch in it:
+            total += batch.nbytes
+            if total > _ONE_PASS_BYTES:
+                return None
+            batches.append(batch)
+    finally:
+        close = getattr(it, "close", None)
+        if close is not None:
+            close()
+    return batches
+
+
+class _SharedFullFetch:
+    """Shares one full-extent fetch among a lazy Dataset's variables.
+
+    Loading a whole lazy Dataset (``.load()``, or ``.values`` on every
+    variable) reads each variable at full extent. Fetched separately, that
+    executes the query once per variable -- for an aggregation, once per
+    variable over the whole source. Instead, the first full-extent read
+    fetches every result column, and the other variables take theirs from
+    it; the batches are released once every variable has. Windowed reads
+    still fetch only their own column, so projection pushdown is kept.
+    """
+
+    def __init__(
+        self, handle: LazyResultHandle, columns: list[str], variables: list[str]
+    ) -> None:
+        self._handle = handle
+        self._columns = columns
+        self._variables = frozenset(variables)
+        self._pending: set[str] = set()
+        self._batches: list[pa.RecordBatch] | None = None
+        self._lock = threading.Lock()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._handle, name)
+
+    def fetch(
+        self, specs: dict[str, DimSpec], columns: list[str]
+    ) -> list[pa.RecordBatch]:
+        if specs:
+            return self._handle.fetch(specs, columns)
+        (variable,) = (c for c in columns if c in self._variables)
+        with self._lock:
+            if self._batches is None:
+                self._batches = self._handle.fetch({}, self._columns)
+                self._pending = set(self._variables)
+            batches = self._batches
+            self._pending.discard(variable)
+            if not self._pending:
+                self._batches = None
+        return batches
+
+
 def _build_lazy_scan(
     handle: LazyResultHandle,
     dimension_columns: list[str],
@@ -808,9 +865,9 @@ def _build_lazy_scan(
 ) -> xr.Dataset:
     """Build a lazy Dataset whose data vars are [SQLBackendArray][xarray_sql.ds.SQLBackendArray].
 
-    Used when output chunking is requested: each data variable stays lazy and,
-    once wrapped by ``Dataset.chunk``, every chunk reads its coordinate range
-    via a pushdown filter on first access. Coordinates come either from the
+    Each data variable stays lazy: every access reads its coordinate range
+    via a pushdown filter, either directly or, once wrapped by
+    ``Dataset.chunk``, one chunk at a time. Coordinates come either from the
     caller (the scanned table's registered Dataset for unfiltered DataFusion
     scans -- see ``_maybe_template_coords`` -- or an explicitly trusted
     template) or from per-dim distinct queries through the handle; over a
@@ -824,6 +881,8 @@ def _build_lazy_scan(
             # positional slices map onto contiguous value ranges.
             coord_arrays[d] = np.sort(handle.distinct(d))
     shape = tuple(len(coord_arrays[d]) for d in dimension_columns)
+    variables = [n for n in field_names if n not in dimension_columns]
+    shared = _SharedFullFetch(handle, dimension_columns + variables, variables)
 
     data_vars: dict[str, xr.Variable] = {}
     for name in field_names:
@@ -831,7 +890,7 @@ def _build_lazy_scan(
             continue
         np_dtype = field_types[name].to_pandas_dtype()
         backend = SQLBackendArray(
-            handle=handle,
+            handle=shared,
             var_name=name,
             dimension_columns=dimension_columns,
             coord_arrays=coord_arrays,
@@ -915,20 +974,19 @@ def _result_to_xarray(
     fill_value: Any,
     chunks: Mapping[str, int] | str | None,
     templates: dict[str, xr.Dataset] | None = None,
-    lazy: bool = False,
 ) -> xr.Dataset:
     """Reconstruct an ``xr.Dataset`` from a SQL result.
 
     ``chunks`` (already resolved by ``XarrayDataFrame._resolve_chunks``)
-    and ``lazy`` select the execution strategy:
+    selects the execution strategy:
 
-    * ``None`` -> eager: execute once and materialize a dense Dataset
-      (``_materialize``). Correct for any query and the right default for
-      reductions, whose results are small.
-    * ``None`` with ``lazy=True`` -> lazy, unchunked: the data variables
-      are lazily indexed [SQLBackendArray][xarray_sql.ds.SQLBackendArray]s,
-      so each access re-executes the query narrowed to the selection. No
-      chunk manager is involved.
+    * ``None`` -> lazy, unchunked: the data variables are lazily indexed
+      [SQLBackendArray][xarray_sql.ds.SQLBackendArray]s, so each access
+      re-executes the query narrowed to the selection, and ``.load()``
+      executes it once for every variable. No chunk manager is involved.
+      A result whose coordinates must be discovered is first streamed in
+      one pass and kept in memory if small (``_read_small_result``), so an
+      aggregation executes once.
     * a mapping (or ``"auto"``) -> lazy/chunked: build [SQLBackendArray][xarray_sql.ds.SQLBackendArray]
       data variables (``_build_lazy_scan``) and wrap them with
       ``Dataset.chunk`` so each chunk reads its coordinate range via filter
@@ -949,17 +1007,24 @@ def _result_to_xarray(
     field_names = [f.name for f in schema]
     field_types = {f.name: f.type for f in schema}
 
-    if chunks is None and not lazy:
-        ds = _materialize(inner_df, dimension_columns, field_names, field_types)
+    handle = DataFusionHandle(inner_df)
+    coord_arrays = _maybe_template_coords(
+        templates, dimension_columns, inner_df
+    )
+    batches = None
+    if chunks is None and coord_arrays is None:
+        batches = _read_small_result(handle, field_names)
+    if batches is not None:
+        ds = _dataset_from_batches(
+            batches, dimension_columns, field_names, field_types
+        )
     else:
         ds = _build_lazy_scan(
-            DataFusionHandle(inner_df),
+            handle,
             dimension_columns,
             field_names,
             field_types,
-            coord_arrays=_maybe_template_coords(
-                templates, dimension_columns, inner_df
-            ),
+            coord_arrays=coord_arrays,
         )
     return _finish_dataset(
         ds,
@@ -1061,7 +1126,6 @@ class XarrayDataFrame:
         sparsity: Sparsity = "result",
         fill_value: Any = np.nan,
         chunks: Mapping[str, int] | str | None = "inherit",
-        lazy: bool | None = None,
     ) -> xr.Dataset:
         """Convert the result to an ``xr.Dataset``.
 
@@ -1090,11 +1154,13 @@ class XarrayDataFrame:
                   sizes, but only for dimensions that were genuinely split into
                   multiple chunks in the input -- so the output chunk grid maps
                   onto the source partitions. A reduction that drops the chunked
-                  dimension (e.g. a global aggregation) inherits nothing and so
-                  is materialized eagerly. Falls back to eager when no source
-                  Dataset is resolvable.
-                * ``None``: eager. Execute the query once and return a dense
-                  in-memory Dataset. Best for reductions (small results).
+                  dimension (e.g. a global aggregation) inherits nothing, and
+                  neither does a result with no resolvable source Dataset;
+                  both are returned as with ``None``.
+                * ``None``: lazy without a chunk manager, as with
+                  ``xr.open_dataset(chunks=None)``. Each access re-executes
+                  the query narrowed to the selection; ``.load()`` executes
+                  it once for all variables. Dask is not required.
                 * a mapping (e.g. ``{"time": 100}``): chunk explicitly. Each
                   chunk reads its coordinate range lazily via filter pushdown on
                   access, through xarray's configured chunk manager (dask,
@@ -1104,15 +1170,6 @@ class XarrayDataFrame:
                   union of source partitions. Useful for finely partitioned
                   sources (e.g. ERA5 ``chunks={"time": 1}``), coarsening many
                   tiny partitions into memory-sized, aligned chunks.
-            lazy: Whether to defer execution until the data is accessed.
-                ``None`` (default) is lazy exactly when ``chunks`` resolves
-                to a chunking. ``True`` without chunking returns lazily
-                indexed variables: each access, such as
-                ``out.t2m.sel(time="2020-01").values``, re-executes the query
-                narrowed to that selection. This needs no chunk manager
-                (dask is not required). ``sparsity="template"`` loads the
-                data to reindex it. ``False`` is always eager and cannot be
-                combined with an explicit chunking.
 
         Returns:
             An ``xr.Dataset`` with ``dims`` as dimensions and the
@@ -1130,15 +1187,7 @@ class XarrayDataFrame:
             template = self._resolve_template(template)
         if dims is None:
             dims = self._infer_dimension_columns(preferred_template=template)
-        if lazy is False:
-            if chunks not in (None, "inherit"):
-                raise ValueError(
-                    "lazy=False cannot be combined with chunks="
-                    f"{chunks!r}: chunked output is always lazy."
-                )
-            resolved_chunks = None
-        else:
-            resolved_chunks = self._resolve_chunks(chunks, template, dims)
+        resolved_chunks = self._resolve_chunks(chunks, template, dims)
         return _result_to_xarray(
             inner_df=self._inner,
             dimension_columns=dims,
@@ -1147,7 +1196,6 @@ class XarrayDataFrame:
             fill_value=fill_value,
             chunks=resolved_chunks,
             templates=self._templates,
-            lazy=bool(lazy),
         )
 
     # ------------------------------------------------------------------
@@ -1162,11 +1210,11 @@ class XarrayDataFrame:
     ) -> Mapping[str, int] | str | None:
         """Resolve the ``chunks`` argument to a concrete spec or ``None``.
 
-        ``None`` selects the eager path; anything else selects the lazy/chunked
-        path. ``"inherit"`` reuses the source Dataset's chunk sizes -- but only
-        for dimensions actually split into more than one chunk in the input
-        (a single full chunk is not "chunked"), so reductions that drop the
-        chunked dimension resolve to ``None`` (eager) automatically. Mappings
+        ``None`` selects the lazy, unchunked path; anything else selects the
+        chunked path. ``"inherit"`` reuses the source Dataset's chunk sizes --
+        but only for dimensions actually split into more than one chunk in the
+        input (a single full chunk is not "chunked"), so reductions that drop
+        the chunked dimension resolve to ``None`` automatically. Mappings
         pass through unchanged; ``"auto"`` passes through here and is snapped to
         source partition boundaries later (see ``_auto_chunks``).
         """

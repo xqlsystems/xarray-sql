@@ -41,6 +41,7 @@ from .ds import (
     _build_lazy_scan,
     _dataset_from_batches,
     _finish_dataset,
+    _read_small_result,
     _result_dims,
 )
 from .lazyscan import LazyResultHandle, PolarsHandle, resolve_lazy_handle
@@ -166,7 +167,6 @@ def to_dataset(
     coords: Literal["discover", "template"] = "discover",
     max_result_bytes: int | None = None,
     spill: bool | str | os.PathLike = False,
-    lazy: bool | None = None,
 ) -> xr.Dataset:
     """Convert an engine's Arrow result into a labeled ``xr.Dataset``.
 
@@ -203,7 +203,14 @@ def to_dataset(
             the result. ``"template"`` reindexes to the template's full
             coord ranges, filling absent cells with ``fill_value``.
         fill_value: Fill for ``sparsity="template"``. Defaults to NaN.
-        chunks: ``None`` (default) materializes eagerly. A mapping
+        chunks: ``None`` (default) is lazy without a chunk manager, as
+            with ``xr.open_dataset(chunks=None)``: each access
+            re-executes the query narrowed to the selection, and
+            ``.load()`` executes it once for all variables. Dask is not
+            required, and DuckDB relations work, since every access runs
+            on the calling thread. One-shot streams (Arrow tables,
+            readers, ADBC cursors) have nothing to re-execute and are
+            read eagerly. A mapping
             (e.g. ``{"time": 100}``), ``"auto"``, or ``"inherit"``
             selects the lazy/chunked path: data variables are
             reconstructed window by window on access, each window
@@ -219,7 +226,8 @@ def to_dataset(
             template's coord arrays instead, skipping discovery; only
             valid when the result spans the template's full extent (an
             unfiltered scan), and requires ``template=``.
-        max_result_bytes: Optional budget for the eager path. Raises a
+        max_result_bytes: Optional budget for materializing the result.
+            Setting it reads the result eagerly, in memory. Raises a
             clean ``ValueError`` (with the running size) as soon as the
             materializing result exceeds it — both while collecting the
             Arrow stream and before allocating the dense arrays —
@@ -239,23 +247,11 @@ def to_dataset(
             to the system temp dir; a path spills into that directory.
             The file is removed when the returned Dataset is garbage
             collected. Requires Polars; only valid with ``chunks=``.
-        lazy: Whether to defer execution until the data is accessed.
-            ``None`` (default) is lazy exactly when ``chunks`` is given.
-            ``True`` without ``chunks`` returns lazily indexed variables:
-            each access, such as ``out.t2m.sel(time="2020-01").values``,
-            re-executes the query narrowed to that selection. This needs
-            no chunk manager (dask is not required) and, unlike
-            ``chunks=``, works with DuckDB relations, since every access
-            runs on the calling thread. Requires a re-executable
-            ``result``, as ``chunks=`` does. ``sparsity="template"``
-            loads the data to reindex it. ``False`` is always eager and
-            cannot be combined with ``chunks``.
-
     Returns:
         An ``xr.Dataset`` with ``dims`` as dimensions and the remaining
-        result columns as data variables — dense and in-memory by
-        default, lazily indexed with ``lazy=True``, and lazily chunked
-        when ``chunks`` is given.
+        result columns as data variables: lazily indexed by default
+        (in memory for one-shot streams or with ``max_result_bytes``), and
+        lazily chunked when ``chunks`` is given.
 
     Raises:
         ValueError: When neither ``dims`` nor ``template`` resolves the
@@ -281,11 +277,6 @@ def to_dataset(
         raise ValueError(
             "spill= only applies to chunked reconstruction; pass chunks=."
         )
-    if lazy is False and chunks is not None:
-        raise ValueError(
-            "lazy=False cannot be combined with chunks=: chunked output is "
-            "always lazy."
-        )
 
     if chunks is not None:
         if spill:
@@ -302,10 +293,19 @@ def to_dataset(
         return _to_dataset_lazy(
             result, dims, template, sparsity, fill_value, chunks, coords
         )
-    if lazy:
-        return _to_dataset_lazy(
-            result, dims, template, sparsity, fill_value, None, coords
-        )
+    if max_result_bytes is None:
+        handle = resolve_lazy_handle(result)
+        if handle is not None:
+            return _to_dataset_lazy(
+                result,
+                dims,
+                template,
+                sparsity,
+                fill_value,
+                None,
+                coords,
+                _handle=handle,
+            )
 
     schema, batches = _result_to_batches(result, max_result_bytes)
     field_names = [f.name for f in schema]
@@ -427,10 +427,21 @@ def _to_dataset_lazy(
 
     if chunks is None:
         # Lazily indexed and unchunked: every access runs on the calling
-        # thread, so even handles that refuse chunking can serve it.
-        ds = _build_lazy_scan(
-            handle, dims, field_names, field_types, coord_arrays=coord_arrays
-        )
+        # thread, so even handles that refuse chunking can serve it. A
+        # small result is cheaper to read once than to discover lazily.
+        batches = None
+        if coord_arrays is None:
+            batches = _read_small_result(handle, field_names)
+        if batches is not None:
+            ds = _dataset_from_batches(batches, dims, field_names, field_types)
+        else:
+            ds = _build_lazy_scan(
+                handle,
+                dims,
+                field_names,
+                field_types,
+                coord_arrays=coord_arrays,
+            )
         return _finish_dataset(
             ds, dims, template, sparsity, fill_value, None, field_types
         )

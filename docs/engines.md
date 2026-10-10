@@ -342,7 +342,7 @@ stores `float32` as `float64` and `bool` as an integer, MySQL `bool` as
 keep the result's type.
 
 The cursor is a one-shot Arrow stream: `xql.to_dataset(cur, ...)`
-round-trips eagerly, and `chunks=` needs `spill=True`.
+reads it into memory, and `chunks=` needs `spill=True`.
 
 ## Serving over Flight SQL (no copy)
 
@@ -501,7 +501,9 @@ only the source chunks it maps onto.
 ```mermaid
 flowchart TB
     R["xql.to_dataset(result, ...)"] --> K{"chunks=?"}
-    K -- "None (default)" --> E["eager: materialize once<br/>max_result_bytes= guards both the<br/>Arrow stream and the dense grid"]
+    K -- "None (default)" --> LZ{"result type"}
+    LZ -- "re-executable<br/>(DuckDB, Polars, DataFusion)" --> LI["lazily indexed, no dask:<br/>each access re-runs the query<br/>for its selection; .load() runs it once<br/>(small results: read in one pass)"]
+    LZ -- "one-shot Arrow stream,<br/>or max_result_bytes=" --> E["in memory: read once<br/>max_result_bytes= guards both the<br/>Arrow stream and the dense grid"]
     K -- "mapping / auto / inherit" --> SP{"spill=?"}
     SP -- "False (default)" --> HD{"result type"}
     HD -- "Polars LazyFrame/DataFrame<br/>DataFusion DataFrame" --> RX["re-execution: each window<br/>re-runs the query narrowed to its<br/>coordinate range (flows back into<br/>chunk pruning at the source)"]
@@ -515,18 +517,26 @@ few windows of a huge result. Spill pays one full pass plus temporary
 disk — right when you'll touch most of the result, when the producer
 is a DuckDB relation, or when all you have is a one-shot stream.
 
-**Lazy without a chunk manager:** `lazy=True` without `chunks=` returns
-lazily indexed variables, the way `xr.open_dataset(chunks=None)` does.
-Each access, such as `out.t2m.sel(time="2020-01").values`, re-executes
-the query narrowed to that selection, so it reads only the source chunks
-under it. Nothing is chunked, so dask is not needed, and DuckDB relations
-work too: every access runs on the calling thread, unlike chunked
-windows, which dask computes on worker threads.
+**Without chunks:** `chunks=None`, the default, returns lazily indexed
+variables, as `xr.open_dataset(chunks=None)` does. Each access, such as
+`out.t2m.sel(time="2020-01").values`, re-executes the query narrowed to
+that selection, so it reads only the source chunks under it, and
+`.load()` reads the whole result in one execution. Nothing is chunked,
+so dask is not needed, and DuckDB relations work too: every access runs
+on the calling thread, unlike chunked windows, which dask computes on
+worker threads.
 
 ```python
-out = xql.to_dataset(con.sql("SELECT * FROM era5"), template=ds, lazy=True)
+out = xql.to_dataset(con.sql("SELECT * FROM era5"), template=ds)
 out.t2m.sel(time="2020-01-01").mean().item()  # reads one day's chunks
 ```
+
+Discovering a lazy result's coordinates executes the query once per
+dimension, so a result whose coordinates must be discovered is first
+streamed in one pass and kept in memory if it is small (up to 64 MiB).
+An aggregation, which no window filter can push below, therefore
+executes once. One-shot Arrow streams, which cannot re-execute, and
+calls with `max_result_bytes=` are read into memory directly.
 
 Two knobs matter at scale:
 
