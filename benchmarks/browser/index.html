@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xarray-sql in the browser</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fbfbfa;
+    --panel: #ffffff;
+    --text: #1d1d1b;
+    --muted: #66655f;
+    --border: #e3e2dd;
+    --accent: #2f6fde;
+    --accent-text: #ffffff;
+    --error: #b42318;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615;
+      --panel: #1f1f1d;
+      --text: #ecebe6;
+      --muted: #a3a29b;
+      --border: #34332f;
+      --accent: #6d9cf0;
+      --accent-text: #0e1420;
+      --error: #f97066;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .lede { color: var(--muted); margin: 0 0 20px; max-width: 75ch; }
+  .lede a { color: var(--accent); }
+  .layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 20px; }
+  @media (max-width: 800px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+  aside .panel + .panel { margin-top: 16px; }
+  .examples button {
+    display: block; width: 100%; text-align: left;
+    background: none; border: 0; border-radius: 6px;
+    padding: 7px 8px; color: var(--text); font: inherit; cursor: pointer;
+  }
+  .examples button:hover, .examples button:focus-visible { background: var(--bg); }
+  dl { margin: 0; font-size: 13px; }
+  dt { font-family: var(--mono); }
+  dd { margin: 0 0 6px; color: var(--muted); }
+  textarea {
+    width: 100%; min-height: 190px; resize: vertical;
+    font: 13px/1.5 var(--mono);
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 10px;
+  }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 10px; }
+  .run {
+    background: var(--accent); color: var(--accent-text);
+    border: 0; border-radius: 6px; padding: 8px 18px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  .run:disabled { opacity: .5; cursor: progress; }
+  .status { color: var(--muted); font-size: 13px; }
+  .status.error { color: var(--error); white-space: pre-wrap; }
+  .stats { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 16px 0 0; font-size: 13px; color: var(--muted); }
+  .stats b { color: var(--text); font-variant-numeric: tabular-nums; }
+  figure { margin: 16px 0 0; }
+  #canvas { width: 100%; height: auto; border-radius: 6px; image-rendering: pixelated; }
+  figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .ramp { width: 160px; min-width: 0; height: 10px; border-radius: 3px; }
+  .table-wrap { overflow: auto; max-height: 420px; margin-top: 16px; border: 1px solid var(--border); border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 5px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { position: sticky; top: 0; background: var(--panel); font-family: var(--mono); font-weight: 600; }
+  .note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>xarray-sql in the browser</h1>
+  <p class="lede">
+    SQL over NOAA GFS forecasts, read straight from
+    <a href="https://dynamical.org">dynamical.org</a>'s Zarr store. xarray-sql and
+    DuckDB run in <a href="https://pyodide.org">Pyodide</a> in your browser; there is
+    no server. Each query downloads only the chunks its filters on
+    <code>init_time</code>, <code>latitude</code>, and <code>longitude</code> reach.
+  </p>
+  <div class="layout">
+    <aside>
+      <section class="panel examples">
+        <h2>Examples</h2>
+        <div id="examples"><span class="status">Loading…</span></div>
+      </section>
+      <section class="panel">
+        <h2>Table <code>gfs</code></h2>
+        <dl id="schema"></dl>
+      </section>
+    </aside>
+    <section class="panel">
+      <textarea id="sql" spellcheck="false" aria-label="SQL query"></textarea>
+      <div class="bar">
+        <button id="run" class="run" disabled>Run</button>
+        <span id="status" class="status" role="status">Starting…</span>
+      </div>
+      <div id="stats" class="stats"></div>
+      <figure id="map" hidden>
+        <canvas id="canvas"></canvas>
+        <figcaption>
+          <span id="min"></span><canvas id="ramp" class="ramp" width="220" height="1"></canvas><span id="max"></span>
+          <span id="map-name"></span>
+        </figcaption>
+      </figure>
+      <div id="table" class="table-wrap" hidden></div>
+      <p id="more" class="note" hidden></p>
+    </section>
+  </div>
+</main>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const wheel = new URLSearchParams(location.search).get("wheel");
+const workerURL = new URL("worker.js", location.href);
+if (wheel) workerURL.searchParams.set("wheel", new URL(wheel, location.href).href);
+const worker = new Worker(workerURL, { type: "module" });
+
+let nextId = 0;
+const pending = new Map();
+function setStatus(message, isError = false) {
+  $("status").textContent = message;
+  $("status").classList.toggle("error", isError);
+}
+
+worker.onmessage = ({ data }) => {
+  if (data.type === "status") setStatus(data.message);
+  else if (data.type === "failed") setStatus(data.error, true);
+  else if (data.type === "ready") ready(data.info);
+  else {
+    const { resolve, reject } = pending.get(data.id);
+    pending.delete(data.id);
+    data.type === "result" ? resolve(data.result) : reject(data);
+  }
+};
+
+function query(sql) {
+  const id = nextId++;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    worker.postMessage({ id, sql });
+  });
+}
+
+function ready(info) {
+  const examples = $("examples");
+  examples.replaceChildren();
+  for (const example of info.examples) {
+    const button = document.createElement("button");
+    button.textContent = example.title;
+    button.onclick = () => { $("sql").value = example.sql; run(); };
+    examples.append(button);
+  }
+  const schema = $("schema");
+  const entry = (term, description) => {
+    const dt = document.createElement("dt");
+    const dd = document.createElement("dd");
+    dt.textContent = term;
+    dd.textContent = description;
+    schema.append(dt, dd);
+  };
+  schema.replaceChildren();
+  entry("dimensions", Object.entries(info.sizes).map(([d, n]) => `${d} (${n})`).join(", "));
+  for (const [name, v] of Object.entries(info.variables)) entry(name, `${v.long_name} [${v.units}]`);
+  entry("init_time", `${info.init_times.at(0)} … ${info.init_times.at(-1)}`);
+  $("sql").value = info.examples[0].sql;
+  $("run").disabled = false;
+  setStatus("Ready. Ctrl+Enter runs the query.");
+}
+
+async function run() {
+  if ($("run").disabled) return;
+  $("run").disabled = true;
+  setStatus("Running…");
+  const start = performance.now();
+  try {
+    const result = await query($("sql").value);
+    const seconds = ((performance.now() - start) / 1000).toFixed(1);
+    setStatus(`${result.num_rows.toLocaleString()} rows in ${seconds} s`);
+    show(result);
+  } catch (error) {
+    setStatus(error.error ?? String(error), true);
+    console.error(error.detail ?? error);
+  } finally {
+    $("run").disabled = false;
+  }
+}
+
+$("run").onclick = run;
+$("sql").onkeydown = (event) => {
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); run(); }
+};
+
+function show(result) {
+  const s = result.stats;
+  $("stats").innerHTML = [
+    ["chunks downloaded", s.chunks_fetched],
+    ["requests", s.requests],
+    ["MB", s.mb_downloaded],
+    ["fetching", `${s.seconds_fetching} s`],
+    ["querying", `${s.seconds_querying} s`],
+    ["query runs", s.runs],
+    ["chunks cached", s.cached_chunks],
+  ].map(([k, v]) => `<span>${k} <b>${v}</b></span>`).join("");
+
+  const table = document.createElement("table");
+  const head = table.createTHead().insertRow();
+  for (const c of result.columns) {
+    const th = document.createElement("th");
+    th.textContent = c;
+    head.append(th);
+  }
+  const body = table.createTBody();
+  for (const row of result.rows) {
+    const tr = body.insertRow();
+    for (const v of row) tr.insertCell().textContent = v ?? "NULL";
+  }
+  $("table").replaceChildren(table);
+  $("table").hidden = false;
+  $("more").hidden = result.num_rows <= result.rows.length;
+  $("more").textContent = `Showing ${result.rows.length} of ${result.num_rows.toLocaleString()} rows.`;
+  drawMap(result.grid);
+}
+
+// Viridis, sampled at five stops.
+const STOPS = [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]];
+function color(t) {
+  const x = Math.min(Math.max(t, 0), 1) * (STOPS.length - 1);
+  const i = Math.min(Math.floor(x), STOPS.length - 2);
+  const f = x - i;
+  return STOPS[i].map((a, k) => Math.round(a + (STOPS[i + 1][k] - a) * f));
+}
+
+function drawMap(grid) {
+  $("map").hidden = !grid;
+  if (!grid) return;
+  const lats = [...new Set(grid.latitude)].sort((a, b) => b - a);
+  const lons = [...new Set(grid.longitude)].sort((a, b) => a - b);
+  const row = new Map(lats.map((v, i) => [v, i]));
+  const col = new Map(lons.map((v, i) => [v, i]));
+  let lo = Infinity, hi = -Infinity;
+  for (const v of grid.value) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  const canvas = $("canvas");
+  canvas.width = lons.length;
+  canvas.height = lats.length;
+  const ctx = canvas.getContext("2d");
+  const image = ctx.createImageData(lons.length, lats.length);
+  for (let i = 0; i < grid.value.length; i++) {
+    const p = (row.get(grid.latitude[i]) * lons.length + col.get(grid.longitude[i])) * 4;
+    const [r, g, b] = color((grid.value[i] - lo) / (hi - lo || 1));
+    image.data.set([r, g, b, 255], p);
+  }
+  ctx.putImageData(image, 0, 0);
+  const ramp = $("ramp").getContext("2d");
+  for (let x = 0; x < 220; x++) {
+    ramp.fillStyle = `rgb(${color(x / 219).join(",")})`;
+    ramp.fillRect(x, 0, 1, 1);
+  }
+  $("min").textContent = lo.toFixed(1);
+  $("max").textContent = hi.toFixed(1);
+  $("map-name").textContent = grid.name;
+}
+</script>
+</body>
+</html>
