@@ -118,7 +118,7 @@ async def setup(
     cache = ChunkCache(ds, GFS_CHUNKS, max_bytes=max_cache_mib * 2**20)
     con = duckdb.connect()
     con.sql("SET enable_progress_bar = false")
-    xql.register(con, "gfs", cache.dataset())
+    xql.register(con, "gfs", cache.dataset(), chunks=GFS_CHUNKS)
     _state.update(store=store, cache=cache, con=con)
     return json.dumps(
         {

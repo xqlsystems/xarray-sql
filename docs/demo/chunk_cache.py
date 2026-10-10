@@ -26,12 +26,12 @@ answer.
 from __future__ import annotations
 
 import asyncio
+import itertools
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any
 
-import dask.array as da
 import numpy as np
 import xarray as xr
 
@@ -48,22 +48,56 @@ def _fill_value(dtype: np.dtype) -> Any:
     return 0
 
 
-class _CachedVariable:
-    """Array-like that dask slices one chunk at a time; serves the cache."""
+class _CachedVariable(xr.backends.BackendArray):
+    """A lazily indexed variable whose reads are served from the cache."""
 
     def __init__(self, cache: ChunkCache, name: str, source: xr.Variable):
         self._cache = cache
         self._name = name
         self.shape = source.shape
         self.dtype = source.dtype
-        self.ndim = source.ndim
-
-    def __getitem__(self, key: tuple[slice, ...]) -> np.ndarray:
-        bounds = tuple(
-            (s.start or 0, self.shape[i] if s.stop is None else s.stop)
-            for i, s in enumerate(key)
+        self._chunks = tuple(
+            cache.chunks.get(str(d), n)
+            for d, n in zip(source.dims, source.shape)
         )
-        return self._cache._get((self._name, bounds))
+
+    def __getitem__(self, key: Any) -> np.ndarray:
+        return xr.core.indexing.explicit_indexing_adapter(
+            key,
+            self.shape,
+            xr.core.indexing.IndexingSupport.BASIC,
+            self._raw_getitem,
+        )
+
+    def _raw_getitem(self, key: tuple) -> np.ndarray:
+        """Assemble a basic selection from the cache chunks it overlaps."""
+        ranges, steps, squeeze = [], [], []
+        for axis, (k, n) in enumerate(zip(key, self.shape)):
+            if isinstance(k, (int, np.integer)):
+                k = slice(int(k), int(k) + 1)
+                squeeze.append(axis)
+            start, stop, step = k.indices(n)
+            ranges.append((start, max(start, stop)))
+            steps.append(step)
+        out = np.empty([hi - lo for lo, hi in ranges], dtype=self.dtype)
+        per_axis = [
+            range(lo // c, (hi - 1) // c + 1) if hi > lo else range(0)
+            for (lo, hi), c in zip(ranges, self._chunks)
+        ]
+        for index in itertools.product(*per_axis):
+            bounds = tuple(
+                (i * c, min((i + 1) * c, n))
+                for i, c, n in zip(index, self._chunks, self.shape)
+            )
+            chunk = self._cache._get((self._name, bounds))
+            src, dst = [], []
+            for (lo, hi), (b0, b1) in zip(ranges, bounds):
+                a, b = max(lo, b0), min(hi, b1)
+                src.append(slice(a - b0, b - b0))
+                dst.append(slice(a - lo, b - lo))
+            out[tuple(dst)] = chunk[tuple(src)]
+        out = out[tuple(slice(None, None, s) for s in steps)]
+        return out.squeeze(axis=tuple(squeeze)) if squeeze else out
 
 
 @dataclass
@@ -106,17 +140,21 @@ class ChunkCache:
         return len(self._chunks)
 
     def dataset(self) -> xr.Dataset:
-        """The source Dataset with every data variable read through the cache."""
-        variables = {}
-        for name, var in self.source.data_vars.items():
-            data = da.from_array(
-                _CachedVariable(self, name, var.variable),
-                chunks=tuple(self.chunks.get(d, -1) for d in var.dims),
-                name=f"chunk-cache-{id(self)}-{name}",
-                asarray=False,
-                meta=np.empty((0,) * var.ndim, dtype=var.dtype),
+        """The source Dataset with every data variable read through the cache.
+
+        Register it with ``chunks=`` set to this cache's chunks, so each
+        scanned block is one cached chunk.
+        """
+        variables = {
+            name: xr.Variable(
+                var.dims,
+                xr.core.indexing.LazilyIndexedArray(
+                    _CachedVariable(self, str(name), var.variable)
+                ),
+                attrs=var.attrs,
             )
-            variables[name] = var.copy(data=data)
+            for name, var in self.source.data_vars.items()
+        }
         return self.source.assign(variables)
 
     def _get(self, key: ChunkKey) -> np.ndarray:
