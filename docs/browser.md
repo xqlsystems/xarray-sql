@@ -55,7 +55,7 @@ xql.register(con, "air", ds)
 # Each access re-runs the query for just the selected window.
 out = xql.to_dataset(con.sql("SELECT * FROM air"), template=ds)
 out.air.isel(time=slice(0, 24)).mean().item()
-out.load()  # or read everything in one execution
+out.load()  # reads every variable, one query each
 ```
 
 Pyodide cannot start threads, so xarray-sql loads chunks one at a time there.
