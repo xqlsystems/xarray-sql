@@ -89,7 +89,7 @@ The demo's files are in
 
 | File | Role |
 |------|------|
-| `index.html` | The page: example queries, SQL editor, results table, and a map for `latitude, longitude, value` results. |
+| `index.html` | The page: example queries, SQL editor, results table, and an interactive map ([deck.gl](https://deck.gl) over a [MapLibre](https://maplibre.org) basemap) for `latitude, longitude, value` results. |
 | `worker.js` | Loads Pyodide, installs xarray-sql, DuckDB, and zarr, and runs queries off the main thread. |
 | `app.py` | Opens the dataset, registers it on DuckDB as `gfs`, and runs queries. |
 | `chunk_cache.py` | Lazy reads that work in the browser, as described above. |

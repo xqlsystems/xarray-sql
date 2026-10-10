@@ -76,7 +76,8 @@
   .stats { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 16px 0 0; font-size: 13px; color: var(--muted); }
   .stats b { color: var(--text); font-variant-numeric: tabular-nums; }
   figure { margin: 16px 0 0; }
-  #canvas { width: 100%; height: auto; border-radius: 6px; image-rendering: pixelated; }
+  .map-view { position: relative; height: 460px; border-radius: 6px; overflow: hidden; background: var(--bg); }
+  @media (max-width: 600px) { .map-view { height: 340px; } }
   figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-top: 6px; }
   .ramp { width: 160px; min-width: 0; height: 10px; border-radius: 3px; }
   .table-wrap { overflow: auto; max-height: 420px; margin-top: 16px; border: 1px solid var(--border); border-radius: 6px; }
@@ -118,7 +119,7 @@
       </div>
       <div id="stats" class="stats"></div>
       <figure id="map" hidden>
-        <canvas id="canvas"></canvas>
+        <div id="map-view" class="map-view" aria-label="Map of the query result"></div>
         <figcaption>
           <span id="min"></span><canvas id="ramp" class="ramp" width="220" height="1"></canvas><span id="max"></span>
           <span id="map-name"></span>
@@ -243,7 +244,10 @@ function show(result) {
   $("table").hidden = false;
   $("more").hidden = result.num_rows <= result.rows.length;
   $("more").textContent = `Showing ${result.rows.length} of ${result.num_rows.toLocaleString()} rows.`;
-  drawMap(result.grid);
+  drawMap(result.grid).catch((error) => {
+    setStatus(`Could not draw the map: ${error.message}`, true);
+    console.error(error);
+  });
 }
 
 // Viridis, sampled at five stops.
@@ -255,26 +259,102 @@ function color(t) {
   return STOPS[i].map((a, k) => Math.round(a + (STOPS[i + 1][k] - a) * f));
 }
 
-function drawMap(grid) {
+// MapLibre draws the basemap and deck.gl draws the result over it. Together
+// they are about 3 MB, so they load with the first map result.
+const MAPLIBRE = "https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl";
+const DECK = "https://cdn.jsdelivr.net/npm/deck.gl@9.4.0/dist.min.js";
+const BASEMAP = matchMedia("(prefers-color-scheme: dark)").matches
+  ? "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+  : "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+
+const load = (tag, attrs) => new Promise((resolve, reject) => {
+  const el = Object.assign(document.createElement(tag), attrs, { onload: resolve });
+  el.onerror = () => reject(new Error(`Could not load ${attrs.src ?? attrs.href}`));
+  document.head.append(el);
+});
+let libraries;
+function loadMapLibraries() {
+  libraries ??= Promise.all([
+    load("script", { src: `${MAPLIBRE}.js` }),
+    load("link", { rel: "stylesheet", href: `${MAPLIBRE}.css` }),
+    load("script", { src: DECK }),
+  ]).then(() => ({ maplibregl: window.maplibregl, deck: window.deck }));
+  return libraries;
+}
+
+let map, overlay;
+let current;  // The grid on the map, for tooltips.
+
+function tooltip({ bitmap, layer }) {
+  if (!bitmap || layer?.id !== "result") return null;
+  const [x, y] = bitmap.pixel;
+  const value = current.values[y * current.lons.length + x];
+  if (Number.isNaN(value)) return null;
+  return `${current.lats[y]}°, ${current.lons[x]}°\n${current.name}: ${value.toFixed(2)}`;
+}
+
+async function drawMap(grid) {
   $("map").hidden = !grid;
   if (!grid) return;
+  const { maplibregl, deck } = await loadMapLibraries();
   const lats = [...new Set(grid.latitude)].sort((a, b) => b - a);
   const lons = [...new Set(grid.longitude)].sort((a, b) => a - b);
   const row = new Map(lats.map((v, i) => [v, i]));
   const col = new Map(lons.map((v, i) => [v, i]));
   let lo = Infinity, hi = -Infinity;
   for (const v of grid.value) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
-  const canvas = $("canvas");
+
+  // One pixel per grid cell; cells absent from the result stay transparent.
+  const values = new Float64Array(lons.length * lats.length).fill(NaN);
+  const canvas = document.createElement("canvas");
   canvas.width = lons.length;
   canvas.height = lats.length;
   const ctx = canvas.getContext("2d");
   const image = ctx.createImageData(lons.length, lats.length);
   for (let i = 0; i < grid.value.length; i++) {
-    const p = (row.get(grid.latitude[i]) * lons.length + col.get(grid.longitude[i])) * 4;
+    const cell = row.get(grid.latitude[i]) * lons.length + col.get(grid.longitude[i]);
+    values[cell] = grid.value[i];
     const [r, g, b] = color((grid.value[i] - lo) / (hi - lo || 1));
-    image.data.set([r, g, b, 255], p);
+    image.data.set([r, g, b, 255], cell * 4);
   }
   ctx.putImageData(image, 0, 0);
+  current = { lats, lons, values, name: grid.name };
+
+  // Pixel centers sit on the coordinates, so the image extends half a cell.
+  const half = (axis) => (axis.length > 1 ? Math.abs(axis[1] - axis[0]) / 2 : 0.125);
+  const clamp = (lat) => Math.max(-85, Math.min(85, lat));
+  const bounds = [
+    lons[0] - half(lons), clamp(lats.at(-1) - half(lats)),
+    lons.at(-1) + half(lons), clamp(lats[0] + half(lats)),
+  ];
+  const result = new deck.BitmapLayer({
+    id: "result",
+    image: canvas,
+    bounds,
+    // The grid is regular in latitude and longitude; reproject it to the map.
+    _imageCoordinateSystem: deck.COORDINATE_SYSTEM.LNGLAT,
+    textureParameters: { minFilter: "nearest", magFilter: "nearest" },
+    opacity: 0.85,
+    pickable: true,
+  });
+
+  const extent = [[bounds[0], bounds[1]], [bounds[2], bounds[3]]];
+  if (!map) {
+    map = new maplibregl.Map({
+      container: $("map-view"),
+      style: BASEMAP,
+      bounds: extent,
+      fitBoundsOptions: { padding: 24 },
+      attributionControl: { compact: true },
+    });
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }));
+    overlay = new deck.MapboxOverlay({ layers: [result], getTooltip: tooltip });
+    map.addControl(overlay);
+  } else {
+    overlay.setProps({ layers: [result] });
+    map.fitBounds(extent, { padding: 24, animate: false });
+  }
+
   const ramp = $("ramp").getContext("2d");
   for (let x = 0; x < 220; x++) {
     ramp.fillStyle = `rgb(${color(x / 219).join(",")})`;
