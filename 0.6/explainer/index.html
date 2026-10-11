@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How xarray-sql works</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fbfbfa;
+    --panel: #ffffff;
+    --text: #1d1d1b;
+    --muted: #66655f;
+    --border: #e3e2dd;
+    --accent: #2f6fde;
+    --accent-soft: #2f6fde22;
+    --accent-text: #ffffff;
+    --code-bg: #f3f2ee;
+    --kw: #8a3ffc;
+    --str: #0f7b55;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615;
+      --panel: #1f1f1d;
+      --text: #ecebe6;
+      --muted: #a3a29b;
+      --border: #34332f;
+      --accent: #6d9cf0;
+      --accent-soft: #6d9cf033;
+      --accent-text: #0e1420;
+      --code-bg: #262624;
+      --kw: #c4a2ff;
+      --str: #5fd4a4;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px 16px 24px; }
+  section.step {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  section.step + section.step { margin-top: 16px; }
+  h2 { font-size: 17px; margin: 0 0 4px; display: flex; gap: 10px; align-items: baseline; }
+  h2 .n {
+    display: inline-grid; place-items: center; flex: none;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); color: var(--accent-text); font-size: 13px;
+  }
+  p { margin: 0 0 12px; color: var(--muted); max-width: 80ch; }
+  p b, p code { color: var(--text); }
+  code { font-family: var(--mono); font-size: 0.92em; }
+  pre {
+    margin: 0 0 14px; padding: 10px 12px; overflow-x: auto;
+    background: var(--code-bg); border-radius: 6px;
+    font: 13px/1.55 var(--mono);
+  }
+  .kw { color: var(--kw); font-weight: 600; }
+  .str { color: var(--str); }
+  .com { color: var(--muted); }
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 760px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+  .label { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 6px; }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { fill: var(--muted); font: 11px system-ui, sans-serif; }
+  .cell { stroke: var(--panel); stroke-width: 0.5; }
+  .cell.hot { stroke: var(--text); stroke-width: 2; }
+  .chunk-line { stroke: var(--text); stroke-width: 1.5; fill: none; opacity: .55; }
+  .slider { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .slider input { flex: 1; min-width: 0; accent-color: var(--accent); }
+  .slider output { font-variant-numeric: tabular-nums; color: var(--text); min-width: 7.5em; }
+  .table-wrap { position: relative; max-height: 300px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; font: 12.5px var(--mono); font-variant-numeric: tabular-nums; }
+  th, td { padding: 3px 10px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { position: sticky; top: 0; background: var(--panel); }
+  td.part { color: var(--muted); text-align: left; }
+  tr.hot td { background: var(--accent-soft); }
+  .queries { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+  .queries button {
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  .queries button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .block-read { fill: var(--accent); stroke: var(--panel); }
+  .block-skip { fill: var(--code-bg); stroke: var(--muted); stroke-opacity: .45; }
+  .block-edge { stroke-width: 1.2; stroke-linejoin: round; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .count { font-size: 14px; margin: 6px 0 0; color: var(--text); }
+  .count b { font-variant-numeric: tabular-nums; }
+  .why { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+  .repr { font: 12.5px/1.5 var(--mono); white-space: pre; overflow-x: auto; margin: 0; }
+  .caption { font-size: 12.5px; color: var(--muted); margin-top: 4px; min-height: 1.5em; font-variant-numeric: tabular-nums; }
+  .ramp { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .ramp i { flex: 0 1 140px; height: 8px; border-radius: 2px; }
+  .line { fill: none; stroke: var(--accent); stroke-width: 2; }
+  .dot { fill: var(--accent); }
+  .axis { stroke: var(--border); }
+  .credit { font-size: 12px; margin: 12px 0 0; }
+  .credit a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <section class="step" aria-labelledby="s1">
+    <h2 id="s1"><span class="n">1</span>A Dataset is a table</h2>
+    <p>
+      Registering a Dataset gives SQL a table with one row per grid cell: a column
+      for each dimension and one for each data variable. Nothing is copied. Each
+      chunk becomes a <b>partition</b> of the table, read only when a query needs it.
+      Hover over the grid or the table to match cells to rows.
+    </p>
+    <pre><span class="kw">import</span> duckdb, xarray <span class="kw">as</span> xr, xarray_sql <span class="kw">as</span> xql
+
+era5 = xr.open_zarr(
+    <span class="str">"gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"</span>,
+    chunks=<span class="kw">None</span>, storage_options={<span class="str">"token"</span>: <span class="str">"anon"</span>},
+)
+<span class="com"># A grid small enough to see: 12:00 UTC on 8 days, 6 latitudes, 8 longitudes.</span>
+ds = era5[[<span class="str">"2m_temperature"</span>]].rename({<span class="str">"2m_temperature"</span>: <span class="str">"t2m"</span>}).sel(
+    time=xr.date_range(<span class="str">"2024-07-01T12"</span>, periods=8, freq=<span class="str">"D"</span>),
+    latitude=[75, 45, 15, -15, -45, -75],
+    longitude=range(0, 360, 45),
+)
+con = duckdb.connect()
+xql.register(con, <span class="str">"era5"</span>, ds, chunks={<span class="str">"time"</span>: 4, <span class="str">"latitude"</span>: 3, <span class="str">"longitude"</span>: 4})</pre>
+    <div class="cols">
+      <div>
+        <div class="label">ds.t2m, one time step</div>
+        <svg id="grid" viewBox="0 0 360 250" role="img" aria-label="Map of 2 m temperature with chunk boundaries"></svg>
+        <div class="ramp"><span id="ramp-lo"></span><i id="ramp"></i><span id="ramp-hi"></span><span>· lines mark chunks</span></div>
+        <label class="slider">time
+          <input id="time" type="range" min="0" max="7" value="0">
+          <output id="time-out"></output>
+        </label>
+      </div>
+      <div>
+        <div class="label">table <code>era5</code> (<span id="nrows"></span> rows, 8 partitions)</div>
+        <div class="table-wrap" id="table-wrap">
+          <table id="table"><thead><tr><th>time</th><th>latitude</th><th>longitude</th><th>t2m</th><th class="part" style="text-align:left">partition</th></tr></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="step" aria-labelledby="s2">
+    <h2 id="s2"><span class="n">2</span>SQL reads only the chunks it needs</h2>
+    <p>
+      Filters on dimension columns are pushed down to the table, and xarray-sql
+      compares them with each partition's coordinate range. A partition that
+      cannot match is skipped, so its chunk is never read. Pick a query.
+    </p>
+    <p>
+      Partitions follow <code>chunks=</code>. ARCO-ERA5 stores each hour of the
+      whole globe as one chunk, so registered with its storage chunks, a time
+      filter would still skip chunks but a bounding box could not.
+    </p>
+    <div class="queries" id="queries" role="group" aria-label="Example queries"></div>
+    <pre id="sql"></pre>
+    <div class="cols">
+      <div>
+        <div class="label">partitions of <code>era5</code></div>
+        <svg id="cube" viewBox="0 0 360 250" role="img" aria-label="The eight partitions, highlighted when read"></svg>
+        <div class="legend">
+          <span><i style="background: var(--accent)"></i>read</span>
+          <span><i style="background: var(--code-bg); outline: 1px solid var(--border)"></i>skipped</span>
+          <span>front: Jul 1–4, back: Jul 5–8</span>
+        </div>
+      </div>
+      <div>
+        <p class="count" id="count"></p>
+        <p class="why" id="why"></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="step" aria-labelledby="s3">
+    <h2 id="s3"><span class="n">3</span>Results come back as a Dataset</h2>
+    <p>
+      <code>to_dataset</code> pivots the result rows back onto a grid. The
+      dimension columns that survive the query become the dimensions, and the
+      registered Dataset, passed as the template, restores attributes such as
+      units.
+    </p>
+    <pre>out = xql.to_dataset(con.sql(query), template=ds)</pre>
+    <div class="cols">
+      <pre class="repr" id="repr"></pre>
+      <div>
+        <svg id="result" viewBox="0 0 360 250" role="img" aria-label="Plot of the result"></svg>
+        <div class="caption" id="result-caption"></div>
+        <label class="slider" id="result-slider" hidden>time
+          <input id="result-time" type="range" min="0" value="0">
+          <output id="result-time-out"></output>
+        </label>
+      </div>
+    </div>
+  </section>
+  <p class="credit">
+    Data: ERA5 2 m temperature from
+    <a href="https://github.com/google-research/arco-era5" target="_blank" rel="noopener">ARCO-ERA5</a>.
+    Contains modified Copernicus Climate Change Service information 2024.
+  </p>
+</main>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+function el(name, attrs = {}, parent) {
+  const node = document.createElementNS(NS, name);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  if (parent) parent.append(node);
+  return node;
+}
+
+// ---- A tiny slice of ARCO-ERA5 (see make_snapshot.py) -----------------
+const DATA = await (await fetch(new URL("era5.json", import.meta.url))).json();
+const TIMES = DATA.time;
+const LATS = DATA.latitude;
+const LONS = DATA.longitude;
+const AIR = DATA.values; // t2m in kelvin, indexed [time][latitude][longitude]
+const UNITS = DATA.units;
+const CHUNKS = { time: 4, lat: 3, lon: 4 };
+const DIM = { time: "time", lat: "latitude", lon: "longitude" };
+const ALL = AIR.flat(2);
+const LO = Math.min(...ALL), HI = Math.max(...ALL);
+const block = (t, i, j) => [Math.floor(t / CHUNKS.time), Math.floor(i / CHUNKS.lat), Math.floor(j / CHUNKS.lon)];
+const partName = (t, i, j) => {
+  const [a, b, c] = block(t, i, j);
+  return `${a * 4 + b * 2 + c}`;
+};
+
+// A blue-to-red ramp.
+const STOPS = [[49, 54, 149], [69, 117, 180], [171, 217, 233], [254, 224, 144], [244, 109, 67], [165, 0, 38]];
+function color(v, lo = LO, hi = HI) {
+  const x = Math.max(0, Math.min(1, (v - lo) / (hi - lo || 1))) * (STOPS.length - 1);
+  const k = Math.min(STOPS.length - 2, Math.floor(x)), f = x - k;
+  const c = STOPS[k].map((a, n) => Math.round(a + (STOPS[k + 1][n] - a) * f));
+  return `rgb(${c})`;
+}
+$("ramp").style.background = `linear-gradient(90deg, ${STOPS.map((c) => `rgb(${c})`).join(",")})`;
+$("ramp-lo").textContent = `${LO.toFixed(0)} ${UNITS}`;
+$("ramp-hi").textContent = `${HI.toFixed(0)} ${UNITS}`;
+
+// ---- Heat maps --------------------------------------------------------
+// Draws values[i][j] over lats x lons; returns the cell elements.
+function heatmap(svg, lats, lons, value, { chunkLines = false, lo = LO, hi = HI } = {}) {
+  svg.replaceChildren();
+  const left = 40, top = 10, w = 310, h = 210;
+  const cw = w / lons.length, ch = h / lats.length;
+  const cells = [];
+  lats.forEach((lat, i) => {
+    el("text", { x: left - 6, y: top + ch * (i + 0.5) + 4, "text-anchor": "end" }, svg).textContent = `${lat}°`;
+    cells.push(lons.map((lon, j) => el("rect", {
+      class: "cell", x: left + j * cw, y: top + i * ch, width: cw, height: ch,
+      fill: color(value(i, j), lo, hi),
+    }, svg)));
+  });
+  lons.forEach((lon, j) => {
+    el("text", { x: left + cw * (j + 0.5), y: top + h + 16, "text-anchor": "middle" }, svg).textContent = `${lon}°`;
+  });
+  if (chunkLines) {
+    el("rect", { class: "chunk-line", x: left, y: top, width: w, height: h }, svg);
+    el("line", { class: "chunk-line", x1: left, x2: left + w, y1: top + ch * CHUNKS.lat, y2: top + ch * CHUNKS.lat }, svg);
+    el("line", { class: "chunk-line", y1: top, y2: top + h, x1: left + cw * CHUNKS.lon, x2: left + cw * CHUNKS.lon }, svg);
+  }
+  return cells;
+}
+
+// ---- Step 1: the grid and its table ----------------------------------
+$("nrows").textContent = ALL.length;
+const tbody = $("table").tBodies[0];
+const rows = [];
+TIMES.forEach((time, t) => LATS.forEach((lat, i) => LONS.forEach((lon, j) => {
+  const tr = tbody.insertRow();
+  for (const v of [time, lat, lon, AIR[t][i][j].toFixed(1)]) tr.insertCell().textContent = v;
+  const part = tr.insertCell();
+  part.className = "part";
+  part.textContent = partName(t, i, j);
+  tr.dataset.key = `${t},${i},${j}`;
+  rows.push(tr);
+})));
+let gridCells = [];
+let hot = [];
+function highlight(t, i, j, scroll) {
+  for (const node of hot) node.classList.remove("hot");
+  hot = [];
+  if (t == null) return;
+  const tr = rows[(t * LATS.length + i) * LONS.length + j];
+  hot = [tr, gridCells[i][j]];
+  for (const node of hot) node.classList.add("hot");
+  if (scroll) {
+    const wrap = $("table-wrap");
+    wrap.scrollTop = tr.offsetTop - wrap.clientHeight / 2;
+  }
+}
+function drawGrid() {
+  const t = +$("time").value;
+  $("time-out").textContent = TIMES[t];
+  gridCells = heatmap($("grid"), LATS, LONS, (i, j) => AIR[t][i][j], { chunkLines: true });
+  gridCells.forEach((row, i) => row.forEach((cell, j) => {
+    cell.onmouseenter = () => highlight(t, i, j, true);
+    cell.onmouseleave = () => highlight();
+  }));
+  const tr = rows[t * LATS.length * LONS.length];
+  $("table-wrap").scrollTop = tr.offsetTop - $("table").tHead.offsetHeight;
+}
+tbody.onmouseover = (event) => {
+  const tr = event.target.closest("tr");
+  if (!tr) return;
+  const [t, i, j] = tr.dataset.key.split(",").map(Number);
+  if (t !== +$("time").value) { $("time").value = t; drawGrid(); }
+  highlight(t, i, j, false);
+};
+tbody.onmouseleave = () => highlight();
+$("time").oninput = drawGrid;
+drawGrid();
+
+// ---- Step 2: queries and partition pruning ---------------------------
+const QUERIES = [
+  {
+    title: "Recent days",
+    sql: `SELECT * FROM era5\nWHERE time >= '2024-07-05'`,
+    where: (t) => t >= 4,
+    why: "Partitions for July 1 to 4 end before the filter starts, so they are skipped.",
+  },
+  {
+    title: "Bounding box",
+    sql: `SELECT * FROM era5\nWHERE latitude > 0 AND longitude < 180`,
+    where: (t, i, j) => LATS[i] > 0 && LONS[j] < 180,
+    why: "Only the chunks holding northern latitudes and longitudes 0° to 135° overlap the box, in both halves of the time range.",
+  },
+  {
+    title: "Mean map",
+    sql: `SELECT latitude, longitude, AVG(t2m) AS t2m\nFROM era5\nGROUP BY latitude, longitude`,
+    where: () => true,
+    group: ["lat", "lon"],
+    why: "With no filter, every partition is read. Grouping by latitude and longitude averages over time.",
+  },
+  {
+    title: "Northern time series",
+    sql: `SELECT time, AVG(t2m) AS t2m\nFROM era5\nWHERE latitude BETWEEN 30 AND 80\nGROUP BY time\nORDER BY time`,
+    where: (t, i) => LATS[i] >= 30 && LATS[i] <= 80,
+    group: ["time"],
+    why: "The southern chunks hold latitudes −15° and below, so the filter skips them.",
+  },
+  {
+    title: "One point",
+    sql: `SELECT time, t2m FROM era5\nWHERE latitude = 45 AND longitude = 90\nORDER BY time`,
+    where: (t, i, j) => LATS[i] === 45 && LONS[j] === 90,
+    // latitude and longitude are not result columns, so they are not dims.
+    dims: ["time"],
+    why: "One chunk in space holds the point, so one partition is read per time chunk.",
+  },
+];
+
+function highlightSQL(sql) {
+  const escaped = sql.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  return escaped
+    .replace(/('[^']*')/g, '<span class="str">$1</span>')
+    .replace(/\b(SELECT|FROM|WHERE|AND|GROUP BY|ORDER BY|BETWEEN|AS|AVG)\b/g, '<span class="kw">$1</span>');
+}
+
+// The 2 x 2 x 2 partitions, drawn in an oblique projection: lon to the
+// right, lat upward, time receding up and to the right.
+function drawCube(read) {
+  const svg = $("cube");
+  svg.replaceChildren();
+  const W = 92, H = 70, DX = 46, DY = 34, ox = 70, oy = 228;
+  const corner = (x, y, z) => [ox + x * W + z * DX, oy - y * H - z * DY];
+  const face = (pts, cls) => el("polygon", { points: pts.map((p) => p.join(",")).join(" "), class: cls }, svg);
+  const order = [];
+  for (let bt = 1; bt >= 0; bt--) for (let row = 0; row < 2; row++) for (let bj = 0; bj < 2; bj++) order.push([bt, row, bj]);
+  for (const [bt, row, bj] of order) {
+    const bi = 1 - row; // row 0 is the bottom, which holds the southern lat chunk
+    const isRead = read.has(`${bt},${bi},${bj}`);
+    const cls = `${isRead ? "block-read" : "block-skip"} block-edge`;
+    const x = bj, y = row, z = bt;
+    face([corner(x, y, z), corner(x + 1, y, z), corner(x + 1, y + 1, z), corner(x, y + 1, z)], cls);
+    face([corner(x, y + 1, z), corner(x + 1, y + 1, z), corner(x + 1, y + 1, z + 1), corner(x, y + 1, z + 1)], cls).style.filter = "brightness(1.12)";
+    face([corner(x + 1, y, z), corner(x + 1, y, z + 1), corner(x + 1, y + 1, z + 1), corner(x + 1, y + 1, z)], cls).style.filter = "brightness(0.85)";
+  }
+  const label = (x, y, text, anchor = "middle") => (el("text", { x, y, "text-anchor": anchor }, svg).textContent = text);
+  label(ox + W, oy + 16, "longitude 0° … 315° →");
+  label(ox - 8, oy - H + 4, "latitude ↑", "end");
+  const [tx, ty] = corner(2, 0, 1.15);
+  label(tx + 4, ty + 4, "time ↗", "start");
+}
+
+function runQuery(q) {
+  const read = new Set();
+  const cells = [];
+  TIMES.forEach((_, t) => LATS.forEach((_, i) => LONS.forEach((_, j) => {
+    if (!q.where(t, i, j)) return;
+    read.add(block(t, i, j).join(","));
+    cells.push([t, i, j]);
+  })));
+  return { read, cells };
+}
+
+function select(index) {
+  const q = QUERIES[index];
+  for (const [k, b] of [...$("queries").children].entries()) b.setAttribute("aria-pressed", String(k === index));
+  $("sql").innerHTML = `con.sql(<span class="str">"""</span>\n${highlightSQL(q.sql).replace(/^/gm, "  ")}\n<span class="str">"""</span>)`;
+  const { read, cells } = runQuery(q);
+  drawCube(read);
+  $("count").innerHTML = `Reads <b>${read.size}</b> of 8 partitions (${read.size * 48} of 384 rows scanned).`;
+  $("why").textContent = q.why;
+  showResult(q, cells);
+}
+
+QUERIES.forEach((q, k) => {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = q.title;
+  b.onclick = () => select(k);
+  $("queries").append(b);
+});
+
+// ---- Step 3: the result as a Dataset ---------------------------------
+const unique = (values) => [...new Set(values)];
+const mean = (values) => values.reduce((a, b) => a + b, 0) / values.length;
+function summary(values, fmt = String) {
+  if (values.length <= 3) return values.map(fmt).join(" ");
+  return `${fmt(values[0])} ... ${fmt(values.at(-1))}`;
+}
+const num = (v) => (Number.isInteger(v) ? `${v}.0` : String(v));
+
+function showResult(q, cells) {
+  const dims = q.group ?? q.dims ?? ["time", "lat", "lon"];
+  const coord = { time: (c) => c[0], lat: (c) => c[1], lon: (c) => c[2] };
+  const idx = Object.fromEntries(dims.map((d) => [d, unique(cells.map(coord[d])).sort((a, b) => a - b)]));
+  const values = new Map();
+  for (const c of cells) {
+    const key = dims.map((d) => coord[d](c)).join(",");
+    if (!values.has(key)) values.set(key, []);
+    values.get(key).push(AIR[c[0]][c[1]][c[2]]);
+  }
+  const at = (...pos) => {
+    const v = values.get(pos.join(","));
+    return v ? mean(v) : NaN;
+  };
+  const labels = {
+    time: idx.time?.map((t) => TIMES[t]),
+    lat: idx.lat?.map((i) => LATS[i]),
+    lon: idx.lon?.map((j) => LONS[j]),
+  };
+  const sizes = dims.map((d) => `${DIM[d]}: ${idx[d].length}`).join(", ");
+  const kinds = { time: "datetime64[ns]", lat: "float64", lon: "float64" };
+  const fmts = { time: String, lat: num, lon: num };
+  const pad = (s, n) => s.padEnd(n);
+  const lines = [
+    "<xarray.Dataset>",
+    `Dimensions:  (${sizes})`,
+    "Coordinates:",
+    ...dims.map((d) => `  * ${pad(DIM[d], 10)}(${DIM[d]}) ${kinds[d]} ${summary(labels[d], fmts[d])}`),
+    "Data variables:",
+    `    ${pad("t2m", 11)}(${dims.map((d) => DIM[d]).join(", ")}) ${q.group ? "float64" : "float32"} ...`,
+  ];
+  $("repr").textContent = lines.join("\n");
+
+  const svg = $("result");
+  const slider = $("result-slider");
+  slider.hidden = dims.length !== 3;
+  $("result-caption").textContent = "";
+  if (dims.length === 1) {
+    drawLine(svg, labels.time, idx.time.map((t) => at(t)));
+  } else if (dims.length === 2) {
+    drawResultMap(idx, (i, j) => at(idx.lat[i], idx.lon[j]));
+  } else {
+    const input = $("result-time");
+    input.max = idx.time.length - 1;
+    input.value = Math.min(+input.value, idx.time.length - 1);
+    const draw = () => {
+      const t = idx.time[+input.value];
+      $("result-time-out").textContent = TIMES[t];
+      drawResultMap(idx, (i, j) => at(t, idx.lat[i], idx.lon[j]));
+    };
+    input.oninput = draw;
+    draw();
+  }
+}
+
+function drawResultMap(idx, value) {
+  const lats = idx.lat.map((i) => LATS[i]);
+  const lons = idx.lon.map((j) => LONS[j]);
+  const cells = heatmap($("result"), lats, lons, value);
+  cells.forEach((row, i) => row.forEach((cell, j) => {
+    cell.onmouseenter = () => {
+      $("result-caption").textContent = `latitude ${lats[i]}°, longitude ${lons[j]}°: ${value(i, j).toFixed(1)} ${UNITS}`;
+    };
+  }));
+}
+
+function drawLine(svg, xs, ys) {
+  svg.replaceChildren();
+  const left = 40, top = 14, w = 300, h = 196;
+  const lo = Math.floor(Math.min(...ys)) - 1, hi = Math.ceil(Math.max(...ys)) + 1;
+  const px = (k) => left + (xs.length === 1 ? w / 2 : (k / (xs.length - 1)) * w);
+  const py = (v) => top + h - ((v - lo) / (hi - lo)) * h;
+  el("line", { class: "axis", x1: left, x2: left + w, y1: top + h, y2: top + h }, svg);
+  el("line", { class: "axis", x1: left, x2: left, y1: top, y2: top + h }, svg);
+  for (const v of [lo, (lo + hi) / 2, hi]) {
+    el("text", { x: left - 6, y: py(v) + 4, "text-anchor": "end" }, svg).textContent = `${v.toFixed(0)} ${UNITS}`;
+  }
+  xs.forEach((x, k) => {
+    if (k % 2 === 0 || xs.length <= 4) {
+      el("text", { x: px(k), y: top + h + 16, "text-anchor": "middle" }, svg).textContent = x.slice(5);
+    }
+  });
+  el("polyline", { class: "line", points: ys.map((y, k) => `${px(k)},${py(y)}`).join(" ") }, svg);
+  ys.forEach((y, k) => {
+    const dot = el("circle", { class: "dot", cx: px(k), cy: py(y), r: 4 }, svg);
+    dot.onmouseenter = () => { $("result-caption").textContent = `${xs[k]}: ${y.toFixed(1)} ${UNITS}`; };
+  });
+}
+
+select(0);
+
+// Tell an embedding page how tall the explainer is.
+if (window.parent !== window) {
+  const main = document.querySelector("main");
+  const report = () => window.parent.postMessage(
+    { xqlExplainerHeight: Math.ceil(main.getBoundingClientRect().height) }, "*");
+  new ResizeObserver(report).observe(main);
+}
+</script>
+</body>
+</html>
