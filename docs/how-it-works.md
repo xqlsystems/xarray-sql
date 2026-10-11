@@ -7,7 +7,7 @@ through the three steps with a tiny slice of
 eight days at 48 points on the globe, small enough to show every row. The
 slice is saved with the page, so it loads instantly and needs no Python.
 
-<iframe id="explainer" src="../explainer/" title="How xarray-sql works" loading="lazy"
+<iframe id="explainer" src="explainer/" title="How xarray-sql works" loading="lazy"
   style="width: 100%; height: 1500px; border: 0;"></iframe>
 
 <script>

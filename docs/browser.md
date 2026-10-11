@@ -11,7 +11,7 @@ The demo needs Chrome or Edge 137 or newer. It takes about 15 seconds to
 start, most of it downloading and loading Pyodide, pyarrow, DuckDB, and
 pandas.
 
-<iframe id="demo" src="../demo/" title="xarray-sql browser demo" loading="lazy"
+<iframe id="demo" src="demo/" title="xarray-sql browser demo" loading="lazy"
   style="width: 100%; height: 1150px; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 8px;"></iframe>
 
 [Open the demo in its own page](demo/){ #demo-link target="_blank" }
