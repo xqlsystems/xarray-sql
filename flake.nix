@@ -48,6 +48,31 @@
             which
             xz
             zlib
+            # Shared libraries for Playwright's headless Chromium, which
+            # drives the browser demo in docs/demo.
+            alsa-lib
+            at-spi2-atk
+            at-spi2-core
+            atk
+            cairo
+            cups
+            dbus
+            expat
+            glib
+            libdrm
+            libgbm
+            libxkbcommon
+            nspr
+            nss
+            pango
+            systemdLibs
+            xorg.libX11
+            xorg.libXcomposite
+            xorg.libXdamage
+            xorg.libXext
+            xorg.libXfixes
+            xorg.libXrandr
+            xorg.libxcb
           ];
           runScript = "bash";
           profile = ''
