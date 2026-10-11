@@ -32,7 +32,7 @@ pandas.
 
 ## Install in Pyodide
 
-Releases after 0.5.0 publish a Pyodide wheel to PyPI. The DuckDB engine
+Releases from 0.6.0 on publish a Pyodide wheel to PyPI. The DuckDB engine
 adapter works in Pyodide, including the round-trip back to a Dataset with
 [to_dataset][xarray_sql.to_dataset]. DataFusion does not yet, because its
 Python bindings have no Pyodide build, so [Context][xarray_sql.Context] is
@@ -123,7 +123,7 @@ copy the wheel from `pyodide build` (see "Building for WebAssembly" in the
 URL:
 
 ```
-http://localhost:8000/?wheel=./xarray_sql-0.5.0-cp310-abi3-pyemscripten_2026_0_wasm32.whl
+http://localhost:8000/?wheel=./xarray_sql-0.6.0-cp310-abi3-pyemscripten_2026_0_wasm32.whl
 ```
 
 On this docs page, `?wheel=` is passed through to the embedded demo, so a
