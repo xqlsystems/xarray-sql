@@ -4,6 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>xarray-sql in the browser</title>
+<script>
+  // Embedded in the docs, follow the site's light/dark toggle rather than
+  // the OS setting, and let the page background show through.
+  (() => {
+    let site;
+    try { site = frameElement && parent.document.body; } catch {}
+    if (!site) return;
+    const root = document.documentElement;
+    root.classList.add("embedded");
+    const sync = () => {
+      root.dataset.theme = site.dataset.mdColorScheme === "slate" ? "dark" : "light";
+    };
+    sync();
+    new MutationObserver(sync).observe(site, { attributeFilter: ["data-md-color-scheme"] });
+  })();
+</script>
 <style>
   :root {
     color-scheme: light dark;
@@ -18,17 +34,30 @@
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #161615;
-      --panel: #1f1f1d;
-      --text: #ecebe6;
-      --muted: #a3a29b;
-      --border: #34332f;
-      --accent: #6d9cf0;
-      --accent-text: #0e1420;
+    :root:not([data-theme="light"]) {
+      --bg: #0b0c0f;
+      --panel: #111319;
+      --text: #e1e3e8;
+      --muted: #9ca1ad;
+      --border: #262a35;
+      --accent: #6d8ff5;
+      --accent-text: #0b0f1d;
       --error: #f97066;
     }
   }
+  :root[data-theme="dark"] {
+    --bg: #0b0c0f;
+    --panel: #111319;
+    --text: #e1e3e8;
+    --muted: #9ca1ad;
+    --border: #262a35;
+    --accent: #6d8ff5;
+    --accent-text: #0b0f1d;
+    --error: #f97066;
+  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  .embedded body { background: transparent; }
   * { box-sizing: border-box; }
   body {
     margin: 0;
@@ -338,9 +367,14 @@ function color(t) {
 // they are about 3 MB, so they load with the first map result.
 const MAPLIBRE = "https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl";
 const DECK = "https://cdn.jsdelivr.net/npm/deck.gl@9.4.0/dist.min.js";
-const BASEMAP = matchMedia("(prefers-color-scheme: dark)").matches
-  ? "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
-  : "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+const DARK = matchMedia("(prefers-color-scheme: dark)");
+const basemap = () => {
+  const theme = document.documentElement.dataset.theme;
+  const dark = theme ? theme === "dark" : DARK.matches;
+  return dark
+    ? "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+    : "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+};
 
 const load = (tag, attrs) => new Promise((resolve, reject) => {
   const el = Object.assign(document.createElement(tag), attrs, { onload: resolve });
@@ -358,6 +392,9 @@ function loadMapLibraries() {
 }
 
 let map, overlay;
+const restyle = () => map?.setStyle(basemap());
+DARK.addEventListener("change", restyle);
+new MutationObserver(restyle).observe(document.documentElement, { attributeFilter: ["data-theme"] });
 let current;  // The grid on the map, for tooltips.
 
 function tooltip({ bitmap, layer }) {
@@ -417,7 +454,7 @@ async function drawMap(grid) {
   if (!map) {
     map = new maplibregl.Map({
       container: $("map-view"),
-      style: BASEMAP,
+      style: basemap(),
       bounds: extent,
       fitBoundsOptions: { padding: 24 },
       attributionControl: { compact: true },
