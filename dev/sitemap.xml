@@ -4,6 +4,9 @@
         <loc>https://xqlsystems.github.io/xarray-sql/dev/</loc>
       </url>
       <url>
+        <loc>https://xqlsystems.github.io/xarray-sql/dev/browser/</loc>
+      </url>
+      <url>
         <loc>https://xqlsystems.github.io/xarray-sql/dev/contributing/</loc>
       </url>
       <url>
@@ -14,6 +17,9 @@
       </url>
       <url>
         <loc>https://xqlsystems.github.io/xarray-sql/dev/geospatial/</loc>
+      </url>
+      <url>
+        <loc>https://xqlsystems.github.io/xarray-sql/dev/how-it-works/</loc>
       </url>
       <url>
         <loc>https://xqlsystems.github.io/xarray-sql/dev/limitations/</loc>
