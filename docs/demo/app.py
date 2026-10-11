@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+from decimal import Decimal
 from typing import Any
 
 import duckdb
@@ -138,14 +139,20 @@ async def setup(
     )
 
 
-def _jsonable(column: pa.ChunkedArray) -> list[Any]:
-    if pa.types.is_temporal(column.type):
-        return [None if v is None else str(v) for v in column.to_pylist()]
-    values = column.to_pylist()
-    return [
-        None if isinstance(v, float) and not math.isfinite(v) else v
-        for v in values
-    ]
+def _jsonable(value: Any) -> Any:
+    """A Python value from Arrow, made safe for JSON (which has no NaN)."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, Decimal):
+        return float(value)
+    # Exactly tuple: Arrow intervals are named tuples, shown as text below.
+    if isinstance(value, list) or type(value) is tuple:
+        return [_jsonable(v) for v in value]
+    if isinstance(value, dict):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if value is None or isinstance(value, (str, int)):
+        return value
+    return str(value)  # Timestamps, intervals, bytes, ...
 
 
 def _grid(table: pa.Table) -> dict[str, Any] | None:
@@ -160,16 +167,25 @@ def _grid(table: pa.Table) -> dict[str, Any] | None:
         and (
             pa.types.is_floating(table[n].type)
             or pa.types.is_integer(table[n].type)
+            or pa.types.is_decimal(table[n].type)
         )
     ]
     if len(values) != 1 or table.num_rows < 4:
         return None
+    lat = table["latitude"].to_numpy().astype("float64")
+    lon = table["longitude"].to_numpy().astype("float64")
+    # One pixel per point: with several rows per point (e.g. every lead
+    # time), the table is the honest view.
+    if len(np.unique(np.stack([lat, lon]), axis=1)[0]) != table.num_rows:
+        return None
     value = table[values[0]].to_numpy().astype("float64")
     finite = np.isfinite(value)
+    if not finite.any():
+        return None
     return {
         "name": values[0],
-        "latitude": table["latitude"].to_numpy()[finite].tolist(),
-        "longitude": table["longitude"].to_numpy()[finite].tolist(),
+        "latitude": lat[finite].tolist(),
+        "longitude": lon[finite].tolist(),
         "value": value[finite].tolist(),
     }
 
@@ -183,8 +199,8 @@ async def run(sql: str, max_rows: int = 500) -> str:
     return json.dumps(
         {
             "columns": shown.column_names,
-            "rows": list(
-                zip(*(_jsonable(shown[c]) for c in shown.column_names))
+            "rows": _jsonable(
+                list(zip(*(shown[c].to_pylist() for c in shown.column_names)))
             ),
             "num_rows": table.num_rows,
             "grid": _grid(table),

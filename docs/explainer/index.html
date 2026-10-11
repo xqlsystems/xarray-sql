@@ -356,6 +356,8 @@ const QUERIES = [
     title: "One point",
     sql: `SELECT time, t2m FROM era5\nWHERE latitude = 45 AND longitude = 90\nORDER BY time`,
     where: (t, i, j) => LATS[i] === 45 && LONS[j] === 90,
+    // latitude and longitude are not result columns, so they are not dims.
+    dims: ["time"],
     why: "One chunk in space holds the point, so one partition is read per time chunk.",
   },
 ];
@@ -433,7 +435,7 @@ function summary(values, fmt = String) {
 const num = (v) => (Number.isInteger(v) ? `${v}.0` : String(v));
 
 function showResult(q, cells) {
-  const dims = q.group ?? ["time", "lat", "lon"];
+  const dims = q.group ?? q.dims ?? ["time", "lat", "lon"];
   const coord = { time: (c) => c[0], lat: (c) => c[1], lon: (c) => c[2] };
   const idx = Object.fromEntries(dims.map((d) => [d, unique(cells.map(coord[d])).sort((a, b) => a - b)]));
   const values = new Map();

@@ -26,6 +26,7 @@ async function start() {
   const modules = Promise.all(
     ["app.py", "chunk_cache.py", "fetch_store.py"].map(async (name) => {
       const response = await fetch(new URL(name, import.meta.url));
+      if (!response.ok) throw new Error(`Could not load ${name}: HTTP ${response.status}`);
       return [name, await response.text()];
     }),
   );

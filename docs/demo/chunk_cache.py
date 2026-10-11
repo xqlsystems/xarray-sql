@@ -19,7 +19,9 @@ Instead, every scan reads from a cache of decoded chunks:
 3. A run with no misses saw only real data, so its result is exact.
 
 Placeholder data can change data-dependent filters in the discarded
-runs, which may fetch a few extra chunks; it never changes the final
+runs, which may fetch a few extra chunks, or make a run fail outright
+(casting NaN to an integer, say). A failed run that missed chunks is
+treated like any other: fetch, then run again. Neither changes the final
 answer.
 """
 
@@ -178,6 +180,13 @@ class ChunkCache:
             _, evicted = self._chunks.popitem(last=False)
             self._nbytes -= evicted.nbytes
 
+    def _nbytes_of(self, keys: set[ChunkKey]) -> int:
+        return sum(
+            int(np.prod([hi - lo for lo, hi in bounds]))
+            * self.source[name].dtype.itemsize
+            for name, bounds in keys
+        )
+
     async def fill(self) -> int:
         """Fetch every chunk recorded as missing; returns how many."""
         keys = list(self.missing)
@@ -185,38 +194,45 @@ class ChunkCache:
         await asyncio.gather(*(self._fetch(k) for k in keys))
         return len(keys)
 
-    async def query(
-        self, run: Any, max_rounds: int = 6
-    ) -> tuple[Any, QueryStats]:
+    async def query(self, run: Any) -> tuple[Any, QueryStats]:
         """Call ``run()`` until it completes without a cache miss.
 
         ``run`` executes the query and materializes its result, e.g.
         ``lambda: con.sql(sql).to_arrow_table()``.
+
+        Every retry fetches chunks this query has not fetched before, so
+        the loop ends. If a run misses a chunk this query already fetched,
+        the cache evicted it to make room for the others: the query needs
+        more than the cache holds.
         """
         stats = QueryStats()
+        fetched: set[ChunkKey] = set()
         self.missing.clear()
-        for _ in range(max_rounds):
+        while True:
             stats.rounds += 1
             start = time.perf_counter()
-            result = run()
+            try:
+                result = run()
+            except Exception:
+                # Fill values can fail a query that real data would not.
+                if not self.missing:
+                    raise
             stats.seconds_querying += time.perf_counter() - start
             stats.misses_per_round.append(len(self.missing))
             if not self.missing:
                 return result, stats
-            needed = sum(
-                int(np.prod([hi - lo for lo, hi in b]))
-                * self.source[n].dtype.itemsize
-                for n, b in self.missing
-            )
-            if needed > self.max_bytes:
+            if (
+                self._nbytes_of(self.missing) > self.max_bytes
+                or self.missing & fetched
+            ):
+                needed = self._nbytes_of(fetched | self.missing)
                 raise MemoryError(
-                    f"The query needs {needed / 2**20:.0f} MiB of chunks, "
-                    f"more than the cache's {self.max_bytes / 2**20:.0f} MiB. "
+                    f"The query needs about {needed / 2**20:.0f} MiB of "
+                    f"chunks, more than the cache's "
+                    f"{self.max_bytes / 2**20:.0f} MiB. "
                     "Narrow its filters on the dimension columns."
                 )
+            fetched |= self.missing
             start = time.perf_counter()
             stats.chunks_fetched += await self.fill()
             stats.seconds_fetching += time.perf_counter() - start
-        raise RuntimeError(
-            f"The query still read uncached chunks after {max_rounds} runs."
-        )

@@ -27,7 +27,9 @@ from zarr.abc.store import (
 from zarr.core.buffer import Buffer, BufferPrototype
 
 # S3-style object stores answer 403 rather than 404 for a missing key
-# when listing is not public.
+# when listing is not public, and zarr probes for keys that may not exist.
+# A key the store refuses for any other reason also reads as missing, so
+# its chunks come back as fill values.
 _MISSING = (403, 404)
 _ATTEMPTS = 4
 
@@ -41,6 +43,18 @@ def _range_header(byte_range: ByteRequest | None) -> dict[str, str]:
         return {"Range": f"bytes={byte_range.offset}-"}
     if isinstance(byte_range, SuffixByteRequest):
         return {"Range": f"bytes=-{byte_range.suffix}"}
+    raise TypeError(f"Unexpected byte range: {byte_range!r}")
+
+
+def _range_slice(byte_range: ByteRequest) -> slice:
+    if isinstance(byte_range, RangeByteRequest):
+        return slice(byte_range.start, byte_range.end)
+    if isinstance(byte_range, OffsetByteRequest):
+        return slice(byte_range.offset, None)
+    if isinstance(byte_range, SuffixByteRequest):
+        if byte_range.suffix == 0:
+            return slice(0, 0)  # data[-0:] would be everything.
+        return slice(-byte_range.suffix, None)
     raise TypeError(f"Unexpected byte range: {byte_range!r}")
 
 
@@ -92,6 +106,9 @@ class FetchStore(Store):
             raise OSError(f"GET {url} failed: HTTP {response.status}")
         data = await response.bytes()
         self.bytes_read += len(data)
+        if byte_range is not None and response.status != 206:
+            # The server ignored the Range header and sent the whole object.
+            data = data[_range_slice(byte_range)]
         return prototype.buffer.from_bytes(data)
 
     async def get_partial_values(
