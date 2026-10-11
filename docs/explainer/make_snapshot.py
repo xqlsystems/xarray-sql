@@ -14,7 +14,9 @@ import pathlib
 import numpy as np
 import xarray as xr
 
-ARCO_ERA5 = "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"
+ARCO_ERA5 = (
+    "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"
+)
 
 era5 = xr.open_zarr(ARCO_ERA5, chunks=None, storage_options={"token": "anon"})
 ds = (
