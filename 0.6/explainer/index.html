@@ -4,6 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How xarray-sql works</title>
+<script>
+  // Embedded in the docs, follow the site's light/dark toggle rather than
+  // the OS setting, and let the page background show through.
+  (() => {
+    let site;
+    try { site = frameElement && parent.document.body; } catch {}
+    if (!site) return;
+    const root = document.documentElement;
+    root.classList.add("embedded");
+    const sync = () => {
+      root.dataset.theme = site.dataset.mdColorScheme === "slate" ? "dark" : "light";
+    };
+    sync();
+    new MutationObserver(sync).observe(site, { attributeFilter: ["data-md-color-scheme"] });
+  })();
+</script>
 <style>
   :root {
     color-scheme: light dark;
@@ -21,20 +37,36 @@
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #161615;
-      --panel: #1f1f1d;
-      --text: #ecebe6;
-      --muted: #a3a29b;
-      --border: #34332f;
-      --accent: #6d9cf0;
-      --accent-soft: #6d9cf033;
-      --accent-text: #0e1420;
-      --code-bg: #262624;
-      --kw: #c4a2ff;
-      --str: #5fd4a4;
+    :root:not([data-theme="light"]) {
+      --bg: #0b0c0f;
+      --panel: #111319;
+      --text: #e1e3e8;
+      --muted: #9ca1ad;
+      --border: #262a35;
+      --accent: #6d8ff5;
+      --accent-soft: #6d8ff533;
+      --accent-text: #0b0f1d;
+      --code-bg: #171a23;
+      --kw: #b49cff;
+      --str: #4fc490;
     }
   }
+  :root[data-theme="dark"] {
+    --bg: #0b0c0f;
+    --panel: #111319;
+    --text: #e1e3e8;
+    --muted: #9ca1ad;
+    --border: #262a35;
+    --accent: #6d8ff5;
+    --accent-soft: #6d8ff533;
+    --accent-text: #0b0f1d;
+    --code-bg: #171a23;
+    --kw: #b49cff;
+    --str: #4fc490;
+  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  .embedded body { background: transparent; }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   body {
