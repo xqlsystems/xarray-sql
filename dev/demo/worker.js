@@ -4,7 +4,7 @@
 // Messages out: {type: "status", message, step}
 //               {type: "ready", info}  |  {type: "failed", error}
 //               {type: "result", id, result}  |  {type: "error", id, error}
-import { loadPyodide } from "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.mjs";
+const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.mjs";
 
 // xarray-sql comes from PyPI unless the page passes a wheel URL, e.g. a
 // locally built one: index.html?wheel=./xarray_sql-...-pyemscripten_2026_0_wasm32.whl
@@ -21,6 +21,15 @@ async function start() {
         "On iPhone and iPad, every browser needs iOS 27 or newer.",
     );
   }
+  // On iPhone and iPad, Python calls function pointers through JavaScript
+  // rather than wasm-gc, which crashed on iOS 18. JSPI cannot suspend
+  // through those JavaScript frames, so the first read from the store would
+  // crash Pyodide. Every iOS with JSPI is 27 or newer, so hide the device
+  // from that check. Pyodide reads it on import.
+  Object.defineProperty(navigator, "userAgent", {
+    value: navigator.userAgent.replace(/iPad|iPhone|iPod/g, "Mobile"),
+  });
+  const { loadPyodide } = await import(PYODIDE);
   status("Loading Pyodide and packages…", 0);
   // Everything Pyodide ships is fetched in parallel while the runtime
   // boots; micropip then only resolves xarray-sql from PyPI.
@@ -55,6 +64,12 @@ const describe = (error) => {
 
 const app = start().catch((error) => {
   postMessage({ type: "failed", ...describe(error) });
+});
+
+// A fatal Pyodide error rejects a promise that nothing awaits. Report it
+// rather than leave the page waiting on a dead worker.
+addEventListener("unhandledrejection", ({ reason }) => {
+  postMessage({ type: "failed", ...describe(String(reason)) });
 });
 
 onmessage = async ({ data: { id, sql } }) => {
