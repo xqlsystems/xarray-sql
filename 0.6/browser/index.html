@@ -913,9 +913,10 @@ from <a href="https://dynamical.org">dynamical.org</a>'s public Zarr store. xarr
 and DuckDB run in a Web Worker in your browser, so there is no server. Each
 query downloads only the chunks that its filters on <code>init_time</code>, <code>latitude</code>,
 and <code>longitude</code> reach.</p>
-<p>The demo needs Chrome or Edge 137 or newer. It takes about 15 seconds to
-start, most of it downloading and loading Pyodide, pyarrow, DuckDB, and
-pandas.</p>
+<p>The demo needs Chrome or Edge 137 or newer, or Safari 27 or newer (on
+iPhone and iPad, iOS 27 or newer in any browser). It takes about 15
+seconds to start, most of it downloading and loading Pyodide, pyarrow,
+DuckDB, and pandas.</p>
 <iframe id="demo" src="../demo/" title="xarray-sql browser demo" loading="lazy"
   style="width: 100%; height: 1150px; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 8px;"></iframe>
 
@@ -1029,7 +1030,7 @@ chunks, requests, and bytes for each query.</p>
 </tbody>
 </table>
 <h2 id="run-it-locally">Run it locally<a class="headerlink" href="#run-it-locally" title="Permanent link">&para;</a></h2>
-<p>Serve <code>docs/demo</code> over HTTP and open it in Chrome or Edge:</p>
+<p>Serve <code>docs/demo</code> over HTTP and open it in Chrome, Edge, or Safari:</p>
 <div class="language-shell highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python<span class="w"> </span>-m<span class="w"> </span>http.server<span class="w"> </span><span class="m">8000</span><span class="w"> </span>--directory<span class="w"> </span>docs/demo
 </span></code></pre></div>
 <p>By default the worker installs xarray-sql from PyPI. To test a local build,
