@@ -7,9 +7,10 @@ and DuckDB run in a Web Worker in your browser, so there is no server. Each
 query downloads only the chunks that its filters on `init_time`, `latitude`,
 and `longitude` reach.
 
-The demo needs Chrome or Edge 137 or newer. It takes about 15 seconds to
-start, most of it downloading and loading Pyodide, pyarrow, DuckDB, and
-pandas.
+The demo needs Chrome or Edge 137 or newer, or Safari 27 or newer (on
+iPhone and iPad, iOS 27 or newer in any browser). It takes about 15
+seconds to start, most of it downloading and loading Pyodide, pyarrow,
+DuckDB, and pandas.
 
 <iframe id="demo" src="demo/" title="xarray-sql browser demo" loading="lazy"
   style="width: 100%; height: 1150px; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 8px;"></iframe>
@@ -111,7 +112,7 @@ The demo's files are in
 
 ## Run it locally
 
-Serve `docs/demo` over HTTP and open it in Chrome or Edge:
+Serve `docs/demo` over HTTP and open it in Chrome, Edge, or Safari:
 
 ```shell
 python -m http.server 8000 --directory docs/demo

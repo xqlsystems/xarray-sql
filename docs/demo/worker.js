@@ -17,7 +17,8 @@ async function start() {
   if (typeof WebAssembly.Suspending !== "function") {
     throw new Error(
       "This demo needs WebAssembly JavaScript Promise Integration (JSPI), " +
-        "available in Chrome and Edge 137 or newer.",
+        "available in Chrome and Edge 137 or newer and Safari 27 or newer. " +
+        "On iPhone and iPad, every browser needs iOS 27 or newer.",
     );
   }
   status("Loading Pyodide and packages…", 0);
