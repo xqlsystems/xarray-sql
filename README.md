@@ -16,18 +16,14 @@ pip install xarray-sql
 
 ## What is this?
 
-This is an experiment to provide a SQL interface for array datasets.
+This project provides a SQL interface for array datasets.
 Succinctly, we "pivot" Xarray Datasets to treat them like tables so we can run
-SQL queries against them — on the query engine of your choice. xarray-sql
-translates data, not queries: it registers a lazy Dataset as a table on
-DataFusion (built in), DuckDB, or Polars, and turns any engine's Arrow result
-back into a labeled Dataset. Dialects, geometry functions, and optimizers stay
-with the engine.
+SQL queries against them (on the query engine of your choice).
 
 ## Quickstart
 
 Open a Dataset, register it as a table with `from_dataset`, compute a
-climatology in SQL, then write the result back to Xarray and plot it:
+climatology in SQL, then write the result back to Xarray for plotting:
 
 > **Note:** this example also needs `pooch` and a netCDF backend (for the
 > tutorial download) and `matplotlib` (for the plot):
@@ -62,11 +58,7 @@ clim_ds = clim.to_dataset(dims=["month"])
 clim_ds["air"].plot()  # in a script, call matplotlib.pyplot.show() to display
 ```
 
-That's the round trip — Xarray in, SQL in the middle, Xarray (and a plot) back
-out.
-
-The same Dataset registers on other engines with one call — DuckDB gets a
-native lazy table with predicate pushdown, Polars scans the same object:
+The same Dataset registers on other engines with one call:
 
 ```python
 import duckdb
@@ -82,10 +74,7 @@ Any database with an [ADBC](https://arrow.apache.org/adbc/) driver
 ingests the Dataset into a table there, and `xql.to_dataset(cursor, ...)`
 brings results back. Or go the other way without copying anything:
 `xql.serve({'air': ds})` starts an Arrow Flight SQL server that any Flight SQL
-client (ADBC, JDBC, ODBC) can query, with the same chunk pruning as in process.
-
-`table_names` (below) works the same way on every engine, so a query written
-against `era5.surface` is not tied to the engine it was written for.
+client (ADBC, JDBC, ODBC) can query.
 
 See [Engines](https://xqlsystems.github.io/xarray-sql/latest/engines/) for the support matrix, DuckDB/Polars/ADBC details,
 and the lazy chunked round-trip.
@@ -187,9 +176,6 @@ ctx.sql('''
 #     valid_time_stop_era5t:  2026-06-14
 ```
 
-_(A runnable version of this example lives at
-[`perf_tests/era5_temp_profile.py`](https://github.com/xqlsystems/xarray-sql/blob/main/perf_tests/era5_temp_profile.py).)_
-
 ## Why build this?
 
 A few reasons:
@@ -206,8 +192,8 @@ A few reasons:
 This is a light-weight way to prove the value of the interface.
 
 The larger goal is to explore the hypothesis that the [Pangeo
-ecosystem is a scientific database](https://www.hytradboi.com/2025/c18b8cdc-fd17-4099-9c03-eb107217f627-pangeo-is-a-database). Here, xarray-sql can be thought of as a missing
-DB front end.
+ecosystem is a scientific database](https://www.hytradboi.com/2025/c18b8cdc-fd17-4099-9c03-eb107217f627-pangeo-is-a-database). 
+Here, xarray-sql can be thought of as a missing DB front end.
 
 ## How does it work?
 
@@ -227,36 +213,29 @@ DuckDB and Polars consume registered Datasets with no engine-specific code.
 Ultimately, the initial insight of the `pivot()` function -- that any ndarray can be
 translated into a 2D table -- underlies this performant query mechanism. 
 
+_Autumn 2026_: we take a leaf from LanceDB's book: we provide a common Arrow interface
+within DataFusion abstractions to perform the round trip journy between dataframe and Xarray Dataset. 
+Then, we've built an extensible engine system to make it easy to add the next DB engine.
+
 ## Does it work?
 
-Yes. The recurring worry is that the SQL interface is a toy — fine for `SELECT`s,
-but not for the operations geoscience actually runs. So we wrote a suite that
-takes the staples of geospatial and climate analysis — the ones we assume *need*
-an array library — and expresses each one in SQL, then **checks the SQL answer
-against an xarray/array reference** to floating-point tolerance:
+Yes, and not half bad either. Our initial fear was that this was merely a toy — 
+fine for `SELECT`s, but not for operations scientists actually run. 
 
-* **Spectral indices** (NDVI) — column arithmetic over a real Sentinel-2 scene.
-* **Climatology, anomalies, zonal means** — `GROUP BY` and self-`JOIN` against
-  the 0.25° **ARCO-ERA5** archive registered as a lazy table. Each query is
-  bounded to a small window (a few days over a region) and reads only that
-  slice — the point is that you can aim a query at a multi-decade archive and
-  pay only for the data it asks for, not that the query scans the whole record.
-* **Forecast skill** — scoring the **Pangu-Weather** and **GraphCast** ML models
-  against ERA5 (WeatherBench 2) as a `JOIN` on `valid_time = init + lead`; it
-  reproduces the published result that GraphCast beats Pangu at every lead.
-* **Raster × vector zonal stats** — a range `JOIN` of the ERA5 grid against a
-  table of regions.
-* **Reprojection and regridding** — a `reproject(x, y, src_crs, dst_crs)`
-  scalar PROJ UDF, shipped as the optional geo extension
-  (`pip install xarray-sql[geo]`, validated against Earth Engine's own
-  geodesy via [Xee](https://github.com/google/Xee)) and a
-  sparse-weight-table `JOIN` (regridding real SRTM terrain).
+To build confidence in our hypothesis, we built a suite of benchmarks catering to the primary
+user base for Xarray – climate & weather scientists and geospatial practitioners. Luckily for us,
+there already was this [very helpful discussion](https://github.com/coiled/benchmarks/discussions/1545) initiated by Coiled that attempted to gather
+a representative range of geospatial queries (in order to improve Dask's performance on this category of workloads).
 
-Every case matches its array reference. The headline finding: these operations
-are not really "array" operations at all — they are `GROUP BY`, `JOIN`, window
-functions, and `CASE` in disguise, and a query engine runs them at scale. See
-[`benchmarks/geospatial/`](https://github.com/xqlsystems/xarray-sql/tree/main/benchmarks/geospatial/) and the write-up,
-[Geospatial operations are relational operations](https://xqlsystems.github.io/xarray-sql/latest/geospatial/).
+Based on this survey from experts in this domain, we create a SQL geospatial
+benchmark (as compared to native Xarray ops). You can read our claim and finings in "[Geospatial operations are relational operations](https://xql.systems/xarray-sql/latest/geospatial/)."
+
+Some highlights:
+
+* We benchmarked everything on real cloud-native datasets: ARCO-ERA5, Sentinel 2, Weatherbench 2, and Google Earth Engine via [Xee](https://github.com/google/Xee).
+* SQL provides an elegant (yet verbose) way to make every array-oriented query. Some queries, like calculating zonal mean statistics, are more elegant expressed in SQL than their Xarray counterparts.
+* Dense tensor operations are slower in SQL than Xarray. It seems like the vanilla HashJoin implementation in standard DB engines are not as performant as array ops (they don't take advantage of contiguous array layouts), though this gives us some idea for how it could [one day be possible](https://github.com/xqlsystems/einfold). 
+* Sparse tensor operations are just as fast (or faster!) than Xarray today. Specifically, SQL is an excellent way to perform regridding and reprojecting between different spatial scales (see also: we include a `proj` udf via the `xarray-sql[geo]` extra).
 
 ## Why does this work?
 
@@ -276,47 +255,24 @@ early users – "tire kickers", if you will. We'd love your input to shape the d
 project! Please, give this a try and [file issues](https://github.com/xqlsystems/xarray-sql/issues) as
 you see fit. Check out our [contributing guide](https://xqlsystems.github.io/xarray-sql/latest/contributing/), too 😉.
 
-## What would a deeper integration look like?
-
-I have a few ideas so far. One approach involves applying operations directly on
-Xarray Datasets. This approach is being pursued
-[here](https://github.com/google/weather-tools/tree/main/xql), as `xql`.
-
-Deeper still: I was thinking we could make
-a [virtual](https://fsspec.github.io/kerchunk/)
-filesystem for parquet that would internally map to Zarr. Raster-backed virtual
-parquet would open up integrations to numerous tools like dask, pyarrow, duckdb,
-and BigQuery. More thoughts on this
-in [#4](https://github.com/xqlsystems/xarray-sql/issues/4).
-
-_2025 update_: Something like this is being built across a few projects! The ones I know about are:
-
-- [CartoDB's Raquet](https://github.com/CartoDB/raquet)
-- The DataFusion community's [arrow-zarr](https://github.com/datafusion-contrib/arrow-zarr)
-
-_2026 update_: A colleague and I are experimenting with native Zarr RDBMS engines. Check out:
-
-- [Zarr-Datafusion](https://lib.rs/crates/zarr-datafusion)
-- [DuckDB-Zarr](https://github.com/xqlsystems/duckdb-zarr)
-
 ## Roadmap
 
 - [x] ~Lazy evaluation via the pyarrow Dataset interface [#93](https://github.com/xqlsystems/xarray-sql/issues/93).~ _Implemented in [#100](https://github.com/xqlsystems/xarray-sql/pull/100)_
 - [x] Support proper parallelism via proper partition handling on the rust/datafusion side. [#106](https://github.com/xqlsystems/xarray-sql/issues/106)
 - [x] Support core datafusion optimizations to scan less data, like [#104](https://github.com/xqlsystems/xarray-sql/issues/104), ...
 - [x] Translate a single Zarr to a collection of tables [#85](https://github.com/xqlsystems/xarray-sql/issues/85).
-- [ ] Distributed beyond a single node through the DataFusion integration with Ray Datasets [#68](https://github.com/xqlsystems/xarray-sql/issues/68) or Apache Ballista [#98](https://github.com/xqlsystems/xarray-sql/issues/98).
-- [ ] Demo: calculate Sea Surface Temperature from 1940 - Present in SQL [#36](https://github.com/xqlsystems/xarray-sql/issues/36).
-- [ ] Provide an option to integrate DataFusion directly to Zarr via Rust [#4](https://github.com/xqlsystems/xarray-sql/issues/4).
+- [ ] Distributed beyond a single node through the DataFusion integration (with Ray Datasets?) [#68](https://github.com/xqlsystems/xarray-sql/issues/68) or Apache Ballista [#98](https://github.com/xqlsystems/xarray-sql/issues/98).
+- [x] Demo: calculate Sea Surface Temperature from 1940 - Present in SQL [#36](https://github.com/xqlsystems/xarray-sql/issues/36).
+- [ ] ~Provide an option to integrate DataFusion directly to Zarr via Rust [#4](https://github.com/xqlsystems/xarray-sql/issues/4).~
 - [ ] (To be formally announced eventually): The 100 Trillion Row Challenge [#34](https://github.com/xqlsystems/xarray-sql/issues/34).
 
 ## Sponsors & Contributors
 
 I want to give a special thanks to the following folks and institutions:
 
-- Pramod Gupta and the Anthromet Team at Google Research for the problem
+- Pramod Gupta and the [Anthromet Team at Google Research](https://github.com/google-deepmind/weathernext) for the problem
   formation and design inspiration.
-- Jake Wall and AI2/Ecoscope for compute resources and key use cases.
+- Jake Wall and AI2/[Ecoscope](https://ecoscope.io/en/stable/) for compute resources and key use cases.
 - Charles Stern, Stephan Hoyer, Alexander Kmoch, Wei Ji, and Qiusheng Wu
   for the early review and discussion of this project.
 - Tom Nichols, Kyle Barron, Tom White, and Maxime Dion for the [Array Working
