@@ -24,7 +24,7 @@
       
       
       <link rel="icon" href="./assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.70">
+      <meta name="generator" content="zensical-0.0.71">
     
     
       
@@ -378,17 +378,6 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         What are the current limitations?
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-would-a-deeper-integration-look-like" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        What would a deeper integration look like?
       </span>
     </span>
   </a>
@@ -1003,17 +992,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-would-a-deeper-integration-look-like" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        What would a deeper integration look like?
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#roadmap" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1091,16 +1069,12 @@
 <div class="language-shell highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>xarray-sql
 </span></code></pre></div>
 <h2 id="what-is-this">What is this?<a class="headerlink" href="#what-is-this" title="Permanent link">&para;</a></h2>
-<p>This is an experiment to provide a SQL interface for array datasets.
+<p>This project provides a SQL interface for array datasets.
 Succinctly, we "pivot" Xarray Datasets to treat them like tables so we can run
-SQL queries against them — on the query engine of your choice. xarray-sql
-translates data, not queries: it registers a lazy Dataset as a table on
-DataFusion (built in), DuckDB, or Polars, and turns any engine's Arrow result
-back into a labeled Dataset. Dialects, geometry functions, and optimizers stay
-with the engine.</p>
+SQL queries against them (on the query engine of your choice).</p>
 <h2 id="quickstart">Quickstart<a class="headerlink" href="#quickstart" title="Permanent link">&para;</a></h2>
 <p>Open a Dataset, register it as a table with <code>from_dataset</code>, compute a
-climatology in SQL, then write the result back to Xarray and plot it:</p>
+climatology in SQL, then write the result back to Xarray for plotting:</p>
 <blockquote>
 <p><strong>Note:</strong> this example also needs <code>pooch</code> and a netCDF backend (for the
 tutorial download) and <code>matplotlib</code> (for the plot):
@@ -1133,10 +1107,7 @@ tutorial download) and <code>matplotlib</code> (for the plot):
 </span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="c1"># Plot the annual cycle as a time series.</span>
 </span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a><span class="n">clim_ds</span><span class="p">[</span><span class="s2">"air"</span><span class="p">]</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>  <span class="c1"># in a script, call matplotlib.pyplot.show() to display</span>
 </span></code></pre></div>
-<p>That's the round trip — Xarray in, SQL in the middle, Xarray (and a plot) back
-out.</p>
-<p>The same Dataset registers on other engines with one call — DuckDB gets a
-native lazy table with predicate pushdown, Polars scans the same object:</p>
+<p>The same Dataset registers on other engines with one call:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">duckdb</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">con</span> <span class="o">=</span> <span class="n">duckdb</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
@@ -1149,9 +1120,7 @@ native lazy table with predicate pushdown, Polars scans the same object:</p>
 ingests the Dataset into a table there, and <code>xql.to_dataset(cursor, ...)</code>
 brings results back. Or go the other way without copying anything:
 <code>xql.serve({'air': ds})</code> starts an Arrow Flight SQL server that any Flight SQL
-client (ADBC, JDBC, ODBC) can query, with the same chunk pruning as in process.</p>
-<p><code>table_names</code> (below) works the same way on every engine, so a query written
-against <code>era5.surface</code> is not tied to the engine it was written for.</p>
+client (ADBC, JDBC, ODBC) can query.</p>
 <p>See <a href="https://xqlsystems.github.io/xarray-sql/latest/engines/">Engines</a> for the support matrix, DuckDB/Polars/ADBC details,
 and the lazy chunked round-trip.</p>
 <h2 id="a-bigger-example-arco-era5">A bigger example: ARCO-ERA5<a class="headerlink" href="#a-bigger-example-arco-era5" title="Permanent link">&para;</a></h2>
@@ -1248,8 +1217,6 @@ like <a href="https://github.com/google-research/arco-era5">ARCO-ERA5</a>.</p>
 </span><span id="__span-3-86"><a id="__codelineno-3-86" name="__codelineno-3-86" href="#__codelineno-3-86"></a><span class="c1">#     valid_time_stop:        2025-12-31</span>
 </span><span id="__span-3-87"><a id="__codelineno-3-87" name="__codelineno-3-87" href="#__codelineno-3-87"></a><span class="c1">#     valid_time_stop_era5t:  2026-06-14</span>
 </span></code></pre></div>
-<p><em>(A runnable version of this example lives at
-<a href="https://github.com/xqlsystems/xarray-sql/blob/main/perf_tests/era5_temp_profile.py"><code>perf_tests/era5_temp_profile.py</code></a>.)</em></p>
 <h2 id="why-build-this">Why build this?<a class="headerlink" href="#why-build-this" title="Permanent link">&para;</a></h2>
 <p>A few reasons:</p>
 <ul>
@@ -1264,8 +1231,8 @@ like <a href="https://github.com/google-research/arco-era5">ARCO-ERA5</a>.</p>
 </ul>
 <p>This is a light-weight way to prove the value of the interface.</p>
 <p>The larger goal is to explore the hypothesis that the <a href="https://www.hytradboi.com/2025/c18b8cdc-fd17-4099-9c03-eb107217f627-pangeo-is-a-database">Pangeo
-ecosystem is a scientific database</a>. Here, xarray-sql can be thought of as a missing
-DB front end.</p>
+ecosystem is a scientific database</a>. 
+Here, xarray-sql can be thought of as a missing DB front end.</p>
 <h2 id="how-does-it-work">How does it work?<a class="headerlink" href="#how-does-it-work" title="Permanent link">&para;</a></h2>
 <p>All chunks in a Xarray Dataset are transformed into a Dask DataFrame via
 <code>from_map()</code> and <code>to_dataframe()</code>. For SQL support, we just use <code>dask-sql</code>.
@@ -1280,35 +1247,25 @@ The same chunks-to-batches translation is also exposed as a
 DuckDB and Polars consume registered Datasets with no engine-specific code.
 Ultimately, the initial insight of the <code>pivot()</code> function -- that any ndarray can be
 translated into a 2D table -- underlies this performant query mechanism. </p>
+<p><em>Autumn 2026</em>: we take a leaf from LanceDB's book: we provide a common Arrow interface
+within DataFusion abstractions to perform the round trip journy between dataframe and Xarray Dataset. 
+Then, we've built an extensible engine system to make it easy to add the next DB engine.</p>
 <h2 id="does-it-work">Does it work?<a class="headerlink" href="#does-it-work" title="Permanent link">&para;</a></h2>
-<p>Yes. The recurring worry is that the SQL interface is a toy — fine for <code>SELECT</code>s,
-but not for the operations geoscience actually runs. So we wrote a suite that
-takes the staples of geospatial and climate analysis — the ones we assume <em>need</em>
-an array library — and expresses each one in SQL, then <strong>checks the SQL answer
-against an xarray/array reference</strong> to floating-point tolerance:</p>
+<p>Yes, and not half bad either. Our initial fear was that this was merely a toy — 
+fine for <code>SELECT</code>s, but not for operations scientists actually run. </p>
+<p>To build confidence in our hypothesis, we built a suite of benchmarks catering to the primary
+user base for Xarray – climate &amp; weather scientists and geospatial practitioners. Luckily for us,
+there already was this <a href="https://github.com/coiled/benchmarks/discussions/1545">very helpful discussion</a> initiated by Coiled that attempted to gather
+a representative range of geospatial queries (in order to improve Dask's performance on this category of workloads).</p>
+<p>Based on this survey from experts in this domain, we create a SQL geospatial
+benchmark (as compared to native Xarray ops). You can read our claim and finings in "<a href="https://xql.systems/xarray-sql/latest/geospatial/">Geospatial operations are relational operations</a>."</p>
+<p>Some highlights:</p>
 <ul>
-<li><strong>Spectral indices</strong> (NDVI) — column arithmetic over a real Sentinel-2 scene.</li>
-<li><strong>Climatology, anomalies, zonal means</strong> — <code>GROUP BY</code> and self-<code>JOIN</code> against
-  the 0.25° <strong>ARCO-ERA5</strong> archive registered as a lazy table. Each query is
-  bounded to a small window (a few days over a region) and reads only that
-  slice — the point is that you can aim a query at a multi-decade archive and
-  pay only for the data it asks for, not that the query scans the whole record.</li>
-<li><strong>Forecast skill</strong> — scoring the <strong>Pangu-Weather</strong> and <strong>GraphCast</strong> ML models
-  against ERA5 (WeatherBench 2) as a <code>JOIN</code> on <code>valid_time = init + lead</code>; it
-  reproduces the published result that GraphCast beats Pangu at every lead.</li>
-<li><strong>Raster × vector zonal stats</strong> — a range <code>JOIN</code> of the ERA5 grid against a
-  table of regions.</li>
-<li><strong>Reprojection and regridding</strong> — a <code>reproject(x, y, src_crs, dst_crs)</code>
-  scalar PROJ UDF, shipped as the optional geo extension
-  (<code>pip install xarray-sql[geo]</code>, validated against Earth Engine's own
-  geodesy via <a href="https://github.com/google/Xee">Xee</a>) and a
-  sparse-weight-table <code>JOIN</code> (regridding real SRTM terrain).</li>
+<li>We benchmarked everything on real cloud-native datasets: ARCO-ERA5, Sentinel 2, Weatherbench 2, and Google Earth Engine via <a href="https://github.com/google/Xee">Xee</a>.</li>
+<li>SQL provides an elegant (yet verbose) way to make every array-oriented query. Some queries, like calculating zonal mean statistics, are more elegant expressed in SQL than their Xarray counterparts.</li>
+<li>Dense tensor operations are slower in SQL than Xarray. It seems like the vanilla HashJoin implementation in standard DB engines are not as performant as array ops (they don't take advantage of contiguous array layouts), though this gives us some idea for how it could <a href="https://github.com/xqlsystems/einfold">one day be possible</a>. </li>
+<li>Sparse tensor operations are just as fast (or faster!) than Xarray today. Specifically, SQL is an excellent way to perform regridding and reprojecting between different spatial scales (see also: we include a <code>proj</code> udf via the <code>xarray-sql[geo]</code> extra).</li>
 </ul>
-<p>Every case matches its array reference. The headline finding: these operations
-are not really "array" operations at all — they are <code>GROUP BY</code>, <code>JOIN</code>, window
-functions, and <code>CASE</code> in disguise, and a query engine runs them at scale. See
-<a href="https://github.com/xqlsystems/xarray-sql/tree/main/benchmarks/geospatial/"><code>benchmarks/geospatial/</code></a> and the write-up,
-<a href="https://xqlsystems.github.io/xarray-sql/latest/geospatial/">Geospatial operations are relational operations</a>.</p>
 <h2 id="why-does-this-work">Why does this work?<a class="headerlink" href="#why-does-this-work" title="Permanent link">&para;</a></h2>
 <p>Underneath Xarray, Dask, and Pandas, there are NumPy arrays. These are paged in
 chunks and represented contiguously in memory. It is only a matter of metadata
@@ -1323,43 +1280,23 @@ anything that speaks Arrow).</p>
 early users – "tire kickers", if you will. We'd love your input to shape the direction of this
 project! Please, give this a try and <a href="https://github.com/xqlsystems/xarray-sql/issues">file issues</a> as
 you see fit. Check out our <a href="https://xqlsystems.github.io/xarray-sql/latest/contributing/">contributing guide</a>, too 😉.</p>
-<h2 id="what-would-a-deeper-integration-look-like">What would a deeper integration look like?<a class="headerlink" href="#what-would-a-deeper-integration-look-like" title="Permanent link">&para;</a></h2>
-<p>I have a few ideas so far. One approach involves applying operations directly on
-Xarray Datasets. This approach is being pursued
-<a href="https://github.com/google/weather-tools/tree/main/xql">here</a>, as <code>xql</code>.</p>
-<p>Deeper still: I was thinking we could make
-a <a href="https://fsspec.github.io/kerchunk/">virtual</a>
-filesystem for parquet that would internally map to Zarr. Raster-backed virtual
-parquet would open up integrations to numerous tools like dask, pyarrow, duckdb,
-and BigQuery. More thoughts on this
-in <a href="https://github.com/xqlsystems/xarray-sql/issues/4">#4</a>.</p>
-<p><em>2025 update</em>: Something like this is being built across a few projects! The ones I know about are:</p>
-<ul>
-<li><a href="https://github.com/CartoDB/raquet">CartoDB's Raquet</a></li>
-<li>The DataFusion community's <a href="https://github.com/datafusion-contrib/arrow-zarr">arrow-zarr</a></li>
-</ul>
-<p><em>2026 update</em>: A colleague and I are experimenting with native Zarr RDBMS engines. Check out:</p>
-<ul>
-<li><a href="https://lib.rs/crates/zarr-datafusion">Zarr-Datafusion</a></li>
-<li><a href="https://github.com/xqlsystems/duckdb-zarr">DuckDB-Zarr</a></li>
-</ul>
 <h2 id="roadmap">Roadmap<a class="headerlink" href="#roadmap" title="Permanent link">&para;</a></h2>
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> ~Lazy evaluation via the pyarrow Dataset interface <a href="https://github.com/xqlsystems/xarray-sql/issues/93">#93</a>.~ <em>Implemented in <a href="https://github.com/xqlsystems/xarray-sql/pull/100">#100</a></em></li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Support proper parallelism via proper partition handling on the rust/datafusion side. <a href="https://github.com/xqlsystems/xarray-sql/issues/106">#106</a></li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Support core datafusion optimizations to scan less data, like <a href="https://github.com/xqlsystems/xarray-sql/issues/104">#104</a>, ...</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Translate a single Zarr to a collection of tables <a href="https://github.com/xqlsystems/xarray-sql/issues/85">#85</a>.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Distributed beyond a single node through the DataFusion integration with Ray Datasets <a href="https://github.com/xqlsystems/xarray-sql/issues/68">#68</a> or Apache Ballista <a href="https://github.com/xqlsystems/xarray-sql/issues/98">#98</a>.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Demo: calculate Sea Surface Temperature from 1940 - Present in SQL <a href="https://github.com/xqlsystems/xarray-sql/issues/36">#36</a>.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Provide an option to integrate DataFusion directly to Zarr via Rust <a href="https://github.com/xqlsystems/xarray-sql/issues/4">#4</a>.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Distributed beyond a single node through the DataFusion integration (with Ray Datasets?) <a href="https://github.com/xqlsystems/xarray-sql/issues/68">#68</a> or Apache Ballista <a href="https://github.com/xqlsystems/xarray-sql/issues/98">#98</a>.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Demo: calculate Sea Surface Temperature from 1940 - Present in SQL <a href="https://github.com/xqlsystems/xarray-sql/issues/36">#36</a>.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> ~Provide an option to integrate DataFusion directly to Zarr via Rust <a href="https://github.com/xqlsystems/xarray-sql/issues/4">#4</a>.~</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (To be formally announced eventually): The 100 Trillion Row Challenge <a href="https://github.com/xqlsystems/xarray-sql/issues/34">#34</a>.</li>
 </ul>
 <h2 id="sponsors-contributors">Sponsors &amp; Contributors<a class="headerlink" href="#sponsors-contributors" title="Permanent link">&para;</a></h2>
 <p>I want to give a special thanks to the following folks and institutions:</p>
 <ul>
-<li>Pramod Gupta and the Anthromet Team at Google Research for the problem
+<li>Pramod Gupta and the <a href="https://github.com/google-deepmind/weathernext">Anthromet Team at Google Research</a> for the problem
   formation and design inspiration.</li>
-<li>Jake Wall and AI2/Ecoscope for compute resources and key use cases.</li>
+<li>Jake Wall and AI2/<a href="https://ecoscope.io/en/stable/">Ecoscope</a> for compute resources and key use cases.</li>
 <li>Charles Stern, Stephan Hoyer, Alexander Kmoch, Wei Ji, and Qiusheng Wu
   for the early review and discussion of this project.</li>
 <li>Tom Nichols, Kyle Barron, Tom White, and Maxime Dion for the <a href="https://discourse.pangeo.io/t/new-working-group-for-distributed-array-computing/2734">Array Working
