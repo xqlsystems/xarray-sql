@@ -105,10 +105,11 @@ class Report:
         )
         return result
 
-    def check(self, error: float) -> None:
-        """Mark the last row's result as checked, with its error (from
-        :func:`assert_close`)."""
-        self.rows[-1]["check"] = f"ok ({error:.0e})"
+    def check(self, error: float, step: str | None = None) -> None:
+        """Mark a row's result as checked, with its error (from
+        :func:`assert_close`): the last row, or the last row of ``step``."""
+        row = next(r for r in reversed(self.rows) if step in (None, r["step"]))
+        row["check"] = f"ok ({error:.0e})"
 
     def skip(self, step: str, host: Host, size: int, why: str) -> None:
         """Record a step the host cannot run, and why."""
