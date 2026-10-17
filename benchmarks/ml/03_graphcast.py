@@ -414,7 +414,7 @@ def main():
             **{f"mesh_{r + 1}": mirror[f"round_{r}"] for r in range(rounds)},
             "output": reference["output"],
         }
-        for host in hosts(args.hosts):
+        for host in hosts(args.hosts, args.memory):
             for name, table in tables.items():
                 options = {}
                 if name == "era5":

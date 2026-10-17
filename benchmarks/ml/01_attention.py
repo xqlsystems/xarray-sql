@@ -185,7 +185,7 @@ def main():
         want = attention(q, k, v)
         want_grads = jax.grad(loss, argnums=(0, 1, 2))(q, k, v)
 
-        for host in hosts(args.hosts):
+        for host in hosts(args.hosts, args.memory):
             for name, data in zip("qkv", (q, k, v)):
                 host.load(name, table(data))
 

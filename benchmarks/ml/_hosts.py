@@ -28,6 +28,10 @@ queries and today runs its programs on DataFusion only; a host that
 cannot differentiate says so with ``differentiates = False``, and the
 demos report its gradient steps as not run rather than skip it silently.
 
+Every host gets the same memory limit, in bytes, and spills to
+``~/.cache/xarray-sql/spill`` past it, so a stage too large for memory
+slows down rather than taking the machine down.
+
 Adding a host (einfold's optimizer on DataFusion, DuckDB with a GPU
 extension, or DuckDB running ddx's programs once ddx supports it) is one
 class here and one entry in ``HOSTS``.
@@ -36,13 +40,18 @@ class here and one entry in ``HOSTS``.
 from __future__ import annotations
 
 import json
+import pathlib
 from collections.abc import Sequence
 
 import duckdb
 import pyarrow as pa
 import xarray as xr
+from datafusion import RuntimeEnvBuilder
 
 import xarray_sql as xql
+
+
+SPILL = pathlib.Path.home() / ".cache" / "xarray-sql" / "spill"
 
 
 class Host:
@@ -50,6 +59,9 @@ class Host:
 
     name = ""
     differentiates = False
+
+    def __init__(self, memory: int):
+        SPILL.mkdir(parents=True, exist_ok=True)
 
     def load(self, name: str, data: xr.Dataset, **options) -> None:
         raise NotImplementedError
@@ -79,8 +91,14 @@ class DataFusion(Host):
     name = "datafusion"
     differentiates = True
 
-    def __init__(self):
-        self.ctx = xql.Context()
+    def __init__(self, memory):
+        super().__init__(memory)
+        runtime = (
+            RuntimeEnvBuilder()
+            .with_disk_manager_specified(str(SPILL))
+            .with_fair_spill_pool(memory)
+        )
+        self.ctx = xql.Context(runtime=runtime)
 
     def load(self, name, data, **options):
         self.ctx.deregister_table(name)
@@ -113,8 +131,14 @@ class DuckDB(Host):
 
     name = "duckdb"
 
-    def __init__(self):
-        self.con = duckdb.connect()
+    def __init__(self, memory):
+        super().__init__(memory)
+        self.con = duckdb.connect(
+            config={
+                "memory_limit": f"{memory // 2**20}MB",
+                "temp_directory": str(SPILL),
+            }
+        )
 
     def load(self, name, data, **options):
         xql.register(self.con, name, data, **options)
