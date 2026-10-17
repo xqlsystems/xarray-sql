@@ -58,11 +58,17 @@ polars = [
 geo = [
   "pyproj",
 ]
+# Gradients in SQL: grad(), vjp() and jvp() from ddx. ddxdb is pre-1.0
+# and breaks its API between minor versions. It reads and writes the
+# Substrait of DataFusion 54, so bump it together with that pin.
+ml = [
+  "ddxdb>=0.3.0,<0.4; sys_platform != 'emscripten'",
+]
 test = [
   "adbc-driver-flightsql>=1.12",
   "adbc-driver-sqlite>=1.12",
   "cftime",
-  "xarray-sql[adbc,dask,duckdb,polars,geo]",
+  "xarray-sql[adbc,dask,duckdb,polars,geo,ml]",
   "pytest",
   "xarray[io]",
   "gcsfs",
