@@ -100,7 +100,7 @@ einfold's optimizer or DuckDB with a GPU extension, write one class in
 ## Findings
 
 Measured on 2026-10-17 on an Intel Core i7-8700 (6 cores, 12 threads)
-with DataFusion 54.0.0, DuckDB 1.5.5 and ddxdb 0.3.0, one repetition each.
+with DataFusion 54.0.0, DuckDB 1.5.5 and ddxdb 0.3.1, one repetition each.
 
 **ddx's gradients agree with JAX.** The gradients of attention with
 respect to Q, K and V, in both spellings, match `jax.grad` to 3e-15 of the
@@ -147,10 +147,6 @@ region's filter back through the graph is einfold's Demo 3.
 **What ddx cannot differentiate yet.** Each of these raised a typed
 error naming the construct, never a wrong number:
 
-- A window `MAX(s) OVER (...)` used as a value. Attention and the
-  cross-entropy subtract the row maximum before `exp`, and that shift
-  cancels out of the result, so the demos wrap it in `ddx_stop_gradient`,
-  which is exact. ddx could treat this as a rule.
 - A `GROUP BY` key that depends on a differentiated column. einfold's
   window spelling groups by the normalizer `z`; the demos divide inside
   the sum instead, `SUM(w / z * v)`, which einfold also lists.

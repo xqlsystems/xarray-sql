@@ -186,11 +186,9 @@ def block(layer: int, x: str, out: str) -> str:
   WHERE q.pos >= k.pos
   GROUP BY q.seq, q.h, q.pos, k.pos),
 {l}_weights AS (
-  -- TODO(xqlsystems/ddx#142): remove ddx_stop_gradient from the window MAX
-  -- once ddx can differentiate a window aggregate. The max only keeps exp()
-  -- from overflowing, and cancels out of p / z, so its gradient is zero.
+  -- The max only keeps exp() from overflowing: it cancels out of p / z.
   SELECT seq, h, i, j,
-         exp(s - ddx_stop_gradient(MAX(s) OVER (PARTITION BY seq, h, i))) AS p
+         exp(s - MAX(s) OVER (PARTITION BY seq, h, i)) AS p
   FROM {l}_scores),
 {l}_norm AS (
   SELECT seq, h, i, SUM(p) AS z FROM {l}_weights GROUP BY seq, h, i),
@@ -255,10 +253,8 @@ GROUP BY x.seq, x.pos, te.tok
 
 # The loss, separate from the model, as in nanoGPT: the mean cross-entropy
 # of the model's logits against each next character of the batch.
-# TODO(xqlsystems/ddx#142): remove ddx_stop_gradient from the window MAX
-# once ddx can differentiate a window aggregate. The max only keeps exp()
-# from overflowing, and cancels out of the log-sum-exp, so its gradient is
-# zero.
+# Subtracting each row's max only keeps exp() from overflowing: it cancels
+# out of the log-sum-exp.
 #
 # The loss reads the model's view once, into the CTE ``predicted``, and
 # uses that twice: a host expands a view at every read, but DuckDB
@@ -268,7 +264,7 @@ predicted AS (
   SELECT seq, pos, tok, val FROM logits),
 shifted AS (
   SELECT seq, pos, tok, val,
-         ddx_stop_gradient(MAX(val) OVER (PARTITION BY seq, pos)) AS m
+         MAX(val) OVER (PARTITION BY seq, pos) AS m
   FROM predicted),
 log_sum_exp AS (
   SELECT seq, pos, MAX(m) + ln(SUM(exp(val - m))) AS lse
