@@ -508,7 +508,7 @@ def open_era5() -> xr.Dataset:
     rng = np.random.default_rng(3)
     surface = rng.normal(size=(len(TIMES), 64, 32))
     atmosphere = rng.normal(size=(len(TIMES), 2, 64, 32))
-    data = {
+    data: dict[str, tuple[tuple[str, ...], np.ndarray]] = {
         name: (
             ("time", "longitude", "latitude"),
             surface + i,
@@ -688,9 +688,7 @@ def main():
                 ]
             )
             regional = rows["change"].to_numpy().reshape(-1, len(VARIABLES))
-            report.check(
-                assert_close("regional", regional, want[in_region])
-            )
+            report.check(assert_close("regional", regional, want[in_region]))
             report.note("operators", host.operators(statement))
 
             step = "gradient of the error"
