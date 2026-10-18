@@ -4,8 +4,10 @@ Everything here is DeepMind's code or data, or a direct transcription of
 it into tables:
 
 * :func:`checkpoint`, :func:`example` and :func:`stats` fetch the
-  published weights, a 1° ERA5 example and the normalization statistics
-  from DeepMind's public bucket, cached in ``~/.cache/xarray-sql``;
+  published weights, an example of the model's inputs from ERA5 (ECMWF's
+  reanalysis of the atmosphere) on a 1° grid, and the normalization
+  statistics from DeepMind's public bucket, cached in
+  ``~/.cache/xarray-sql``;
 * :func:`graphs` builds the three graphs with DeepMind's own code: which
   cells and mesh nodes are joined, and their geometric features;
 * :func:`deepmind_stages` runs DeepMind's model, in float32, and returns
@@ -14,7 +16,7 @@ it into tables:
   weights. It is checked against :func:`deepmind_stages`, and it can stop
   after any processor round, which DeepMind's code cannot, so each SQL
   stage can be checked on its own;
-* :func:`params_table`, :func:`channels_table` and :func:`graph_tables`
+* :func:`param_tables`, :func:`channels_table` and :func:`graph_tables`
   turn the weights, the input channels and the graphs into Datasets that
   xarray-sql registers as tables.
 """

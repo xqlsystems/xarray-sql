@@ -11,14 +11,17 @@
 # ///
 """Demo 3: GraphCast in SQL, with DeepMind's published weights.
 
-GraphCast (Lam et al., 2023) forecasts the atmosphere 6 hours ahead from
-the two previous states. This runs GraphCast_small, as DeepMind publishes
-it (1° grid, 13 pressure levels, a mesh refined 5 times, 16 rounds of
-message passing, 36 million weights), as a program of SQL statements over
-tables xarray-sql registers:
+GraphCast (Lam et al., 2023, https://arxiv.org/abs/2212.12794) is
+DeepMind's graph neural network for weather forecasting. It forecasts the
+atmosphere 6 hours ahead from the two previous states. This runs
+GraphCast_small, as DeepMind publishes it (1° grid, 13 pressure levels, a
+mesh refined 5 times, 16 rounds of message passing, 36 million weights),
+as a program of SQL statements over tables xarray-sql registers:
 
-* ``era5``: DeepMind's example inputs (two states, 6 hours apart) and the
-  forcings at the forecast's time;
+* ``era5``: DeepMind's example inputs, two states 6 hours apart from ERA5
+  (ECMWF's reanalysis of the atmosphere since 1940), and the forcings at
+  the forecast's time: inputs known in advance, such as the sunlight
+  reaching the top of the atmosphere;
 * ``weights``, ``biases``, ``norms`` and ``nets``: every parameter in
   DeepMind's checkpoint, one row each;
 * ``grid2mesh``, ``mesh`` and ``mesh2grid``: the three graphs, as tables of
@@ -35,16 +38,18 @@ The model has three stages:
 
 Every network is the same SQL: an MLP (linear, swish, linear, layer norm)
 over a table of ``(id, f, val)``, one row per node or edge and feature.
-Each stage is one statement, and its result is stored as a table, so no
-host computes a stage twice.
+Swish is the activation ``x · sigmoid(x)``. Each stage is one statement,
+and its result is stored as a table, so no host (an engine that runs the
+SQL; see ``_hosts.py``) computes a stage twice.
 
-The check is DeepMind's own model. Its JAX code, run on the same inputs,
+The check is DeepMind's own model. Its code, in JAX (Google's library for
+differentiable array programs), run on the same inputs,
 gives the stages' outputs; the SQL must match them. A plain JAX
 transcription of the model (``_graphcast.mirror``), checked against
 DeepMind's, also gives each processor round, so a run can stop after a
 few rounds and still be checked. A full forecast is about two trillion
-multiply-adds, which hash joins take hours over; DeepMind's JAX takes 15
-seconds.
+multiply-adds, which hash joins take hours over; DeepMind's JAX code
+takes about 15 seconds on a 6-core CPU, including its compilation.
 
 Run ``uv run benchmarks/ml/03_graphcast.py --help`` for the options.
 ``--sizes`` is the number of processor rounds to run; with 16, the
