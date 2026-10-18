@@ -29,11 +29,11 @@ attention. It is the first of einfold's three target demos
 (``docs/demos.md`` in its repository). This script is the baseline that
 plan must match and then beat:
 
-* **forward**: each spelling on each *host* (einfold's word for an engine
+* **forward**: each spelling of the model on each *host* (einfold's word for an engine
   that runs a plan; here DataFusion and DuckDB), checked against the same
   attention in JAX, Google's library for differentiable array programs;
-* **gradient**: the gradient of a loss with respect to every value of Q,
-  K and V, as one SQL statement. ddx (https://github.com/xqlsystems/ddx),
+* **gradient**: a loss that reads the model, and its gradient with
+  respect to every value of Q, K and V, as one SQL statement. ddx (https://github.com/xqlsystems/ddx),
   which differentiates SQL queries, computes it, and ``jax.grad`` checks
   it;
 * **masks are absent rows**: an infinity in V reaches only the queries
@@ -59,6 +59,11 @@ jax.config.update("jax_enable_x64", True)
 
 D = 64  # features per head; the scores are scaled by 1/√64 = 1/8.
 
+# The model and its loss are separate, as in a neural network written in
+# Python (compare attention() and loss() below). The model is a view, a
+# named query: each spelling of attention defines the view ``attention``,
+# and the forward pass and the loss read it as if it were a table.
+
 # Attention in einfold's window spelling. The causal mask is a join
 # predicate: a masked (i, j) pair is a row that does not exist. Subtracting
 # each row's max only keeps exp() from overflowing: it cancels out of the
@@ -66,6 +71,7 @@ D = 64  # features per head; the scores are scaled by 1/√64 = 1/8.
 # TODO(xqlsystems/ddx#142): remove ddx_stop_gradient from the window MAX
 # once ddx can differentiate a window aggregate; it refuses one today.
 ATTENTION_WINDOW = """
+CREATE OR REPLACE VIEW attention AS
 WITH scores AS (
   SELECT q.t AS i, k.t AS j, SUM(q.x * k.x) / 8.0 AS s
   FROM q JOIN k ON q.d = k.d
@@ -75,53 +81,19 @@ weights AS (
   SELECT i, j, exp(s - ddx_stop_gradient(MAX(s) OVER (PARTITION BY i))) AS w
   FROM scores),
 norm AS (
-  SELECT i, SUM(w) AS z FROM weights GROUP BY i),
-attention AS (
-  SELECT w.i AS t, v.d, SUM(w.w / n.z * v.x) AS x
-  FROM weights w
-  JOIN v ON w.j = v.t
-  JOIN norm n ON w.i = n.i
-  GROUP BY w.i, v.d)
-SELECT t, d, x FROM attention ORDER BY t, d
-"""
-
-# The gradient of half the output's squared norm, with respect to every
-# value of Q, K and V: the same query, plus a loss and a different SELECT.
-# The three grad() calls differentiate one loss, so ddx runs one backward
-# pass for all three, as it would for three statements given to sql_all.
-ATTENTION_WINDOW_GRADIENT = """
-WITH scores AS (
-  SELECT q.t AS i, k.t AS j, SUM(q.x * k.x) / 8.0 AS s
-  FROM q JOIN k ON q.d = k.d
-  WHERE q.t >= k.t
-  GROUP BY q.t, k.t),
-weights AS (
-  SELECT i, j, exp(s - ddx_stop_gradient(MAX(s) OVER (PARTITION BY i))) AS w
-  FROM scores),
-norm AS (
-  SELECT i, SUM(w) AS z FROM weights GROUP BY i),
-attention AS (
-  SELECT w.i AS t, v.d, SUM(w.w / n.z * v.x) AS x
-  FROM weights w
-  JOIN v ON w.j = v.t
-  JOIN norm n ON w.i = n.i
-  GROUP BY w.i, v.d),
-loss AS (
-  SELECT SUM(x * x) / 2 AS l FROM attention)
-SELECT q.t, q.d,
-       grad(loss, q.x) AS dq,
-       grad(loss, k.x) AS dk,
-       grad(loss, v.x) AS dv
-FROM q
-JOIN k ON q.t = k.t AND q.d = k.d
-JOIN v ON q.t = v.t AND q.d = v.d
-ORDER BY q.t, q.d
+  SELECT i, SUM(w) AS z FROM weights GROUP BY i)
+SELECT w.i AS t, v.d, SUM(w.w / n.z * v.x) AS x
+FROM weights w
+JOIN v ON w.j = v.t
+JOIN norm n ON w.i = n.i
+GROUP BY w.i, v.d
 """
 
 # The same attention as ddx spells it: each row's max as a GROUP BY,
 # joined back to the scores. Here ddx_stop_gradient isn't needed, but it
 # is exact, and it spares ddx differentiating the max.
 ATTENTION_GROUP_BY = """
+CREATE OR REPLACE VIEW attention AS
 WITH scores AS (
   SELECT q.t AS i, k.t AS j, SUM(q.x * k.x) / 8.0 AS s
   FROM q JOIN k ON q.d = k.d
@@ -133,36 +105,25 @@ weights AS (
   SELECT s.i, s.j, exp(s.s - r.m) AS w
   FROM scores s JOIN row_max r ON s.i = r.i),
 norm AS (
-  SELECT i, SUM(w) AS z FROM weights GROUP BY i),
-attention AS (
-  SELECT w.i AS t, v.d, SUM(w.w / n.z * v.x) AS x
-  FROM weights w
-  JOIN v ON w.j = v.t
-  JOIN norm n ON w.i = n.i
-  GROUP BY w.i, v.d)
-SELECT t, d, x FROM attention ORDER BY t, d
+  SELECT i, SUM(w) AS z FROM weights GROUP BY i)
+SELECT w.i AS t, v.d, SUM(w.w / n.z * v.x) AS x
+FROM weights w
+JOIN v ON w.j = v.t
+JOIN norm n ON w.i = n.i
+GROUP BY w.i, v.d
 """
 
-ATTENTION_GROUP_BY_GRADIENT = """
-WITH scores AS (
-  SELECT q.t AS i, k.t AS j, SUM(q.x * k.x) / 8.0 AS s
-  FROM q JOIN k ON q.d = k.d
-  WHERE q.t >= k.t
-  GROUP BY q.t, k.t),
-row_max AS (
-  SELECT i, ddx_stop_gradient(MAX(s)) AS m FROM scores GROUP BY i),
-weights AS (
-  SELECT s.i, s.j, exp(s.s - r.m) AS w
-  FROM scores s JOIN row_max r ON s.i = r.i),
-norm AS (
-  SELECT i, SUM(w) AS z FROM weights GROUP BY i),
-attention AS (
-  SELECT w.i AS t, v.d, SUM(w.w / n.z * v.x) AS x
-  FROM weights w
-  JOIN v ON w.j = v.t
-  JOIN norm n ON w.i = n.i
-  GROUP BY w.i, v.d),
-loss AS (
+SPELLINGS = {"window": ATTENTION_WINDOW, "group by": ATTENTION_GROUP_BY}
+
+# The forward pass: run the model.
+FORWARD = "SELECT t, d, x FROM attention ORDER BY t, d"
+
+# The loss, half the output's squared norm, calls the model by reading the
+# view. The SELECT asks for its gradient with respect to every value of Q,
+# K and V. The three grad() calls differentiate one loss, so ddx runs one
+# backward pass for all three, as jax.grad(loss, argnums=(0, 1, 2)) does.
+GRADIENT = """
+WITH loss AS (
   SELECT SUM(x * x) / 2 AS l FROM attention)
 SELECT q.t, q.d,
        grad(loss, q.x) AS dq,
@@ -173,12 +134,6 @@ JOIN k ON q.t = k.t AND q.d = k.d
 JOIN v ON q.t = v.t AND q.d = v.d
 ORDER BY q.t, q.d
 """
-
-# Each spelling's forward query and gradient query.
-SPELLINGS = {
-    "window": (ATTENTION_WINDOW, ATTENTION_WINDOW_GRADIENT),
-    "group by": (ATTENTION_GROUP_BY, ATTENTION_GROUP_BY_GRADIENT),
-}
 
 # Nadaraya–Watson: at each target point, the average of the sources' y
 # weighted by a Gaussian kernel of their distance (bandwidth h = 0.5).
@@ -236,18 +191,19 @@ def main():
             for name, data in zip("qkv", (q, k, v)):
                 host.load(name, table(data))
 
-            for spelling, (forward, gradient) in SPELLINGS.items():
+            for spelling, model in SPELLINGS.items():
+                host.execute(model)
                 rows = report.time(
-                    f"forward ({spelling})", host, n, host.query, forward
+                    f"forward ({spelling})", host, n, host.query, FORWARD
                 )
                 report.check(assert_close("forward", matrix(rows), want))
-                report.note("operators", host.operators(forward))
+                report.note("operators", host.operators(FORWARD))
 
                 step = f"gradient ({spelling})"
                 if not host.differentiates:
                     report.skip(step, host, n, "no ddx backend")
                     continue
-                rows = report.time(step, host, n, host.query, gradient)
+                rows = report.time(step, host, n, host.query, GRADIENT)
                 errors = [
                     assert_close(f"d/d{name}", matrix(rows, f"d{name}"), ref)
                     for name, ref in zip("qkv", want_grads)
@@ -272,8 +228,9 @@ def check_masks_are_absent_rows(host_names):
     for host in hosts(host_names):
         for name, data in zip("qkv", (q, k, v)):
             host.load(name, table(data))
-        for spelling, (forward, _) in SPELLINGS.items():
-            out = matrix(host.query(forward))
+        for spelling, model in SPELLINGS.items():
+            host.execute(model)
+            out = matrix(host.query(FORWARD))
             assert np.isfinite(out[:j]).all(), (host.name, spelling)
             assert np.isposinf(out[j:, 0]).all(), (host.name, spelling)
             assert np.isfinite(out[:, 1:]).all(), (host.name, spelling)

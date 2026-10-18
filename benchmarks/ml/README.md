@@ -17,7 +17,7 @@ array programs.
 
 | # | Script | Model | What it measures |
 |---|---|---|---|
-| 01 | [`01_attention.py`](01_attention.py) | causal softmax attention, the core of a transformer, in einfold's window and `GROUP BY` spellings | the naive plan, which stores every score, for [FlashAttention](https://arxiv.org/abs/2205.14135)'s tiled plan to beat; gradients with respect to Q, K and V; masked pairs as absent rows; a control that isn't attention, the Nadaraya–Watson kernel average |
+| 01 | [`01_attention.py`](01_attention.py) | causal softmax attention, the core of a transformer, as a view (the model) in einfold's window and `GROUP BY` spellings, and a loss that reads it | the naive plan, which stores every score, for [FlashAttention](https://arxiv.org/abs/2205.14135)'s tiled plan to beat; gradients with respect to Q, K and V; masked pairs as absent rows; a control that isn't attention, the Nadaraya–Watson kernel average |
 | 02 | [`02_nanogpt.py`](02_nanogpt.py) | [nanoGPT](https://github.com/karpathy/nanoGPT)'s GPT-2 model, at 1 layer and 4,416 parameters, on Tiny Shakespeare | the loss on each host; training steps with SGD or, as nanoGPT trains, AdamW, every parameter table checked after every step |
 | 03 | [`03_graphcast.py`](03_graphcast.py) | a miniature [GraphCast](https://arxiv.org/abs/2212.12794), DeepMind's graph neural network for weather forecasting, over [ERA5](https://www.ecmwf.int/en/forecasts/dataset/ecmwf-reanalysis-v5) reanalysis in Zarr | a global against a regional forecast; the gradient of the forecast error; the receptive field of a region |
 

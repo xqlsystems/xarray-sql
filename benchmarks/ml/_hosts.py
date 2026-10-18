@@ -5,11 +5,13 @@ rewrites SQL plans into array algorithms, calls the engine that runs a
 plan its *host*. Every demo writes
 its model once, as SQL, and runs that same text on each host, so a
 difference in time is a difference between engines, never between
-queries. A host does four things:
+queries. A host does five things:
 
 * ``load(name, data, **options)`` registers an ``xr.Dataset`` as the
   table ``name`` through xarray-sql, replacing any table of that name
   (``options`` such as ``table_names`` go to xarray-sql);
+* ``execute(sql)`` runs a statement for its effect, such as
+  ``CREATE VIEW``;
 * ``query(sql)`` runs a statement and returns its rows as Arrow;
 * ``query_all(sqls)`` runs several statements, and, on a host that
   differentiates, shares the backward pass between those that take
@@ -53,6 +55,9 @@ class Host:
     def load(self, name: str, data: xr.Dataset, **options) -> None:
         raise NotImplementedError
 
+    def execute(self, sql: str) -> None:
+        raise NotImplementedError
+
     def query(self, sql: str) -> pa.Table:
         raise NotImplementedError
 
@@ -76,6 +81,9 @@ class DataFusion(Host):
         self.ctx.deregister_table(name)
         self.ctx.from_dataset(name, data, **options)
 
+    def execute(self, sql):
+        self.ctx.sql(sql).collect()
+
     def query(self, sql):
         return self.ctx.sql(sql).to_arrow_table()
 
@@ -98,6 +106,9 @@ class DuckDB(Host):
 
     def load(self, name, data, **options):
         xql.register(self.con, name, data, **options)
+
+    def execute(self, sql):
+        self.con.execute(sql)
 
     def query(self, sql):
         return self.con.sql(sql).fetch_arrow_table()
