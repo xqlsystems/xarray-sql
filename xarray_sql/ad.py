@@ -1,7 +1,8 @@
 """Gradients of SQL queries: the optional ml extension, built on ddx.
 
 [ddx](https://github.com/xqlsystems/ddx) differentiates a whole SQL query
-the way JAX differentiates a function. With it installed
+the way [JAX](https://github.com/jax-ml/jax), Google's library for
+differentiable array programs, differentiates a function. With it installed
 (``pip install xarray-sql[ml]``), [xarray_sql.Context][]'s ``.sql()``
 understands three calls in a select list:
 
@@ -24,8 +25,9 @@ A gradient-descent step on a parameter table is then one statement::
     SELECT feature, val - 0.1 * grad(loss, val) AS val FROM w
 
 The query being differentiated is ordinary SQL, over tables registered
-with ``from_dataset`` or any other way. ddx plans the backward pass as
-Substrait, DataFusion runs it, and the statement reads what it computed.
+with ``from_dataset`` or any other way. ddx plans the backward pass in
+[Substrait](https://substrait.io), a portable format for query plans;
+DataFusion runs it, and the statement reads what it computed.
 
 The one function ddx gives a meaning to is ``ddx_stop_gradient(x)``, the
 identity whose derivative is zero (JAX's ``lax.stop_gradient``). It is

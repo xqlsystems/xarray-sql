@@ -1,16 +1,25 @@
 # Machine learning in SQL
 
-These scripts write three machine-learning models as SQL over
-[xarray-sql](../../README.md), take their gradients with
-[ddx](https://github.com/xqlsystems/ddx), and time the same SQL on several
-engines. The models are the three target demos of
-[einfold](https://github.com/xqlsystems/einfold/blob/main/docs/demos.md):
+These scripts write three machine-learning models as SQL over tables that
+[xarray-sql](../../README.md) registers from xarray Datasets, and time the
+same SQL on several engines. Two related projects shape them:
+
+- [ddx](https://github.com/xqlsystems/ddx) differentiates SQL queries: it
+  turns the gradient of a query into more SQL, which trains the models.
+- [einfold](https://github.com/xqlsystems/einfold) is a query optimizer
+  that rewrites SQL plans into array algorithms. These models are its
+  three [target demos](https://github.com/xqlsystems/einfold/blob/main/docs/demos.md),
+  and this SQL is the baseline its plans must beat.
+
+Each script checks its results against the same model in
+[JAX](https://github.com/jax-ml/jax), Google's library for differentiable
+array programs.
 
 | # | Script | Model | What it measures |
 |---|---|---|---|
-| 01 | [`01_attention.py`](01_attention.py) | causal softmax attention, in einfold's window and `GROUP BY` spellings | the naive plan FlashAttention must beat; gradients with respect to Q, K and V; masked pairs as absent rows; a Nadaraya–Watson control |
-| 02 | [`02_nanogpt.py`](02_nanogpt.py) | a 1-layer character-level GPT on Tiny Shakespeare | the loss on each host; SGD training steps, every parameter table checked after every step |
-| 03 | [`03_graphcast.py`](03_graphcast.py) | a miniature GraphCast (encoder, processor, decoder on an icosahedral multi-mesh) over ERA5 in Zarr | a global against a regional forecast; the gradient of the forecast error; the receptive field of a region |
+| 01 | [`01_attention.py`](01_attention.py) | causal softmax attention, the core of a transformer, in einfold's window and `GROUP BY` spellings | the naive plan, which stores every score, for [FlashAttention](https://arxiv.org/abs/2205.14135)'s tiled plan to beat; gradients with respect to Q, K and V; masked pairs as absent rows; a control that isn't attention, the Nadaraya–Watson kernel average |
+| 02 | [`02_nanogpt.py`](02_nanogpt.py) | [nanoGPT](https://github.com/karpathy/nanoGPT)'s GPT-2 model, at 1 layer and 4,416 parameters, on Tiny Shakespeare | the loss on each host; SGD training steps, every parameter table checked after every step |
+| 03 | [`03_graphcast.py`](03_graphcast.py) | a miniature [GraphCast](https://arxiv.org/abs/2212.12794), DeepMind's graph neural network for weather forecasting, over [ERA5](https://www.ecmwf.int/en/forecasts/dataset/ecmwf-reanalysis-v5) reanalysis in Zarr | a global against a regional forecast; the gradient of the forecast error; the receptive field of a region |
 
 The SQL favors legibility over speed. Each model reads like its definition,
 and the slow parts are left slow on purpose: they are what ddx, xarray-sql
@@ -40,9 +49,7 @@ options are the same in all three:
 ```
 
 Demo 2 adds `--steps`, the number of training steps. Demo 3 adds
-`--rounds`, the number of processor rounds, and `--lazy`, which registers
-all of ERA5 (65 years, 60 variables) rather than the three time steps the
-forecast reads.
+`--rounds`, the number of processor rounds.
 
 The output ends with one table: a row per step, host and size, with its
 median time, its error against JAX, and the number of operators in the
@@ -70,7 +77,7 @@ SELECT feature, val - 0.1 * grad(loss, val) AS val FROM w
 ```
 
 `xarray_sql.ad.sql_all(ctx, statements)` runs several such statements for
-one backward pass, which is how Demo 2 updates its eight parameter tables.
+one backward pass, which is how Demo 2 updates its eleven parameter tables.
 
 ## Hosts
 
@@ -96,9 +103,9 @@ with DataFusion 54.0.0, DuckDB 1.5.5 and ddxdb 0.3.0, one repetition each.
 
 **ddx's gradients agree with JAX.** The gradients of attention with
 respect to Q, K and V, in both spellings, match `jax.grad` to 3e-15 of the
-largest value at every size. After each of five SGD steps, all eight of
+largest value at every size. After each of five SGD steps, all eleven of
 the GPT's parameter tables match JAX's to 1e-15, and the loss falls from
-4.18 to 3.85 (each step on a different batch).
+4.18 to 3.84 (each step on a different batch).
 
 **DataFusion computes a CTE once for every place that reads it.** A
 model reads its activations more than once: a layer norm reads its input
@@ -109,11 +116,11 @@ read more than once a single time.
 
 | Query | DataFusion operators | DuckDB operators | DataFusion | DuckDB |
 |---|---:|---:|---:|---:|
-| GPT loss, 1 layer, batch 4 | 12,166 | 120 | 8.4 s | 0.055 s |
+| GPT loss, 1 layer, batch 4 | 12,794 | 126 | 9.4 s | 0.058 s |
 | GraphCast forecast, 1 round | 1,816 | 243 | 43 s | 17 s |
 | GraphCast forecast, 2 rounds | 5,948 | 282 | 159 s | 13 s |
 
-A GPT training step, forward and backward through ddx, takes 2.7 s on
+A GPT training step, forward and backward through ddx, takes 3.3 s on
 DataFusion: less than its forward query alone, because ddx stores the
 result of each step of its program as a table. Computing shared
 subexpressions once is the first thing xarray-sql's DataFusion path needs
@@ -155,15 +162,12 @@ SQL gives a number.
 
 ## Next
 
-- Part B of the NanoGPT demo: the four tricks of the speedrun's sparsity
-  record, as a small diff to `02_nanogpt.py`, with Adam's state as
-  versioned tables.
+- Part B of the NanoGPT demo: the four tricks behind a record of the
+  [NanoGPT speedrun](https://github.com/KellerJordan/modded-nanogpt), a
+  public race to train GPT-2 fastest, as a small diff to `02_nanogpt.py`.
+  It needs nanoGPT's optimizer, AdamW, with its state as versioned tables.
 - Peak memory per host, from a fresh process per measurement.
 - An einfold host, once einfold produces plans.
-- With `03_graphcast.py --lazy`, the bytes each forecast reads from ERA5.
-
-[`_bench.py`](_bench.py) holds the shared command line, timing, checks and
-results table.
 
 [`_bench.py`](_bench.py) holds the shared command line, timing, checks and
 results table.
