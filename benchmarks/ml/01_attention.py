@@ -87,6 +87,8 @@ SELECT t, d, x FROM attention ORDER BY t, d
 
 # The gradient of half the output's squared norm, with respect to every
 # value of Q, K and V: the same query, plus a loss and a different SELECT.
+# The three grad() calls differentiate one loss, so ddx runs one backward
+# pass for all three, as it would for three statements given to sql_all.
 ATTENTION_WINDOW_GRADIENT = """
 WITH scores AS (
   SELECT q.t AS i, k.t AS j, SUM(q.x * k.x) / 8.0 AS s
