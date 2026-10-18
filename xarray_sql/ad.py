@@ -128,6 +128,6 @@ def sql_all(ctx: SessionContext, statements: Sequence[str]) -> list:
     """
     if isinstance(statements, str):
         raise TypeError("statements is a list of SQL statements")
-    frames = _ddx.sql_all(ctx, list(statements))
+    frames: list = _ddx.sql_all(ctx, list(statements))
     wrap = getattr(ctx, "_wrap", None)
     return [wrap(f) for f in frames] if wrap else frames
