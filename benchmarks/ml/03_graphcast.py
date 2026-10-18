@@ -214,7 +214,9 @@ FROM era5.{table} x
 {CELLS[table]}
 JOIN channels ch ON ch.variable = '{name}' AND {time} AND {level}"""
         )
-    parts.append(f"SELECT cell AS id, f + {INPUTS} AS f, val FROM cell_features")
+    parts.append(
+        f"SELECT cell AS id, f + {INPUTS} AS f, val FROM cell_features"
+    )
     return "\nUNION ALL\n".join(parts)
 
 
@@ -247,8 +249,10 @@ def flatten(ds) -> np.ndarray:
     """A forecast Dataset in ``forecast``'s row order: by variable, level,
     latitude and longitude."""
     return np.concatenate(
-        [ds[name].transpose(..., "lat", "lon").values.ravel()
-         for name in sorted(ds.data_vars)]
+        [
+            ds[name].transpose(..., "lat", "lon").values.ravel()
+            for name in sorted(ds.data_vars)
+        ]
     )
 
 
@@ -260,7 +264,8 @@ def flatten(ds) -> np.ndarray:
 # A region to forecast: the contiguous United States, roughly.
 BOUNDS = {"lat": (25, 50), "lon": (235, 295)}
 REGION = " AND ".join(
-    f"c.{coord} BETWEEN {low} AND {high}" for coord, (low, high) in BOUNDS.items()
+    f"c.{coord} BETWEEN {low} AND {high}"
+    for coord, (low, high) in BOUNDS.items()
 )
 
 
@@ -270,17 +275,26 @@ def receptive_field(rounds: int):
     region: semi-joins of each graph's edges with what the next stage
     needs."""
     yield "needed_cells", f"SELECT cell AS id FROM cells c WHERE {REGION}"
-    yield f"needed_mesh_{rounds}", """SELECT DISTINCT sender AS id
-FROM mesh2grid.edges WHERE receiver IN (SELECT id FROM needed_cells)"""
+    yield (
+        f"needed_mesh_{rounds}",
+        """SELECT DISTINCT sender AS id
+FROM mesh2grid.edges WHERE receiver IN (SELECT id FROM needed_cells)""",
+    )
     for r in reversed(range(rounds)):
-        yield f"needed_mesh_{r}", f"""SELECT id FROM needed_mesh_{r + 1}
+        yield (
+            f"needed_mesh_{r}",
+            f"""SELECT id FROM needed_mesh_{r + 1}
 UNION
 SELECT sender AS id FROM mesh.edges
-WHERE receiver IN (SELECT id FROM needed_mesh_{r + 1})"""
-    yield "needed_grid", """SELECT id FROM needed_cells
+WHERE receiver IN (SELECT id FROM needed_mesh_{r + 1})""",
+        )
+    yield (
+        "needed_grid",
+        """SELECT id FROM needed_cells
 UNION
 SELECT sender AS id FROM grid2mesh.edges
-WHERE receiver IN (SELECT id FROM needed_mesh_0)"""
+WHERE receiver IN (SELECT id FROM needed_mesh_0)""",
+    )
 
 
 def program(era5, rounds: int, regional: bool = False):
@@ -298,11 +312,14 @@ def program(era5, rounds: int, regional: bool = False):
    WHERE x.edge IN (SELECT edge FROM {edges}))"""
 
     checked = not regional
-    yield "grid_in", (
-        f"SELECT * FROM ({grid_inputs(era5)}) g\n"
-        "WHERE id IN (SELECT id FROM needed_grid)"
-        if regional
-        else grid_inputs(era5)
+    yield (
+        "grid_in",
+        (
+            f"SELECT * FROM ({grid_inputs(era5)}) g\n"
+            "WHERE id IN (SELECT id FROM needed_grid)"
+            if regional
+            else grid_inputs(era5)
+        ),
     )
     if checked:
         yield "grid_in", None
@@ -312,25 +329,47 @@ def program(era5, rounds: int, regional: bool = False):
     g2m_graph = within("grid2mesh.edges", "receiver", "needed_mesh_0")
     yield "grid", embed("grid_in", f"{g2m}/encoder_nodes_grid_nodes")
     # DeepMind gives the mesh nodes 183 zero inputs; zeros are absent rows.
-    yield "mesh", embed(
-        f"""(SELECT node AS id, f + {INPUTS} AS f, val
+    yield (
+        "mesh",
+        embed(
+            f"""(SELECT node AS id, f + {INPUTS} AS f, val
    FROM {within("node_features", "node", "needed_mesh_0")} n)""",
-        f"{g2m}/encoder_nodes_mesh_nodes",
+            f"{g2m}/encoder_nodes_mesh_nodes",
+        ),
     )
-    yield "g2m_edges", embed(
-        features("grid2mesh", g2m_graph), f"{g2m}/encoder_edges_grid2mesh"
+    yield (
+        "g2m_edges",
+        embed(
+            features("grid2mesh", g2m_graph), f"{g2m}/encoder_edges_grid2mesh"
+        ),
     )
-    yield "g2m_messages", messages(
-        f"{g2m}/processor_edges_0_grid2mesh", g2m_graph,
-        "g2m_edges", "grid", "mesh",
+    yield (
+        "g2m_messages",
+        messages(
+            f"{g2m}/processor_edges_0_grid2mesh",
+            g2m_graph,
+            "g2m_edges",
+            "grid",
+            "mesh",
+        ),
     )
-    yield "mesh_0", update(
-        f"{g2m}/processor_nodes_0_mesh_nodes", g2m_graph,
-        "mesh", "g2m_messages",
+    yield (
+        "mesh_0",
+        update(
+            f"{g2m}/processor_nodes_0_mesh_nodes",
+            g2m_graph,
+            "mesh",
+            "g2m_messages",
+        ),
     )
-    yield "grid_0", update(
-        f"{g2m}/processor_nodes_0_grid_nodes", g2m_graph,
-        within("grid", "id", "needed_cells"), None,
+    yield (
+        "grid_0",
+        update(
+            f"{g2m}/processor_nodes_0_grid_nodes",
+            g2m_graph,
+            within("grid", "id", "needed_cells"),
+            None,
+        ),
     )
     if checked:
         yield "mesh_0", None
@@ -341,22 +380,36 @@ def program(era5, rounds: int, regional: bool = False):
         within("mesh.edges", "receiver", f"needed_mesh_{r + 1}")
         for r in range(rounds)
     ]
-    yield "mesh_edges_0", embed(
-        features("mesh", graphs[0] if rounds else "mesh.edges"),
-        "mesh_gnn/encoder_edges_mesh",
+    yield (
+        "mesh_edges_0",
+        embed(
+            features("mesh", graphs[0] if rounds else "mesh.edges"),
+            "mesh_gnn/encoder_edges_mesh",
+        ),
     )
     for r in range(rounds):
-        yield f"mesh_messages_{r}", messages(
-            f"mesh_gnn/processor_edges_{r}_mesh", graphs[r],
-            f"mesh_edges_{r}", f"mesh_{r}", f"mesh_{r}",
-        )
-        yield f"mesh_{r + 1}", update(
-            f"mesh_gnn/processor_nodes_{r}_mesh_nodes", graphs[r],
-            within(f"mesh_{r}", "id", f"needed_mesh_{r + 1}"),
+        yield (
             f"mesh_messages_{r}",
+            messages(
+                f"mesh_gnn/processor_edges_{r}_mesh",
+                graphs[r],
+                f"mesh_edges_{r}",
+                f"mesh_{r}",
+                f"mesh_{r}",
+            ),
         )
-        yield f"mesh_edges_{r + 1}", residual(
-            f"mesh_edges_{r}", f"mesh_messages_{r}"
+        yield (
+            f"mesh_{r + 1}",
+            update(
+                f"mesh_gnn/processor_nodes_{r}_mesh_nodes",
+                graphs[r],
+                within(f"mesh_{r}", "id", f"needed_mesh_{r + 1}"),
+                f"mesh_messages_{r}",
+            ),
+        )
+        yield (
+            f"mesh_edges_{r + 1}",
+            residual(f"mesh_edges_{r}", f"mesh_messages_{r}"),
         )
         if checked:
             yield f"mesh_{r + 1}", None
@@ -366,20 +419,42 @@ def program(era5, rounds: int, regional: bool = False):
     # cell's 83 output channels.
     m2g = "mesh2grid_gnn"
     m2g_graph = within("mesh2grid.edges", "receiver", "needed_cells")
-    yield "m2g_edges", embed(
-        features("mesh2grid", m2g_graph), f"{m2g}/encoder_edges_mesh2grid"
+    yield (
+        "m2g_edges",
+        embed(
+            features("mesh2grid", m2g_graph), f"{m2g}/encoder_edges_mesh2grid"
+        ),
     )
-    yield "m2g_messages", messages(
-        f"{m2g}/processor_edges_0_mesh2grid", m2g_graph,
-        "m2g_edges", f"mesh_{rounds}", "grid_0",
+    yield (
+        "m2g_messages",
+        messages(
+            f"{m2g}/processor_edges_0_mesh2grid",
+            m2g_graph,
+            "m2g_edges",
+            f"mesh_{rounds}",
+            "grid_0",
+        ),
     )
-    yield "grid_1", update(
-        f"{m2g}/processor_nodes_0_grid_nodes", m2g_graph,
-        "grid_0", "m2g_messages",
+    yield (
+        "grid_1",
+        update(
+            f"{m2g}/processor_nodes_0_grid_nodes",
+            m2g_graph,
+            "grid_0",
+            "m2g_messages",
+        ),
     )
-    yield "output", select(
-        mlp("out", "grid_1", f"{m2g}/decoder_nodes_grid_nodes", layer_norm=False),
-        "out",
+    yield (
+        "output",
+        select(
+            mlp(
+                "out",
+                "grid_1",
+                f"{m2g}/decoder_nodes_grid_nodes",
+                layer_norm=False,
+            ),
+            "out",
+        ),
     )
     if checked:
         yield "output", None

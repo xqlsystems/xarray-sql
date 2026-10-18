@@ -164,13 +164,19 @@ def deepmind_stages() -> dict[str, np.ndarray]:
         processed = model._run_mesh_gnn(mesh)
         output = model._run_mesh2grid_gnn(processed, grid)
         return dict(
-            features=features, grid=grid, mesh=mesh,
-            processed=processed, output=output,
+            features=features,
+            grid=grid,
+            mesh=mesh,
+            processed=processed,
+            output=output,
         )
 
     out, _ = jax.jit(stages.apply)(
-        ckpt.params, {}, None,
-        inputs.astype(np.float32), forcings.astype(np.float32),
+        ckpt.params,
+        {},
+        None,
+        inputs.astype(np.float32),
+        forcings.astype(np.float32),
     )
     return {k: np.asarray(v)[:, 0] for k, v in out.items()}
 
@@ -194,8 +200,10 @@ def deepmind_forecast() -> xr.Dataset:
         )
         return model(inputs, targets_template=targets, forcings=forcings)
 
-    batch = [ds.expand_dims("batch").astype(np.float32)
-             for ds in (inputs, targets * np.nan, forcings)]
+    batch = [
+        ds.expand_dims("batch").astype(np.float32)
+        for ds in (inputs, targets * np.nan, forcings)
+    ]
     out, _ = forward.apply(ckpt.params, {}, None, *batch)
     return out.isel(batch=0).compute()
 
@@ -235,7 +243,9 @@ def mlp(net: str, x):
     ]
 
 
-def interaction(gnn, step, edge_set, graph, edges, senders, receivers, node_set):
+def interaction(
+    gnn, step, edge_set, graph, edges, senders, receivers, node_set
+):
     """One message-passing step: new edges, then the receivers' update,
     each with its residual. Returns the new edges and receivers."""
     s, r = graph["senders"], graph["receivers"]
@@ -262,9 +272,17 @@ def mirror(features: np.ndarray, rounds: int | None = None) -> dict:
     )
     grid = mlp("grid2mesh_gnn/encoder_nodes_grid_nodes", grid_in)
     mesh = mlp("grid2mesh_gnn/encoder_nodes_mesh_nodes", mesh_in)
-    edges = mlp("grid2mesh_gnn/encoder_edges_grid2mesh", g["grid2mesh"]["features"])
+    edges = mlp(
+        "grid2mesh_gnn/encoder_edges_grid2mesh", g["grid2mesh"]["features"]
+    )
     _, mesh = interaction(
-        "grid2mesh_gnn", 0, "grid2mesh", g["grid2mesh"], edges, grid, mesh,
+        "grid2mesh_gnn",
+        0,
+        "grid2mesh",
+        g["grid2mesh"],
+        edges,
+        grid,
+        mesh,
         "mesh_nodes",
     )
     grid = grid + mlp("grid2mesh_gnn/processor_nodes_0_grid_nodes", grid)
@@ -281,9 +299,17 @@ def mirror(features: np.ndarray, rounds: int | None = None) -> dict:
         return out
     out["processed"] = mesh
 
-    edges = mlp("mesh2grid_gnn/encoder_edges_mesh2grid", g["mesh2grid"]["features"])
+    edges = mlp(
+        "mesh2grid_gnn/encoder_edges_mesh2grid", g["mesh2grid"]["features"]
+    )
     _, grid = interaction(
-        "mesh2grid_gnn", 0, "mesh2grid", g["mesh2grid"], edges, mesh, grid,
+        "mesh2grid_gnn",
+        0,
+        "mesh2grid",
+        g["mesh2grid"],
+        edges,
+        mesh,
+        grid,
         "grid_nodes",
     )
     out["output"] = mlp("mesh2grid_gnn/decoder_nodes_grid_nodes", grid)
@@ -427,18 +453,27 @@ def param_tables() -> dict[str, xr.Dataset]:
         if "w" in p:
             f, g = np.indices(p["w"].shape).reshape(2, -1)
             weights.append((np.full(f.size, net), f, g, p["w"].ravel()))
-            biases.append((np.full(p["b"].size, net), np.arange(p["b"].size), p["b"]))
+            biases.append(
+                (np.full(p["b"].size, net), np.arange(p["b"].size), p["b"])
+            )
         else:
             norms.append(
-                (np.full(p["scale"].size, net), np.arange(p["scale"].size),
-                 p["scale"], p["offset"])
+                (
+                    np.full(p["scale"].size, net),
+                    np.arange(p["scale"].size),
+                    p["scale"],
+                    p["offset"],
+                )
             )
 
     def table(dim, columns, parts):
         arrays = [np.concatenate(c) for c in zip(*parts)]
         return xr.Dataset(
             {
-                name: (dim, a.astype(np.float64 if a.dtype.kind == "f" else np.int32))
+                name: (
+                    dim,
+                    a.astype(np.float64 if a.dtype.kind == "f" else np.int32),
+                )
                 for name, a in zip(columns, arrays)
             },
             coords={dim: np.arange(len(arrays[0]))},
