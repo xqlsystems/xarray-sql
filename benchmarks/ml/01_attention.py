@@ -67,9 +67,8 @@ D = 64  # features per head; the scores are scaled by 1/√64 = 1/8.
 # Attention in einfold's window spelling. The causal mask is a join
 # predicate: a masked (i, j) pair is a row that does not exist. Subtracting
 # each row's max only keeps exp() from overflowing: it cancels out of the
-# ratio w / z, so it carries no gradient, which ddx_stop_gradient says.
-# TODO(xqlsystems/ddx#142): remove ddx_stop_gradient from the window MAX
-# once ddx can differentiate a window aggregate; it refuses one today.
+# ratio w / z, so its gradient sums to zero, and ddx differentiates it
+# like any other window.
 ATTENTION_WINDOW = """
 CREATE OR REPLACE VIEW attention AS
 WITH scores AS (
@@ -78,7 +77,7 @@ WITH scores AS (
   WHERE q.t >= k.t
   GROUP BY q.t, k.t),
 weights AS (
-  SELECT i, j, exp(s - ddx_stop_gradient(MAX(s) OVER (PARTITION BY i))) AS w
+  SELECT i, j, exp(s - MAX(s) OVER (PARTITION BY i)) AS w
   FROM scores),
 norm AS (
   SELECT i, SUM(w) AS z FROM weights GROUP BY i)
@@ -90,8 +89,7 @@ GROUP BY w.i, v.d
 """
 
 # The same attention as ddx spells it: each row's max as a GROUP BY,
-# joined back to the scores. Here ddx_stop_gradient isn't needed, but it
-# is exact, and it spares ddx differentiating the max.
+# joined back to the scores.
 ATTENTION_GROUP_BY = """
 CREATE OR REPLACE VIEW attention AS
 WITH scores AS (
@@ -100,7 +98,7 @@ WITH scores AS (
   WHERE q.t >= k.t
   GROUP BY q.t, k.t),
 row_max AS (
-  SELECT i, ddx_stop_gradient(MAX(s)) AS m FROM scores GROUP BY i),
+  SELECT i, MAX(s) AS m FROM scores GROUP BY i),
 weights AS (
   SELECT s.i, s.j, exp(s.s - r.m) AS w
   FROM scores s JOIN row_max r ON s.i = r.i),

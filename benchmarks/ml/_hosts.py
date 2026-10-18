@@ -25,10 +25,6 @@ queries and today runs its programs on DataFusion only; a host that
 cannot differentiate says so with ``differentiates = False``, and the
 demos report its gradient steps as not run rather than skip it silently.
 
-On every host, ``ddx_stop_gradient(x)`` is the identity. It is how a
-model marks a value whose derivative is zero (the max subtracted before a
-softmax's ``exp``), and it changes nothing in a forward pass.
-
 Adding a host (einfold's optimizer on DataFusion, DuckDB with a GPU
 extension, or DuckDB running ddx's programs once ddx supports it) is one
 class here and one entry in ``HOSTS``.
@@ -102,7 +98,6 @@ class DuckDB(Host):
 
     def __init__(self):
         self.con = duckdb.connect()
-        self.con.sql("CREATE MACRO ddx_stop_gradient(x) AS x")
 
     def load(self, name, data, **options):
         xql.register(self.con, name, data, **options)
