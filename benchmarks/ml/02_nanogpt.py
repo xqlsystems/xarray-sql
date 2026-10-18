@@ -33,6 +33,10 @@ Optimizer step     ``w - lr * grad(loss, w)``, the new table; or AdamW,
                    the learning rate schedule as a table
 =================  ============================================
 
+As in nanoGPT, the model and the loss are separate. The model is the
+view ``logits``; the loss is SQL that reads it, as nanoGPT's
+``F.cross_entropy`` reads the model's logits.
+
 Each training step updates every parameter table with its own
 statement; the statements share one backward pass. By default the
 optimizer is SGD at a fixed learning rate, the simplest step to read.
@@ -226,28 +230,46 @@ def block(layer: int, x: str, out: str) -> str:
 
 
 def model() -> str:
-    """The CTEs of the whole model, ending in ``loss``: the mean
-    cross-entropy of predicting each next character of the batch."""
+    """The model, as the view ``logits``: for each position of each
+    sequence in ``batch``, a score for every character that could come
+    next. A DataFusion view reads the tables that existed when it was
+    created (DuckDB's looks them up by name), so it is recreated whenever
+    the batch or the parameters are."""
     blocks = "".join(
         block(layer, f"x{layer}", f"x{layer + 1}") for layer in range(LAYERS)
     )
     return f"""
-x0 AS (
+CREATE OR REPLACE VIEW logits AS
+WITH x0 AS (
   SELECT b.seq, b.pos, te.e, te.w + pe.w AS val
   FROM batch b
   JOIN wte te ON b.tok = te.tok
   JOIN wpe pe ON b.pos = pe.pos AND te.e = pe.e),
 {blocks}
-{layer_norm(f"x{LAYERS}", "final", "ln_f")}
-logits AS (
-  SELECT x.seq, x.pos, te.tok, SUM(x.val * te.w) AS val
-  FROM final x JOIN wte te ON x.e = te.e
-  GROUP BY x.seq, x.pos, te.tok),
+{layer_norm(f"x{LAYERS}", "final", "ln_f").rstrip(",")}
+SELECT x.seq, x.pos, te.tok, SUM(x.val * te.w) AS val
+FROM final x JOIN wte te ON x.e = te.e
+GROUP BY x.seq, x.pos, te.tok
+"""
+
+
+# The loss, separate from the model, as in nanoGPT: the mean cross-entropy
+# of the model's logits against each next character of the batch.
+# TODO(xqlsystems/ddx#142): remove ddx_stop_gradient from the window MAX
+# once ddx can differentiate a window aggregate. The max only keeps exp()
+# from overflowing, and cancels out of the log-sum-exp, so its gradient is
+# zero.
+#
+# The loss reads the model's view once, into the CTE ``predicted``, and
+# uses that twice: a host expands a view at every read, but DuckDB
+# computes a CTE that is read twice only once.
+LOSS = """
+predicted AS (
+  SELECT seq, pos, tok, val FROM logits),
 shifted AS (
-  -- TODO(xqlsystems/ddx#142): as in the attention weights above.
   SELECT seq, pos, tok, val,
          ddx_stop_gradient(MAX(val) OVER (PARTITION BY seq, pos)) AS m
-  FROM logits),
+  FROM predicted),
 log_sum_exp AS (
   SELECT seq, pos, MAX(m) + ln(SUM(exp(val - m))) AS lse
   FROM shifted GROUP BY seq, pos),
@@ -255,13 +277,13 @@ loss AS (
   SELECT AVG(s.lse - l.val) AS l
   FROM log_sum_exp s
   JOIN batch b ON s.seq = b.seq AND s.pos = b.pos
-  JOIN logits l ON l.seq = b.seq AND l.pos = b.pos AND l.tok = b.next)"""
+  JOIN predicted l ON l.seq = b.seq AND l.pos = b.pos AND l.tok = b.next)"""
 
 
 def step_statements(lr: float) -> list[str]:
     """One SGD step: each parameter table's next version, as a statement."""
     return [
-        f"WITH {model()} SELECT {', '.join(dims)}, "
+        f"WITH {LOSS} SELECT {', '.join(dims)}, "
         f"w - {lr} * grad(loss, w) AS w FROM {table} "
         f"ORDER BY {', '.join(dims)}"
         for table, dims in PARAMS.items()
@@ -273,7 +295,7 @@ def gradient_statements() -> list[str]:
     the table ``{name}_grad``'s rows. The statements share one backward
     pass."""
     return [
-        f"WITH {model()} SELECT {', '.join(dims)}, grad(loss, w) AS g "
+        f"WITH {LOSS} SELECT {', '.join(dims)}, grad(loss, w) AS g "
         f"FROM {table} ORDER BY {', '.join(dims)}"
         for table, dims in PARAMS.items()
     ]
@@ -316,7 +338,7 @@ ORDER BY {keys}
 
 
 def loss_statement() -> str:
-    return f"WITH {model()} SELECT l FROM loss"
+    return f"WITH {LOSS} SELECT l FROM loss"
 
 
 # --------------------------------------------------------------------------
@@ -492,7 +514,7 @@ def main():
     report = Report("nanogpt", "batch", args.reps)
     text = shakespeare()
     vocab = len(set(text))
-    lines = len(loss_statement().splitlines())
+    lines = len(model().splitlines()) + len(loss_statement().splitlines())
     count = sum(
         v.size for v in init_params(vocab, np.random.default_rng(0)).values()
     )
@@ -521,6 +543,7 @@ def main():
 
             for step, batch in data:
                 host.load("batch", batch)
+                host.execute(model())
                 tok, nxt = batch["tok"].values, batch["next"].values
 
                 rows = report.time(
