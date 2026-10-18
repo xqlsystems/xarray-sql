@@ -21,8 +21,10 @@ the two previous states. It is a graph neural network in three stages:
   round;
 * a **decoder** maps the mesh back onto the grid, as the 6-hour change.
 
-Here it is in miniature, as SQL over ERA5 read through xarray-sql from
-WeatherBench 2's Zarr store (or a synthetic stand-in, offline). Every
+Here it is in miniature, as SQL over ERA5, ECMWF's reanalysis of the
+atmosphere since 1940. xarray-sql reads it from the Zarr store of
+WeatherBench 2, a benchmark for weather models (or a synthetic stand-in,
+offline). Every
 graph is a table of edges ``(edge, sender, receiver)``, every state a
 table of ``(id, f, val)``, and every stage the same relational steps:
 
@@ -38,11 +40,17 @@ Aggregate          ``SUM`` of the edges' messages, ``GROUP BY`` receiver
 
 The geometry (the mesh, and which grid cells and mesh nodes are joined)
 is computed once with numpy; the model, its inputs and its forecast are
-SQL. The script checks the forecast, and ddx's gradient of the forecast
-error, against the same model in JAX. Then it measures what einfold's
-Demo 3 is about (``docs/demos.md``): how much less a regional forecast
-needs than a global one. It reports the receptive field: how many mesh
-nodes and grid cells each stage needs for the region.
+SQL. The script checks the forecast, and the gradient of the forecast
+error, against the same model in JAX, Google's library for differentiable
+array programs. ddx (https://github.com/xqlsystems/ddx), which
+differentiates SQL queries, computes the gradient.
+
+Then it measures what the third target demo of einfold
+(https://github.com/xqlsystems/einfold, a query optimizer that rewrites
+SQL plans into array algorithms; the demo is in its ``docs/demos.md``) is
+about: how much less a regional forecast needs than a global one. It
+reports the receptive field: how many mesh nodes and grid cells each
+stage needs for the region.
 
 Simplifications from GraphCast: random weights, a 64×32 grid and six
 variables, a mesh refined 2 times rather than 6, 2 processor rounds

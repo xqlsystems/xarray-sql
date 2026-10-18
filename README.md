@@ -237,30 +237,6 @@ Some highlights:
 * Dense tensor operations are slower in SQL than Xarray. It seems like the vanilla HashJoin implementation in standard DB engines are not as performant as array ops (they don't take advantage of contiguous array layouts), though this gives us some idea for how it could [one day be possible](https://github.com/xqlsystems/einfold). 
 * Sparse tensor operations are just as fast (or faster!) than Xarray today. Specifically, SQL is an excellent way to perform regridding and reprojecting between different spatial scales (see also: we include a `proj` udf via the `xarray-sql[geo]` extra).
 
-## Gradients in SQL
-
-With the `ml` extra (`pip install "xarray-sql[ml]"`), a `Context` takes
-gradients of queries with [ddx](https://github.com/xqlsystems/ddx). In a
-select list, `grad(loss, column)` is, at each row, the derivative of the
-number the CTE `loss` computes with respect to that row's `column`. A
-gradient-descent step on a parameter table is then one statement:
-
-```python
-ctx.sql("""
-WITH pred AS (
-  SELECT x.sample, SUM(x.value * w.val) AS y
-  FROM x JOIN w ON x.feature = w.feature GROUP BY x.sample),
-loss AS (
-  SELECT AVG(power(pred.y - t.value, 2)) AS l
-  FROM pred JOIN t ON pred.sample = t.sample)
-SELECT feature, val - 0.1 * grad(loss, val) AS val FROM w
-""")
-```
-
-[`benchmarks/ml`](benchmarks/ml) trains a small GPT and runs attention and
-a GraphCast-shaped weather model this way, checked against JAX and timed on
-several engines.
-
 ## Why does this work?
 
 Underneath Xarray, Dask, and Pandas, there are NumPy arrays. These are paged in

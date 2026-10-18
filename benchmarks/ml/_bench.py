@@ -5,8 +5,10 @@ Each demo is a script with the same command line::
     uv run benchmarks/ml/01_attention.py --hosts datafusion duckdb \\
         --sizes 64 256 --reps 3 --csv attention.csv
 
-It runs every step on every chosen host and size, checks each result
-against a JAX reference, and ends with one table: a row per step, host
+It runs every step on every chosen host (an engine that runs SQL; see
+``_hosts.py``) and size, checks each result against the same model in
+JAX, Google's library for differentiable array programs, and ends with
+one table: a row per step, host
 and size, with the median time and whether the result matched. Checks
 come first: a wrong answer fails the run, however fast it was.
 """

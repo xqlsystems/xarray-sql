@@ -1,6 +1,8 @@
 """The SQL engines ("hosts") the ML demos run on.
 
-einfold calls the engine that runs a plan its *host*. Every demo writes
+einfold (https://github.com/xqlsystems/einfold), a query optimizer that
+rewrites SQL plans into array algorithms, calls the engine that runs a
+plan its *host*. Every demo writes
 its model once, as SQL, and runs that same text on each host, so a
 difference in time is a difference between engines, never between
 queries. A host does four things:
@@ -16,7 +18,8 @@ queries. A host does four things:
   run, which shows, for one, whether a CTE read twice is computed twice.
 
 Forward queries run everywhere. Gradients (``grad``, ``vjp``, ``jvp``)
-need ddx, which today runs its programs on DataFusion only; a host that
+need ddx (https://github.com/xqlsystems/ddx), which differentiates SQL
+queries and today runs its programs on DataFusion only; a host that
 cannot differentiate says so with ``differentiates = False``, and the
 demos report its gradient steps as not run rather than skip it silently.
 

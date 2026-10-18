@@ -8,19 +8,23 @@
 # [tool.uv.sources]
 # xarray-sql = { path = "../../", editable = true }
 # ///
-"""Demo 2: a GPT in SQL, trained by gradient descent through ddx.
+"""Demo 2: a GPT in SQL, trained by gradient descent.
 
-nanoGPT is Andrej Karpathy's small, readable GPT-2. This is its model as
-one SQL query: the cross-entropy loss of a batch of characters from
-Shakespeare, computed by a transformer whose parameters are tables.
+nanoGPT (https://github.com/karpathy/nanoGPT) is Andrej Karpathy's small,
+readable implementation of GPT-2, the language model. This is its model,
+``model.py``, as one SQL query: the cross-entropy loss of a batch of
+characters from Shakespeare, computed by a transformer whose parameters
+are tables. ddx (https://github.com/xqlsystems/ddx), which differentiates
+SQL queries, takes the loss's gradient with respect to every parameter,
+so a training step is SQL too.
 
 =================  ============================================
 Model piece        In SQL
 =================  ============================================
 Embeddings         a join of the batch with ``wte`` and ``wpe``
-Layer norm         per-position ``AVG``s, joined back
-Attention          Demo 1's query, per head, causal
-MLP                two einsums around ReLU², ``power(greatest(x, 0), 2)``
+Layer norm         per-position ``AVG``s, joined back, times a gain
+Attention          per head and causal, as in ``01_attention.py``
+MLP                two einsums around GELU
 Output layer       an einsum with ``wte`` again (tied, as in GPT-2)
 Loss               log-sum-exp per position, minus the target's logit
 Gradients          ddx: ``grad(loss, w)``, one statement per table
@@ -28,14 +32,36 @@ Optimizer step     ``w - lr * grad(loss, w)``, the new table
 =================  ============================================
 
 Each training step updates every parameter table with its own
-statement; the statements share one backward pass. The same model in JAX,
-from the same initial parameters and the same batches, is the reference:
-its loss at every step and its gradients must match the SQL's.
+statement; the statements share one backward pass. The same model in JAX
+(Google's library for differentiable array programs), from the same
+initial parameters and the same batches, is the reference: its loss at
+every step, and its parameters after every step, must match the SQL's.
 
-This is Part A of einfold's Demo 2 (``docs/demos.md``). Part B, the four
-tricks of the NanoGPT speedrun's sparsity record as a small diff to this
-SQL, builds on it. Simplifications from nanoGPT: no dropout, no biases,
-and layer norms without a learned gain.
+This is Part A of the second target demo of einfold
+(https://github.com/xqlsystems/einfold), a query optimizer that rewrites
+SQL plans into array algorithms; the demo is described in einfold's
+``docs/demos.md``. Part B builds on it: it writes the tricks behind a
+record of the NanoGPT speedrun (a public race to train GPT-2 fastest)
+as a small diff to this SQL.
+
+Differences from nanoGPT's ``model.py`` and ``train.py``:
+
+* **Size.** nanoGPT's Shakespeare model has 6 layers, 6 heads, 384
+  channels and 256 characters of context, 10.65M parameters. This one has
+  1 layer, 2 heads, 16 channels and 16 characters, 4,416 parameters (the
+  constants below).
+* **GELU** is its tanh approximation, as GPT-2 computed it. nanoGPT's
+  ``nn.GELU()`` uses the exact form, through the error function ``erf``,
+  which DataFusion doesn't have. The two differ by less than 5e-4.
+* **The optimizer** is SGD at a fixed learning rate. nanoGPT trains with
+  AdamW, warmup, cosine decay and gradient clipping.
+* **No dropout**, nanoGPT's default, so that a run is deterministic and
+  can be checked. Its Shakespeare configuration trains with 0.2.
+* **Q, K and V are three tables.** nanoGPT's ``c_attn`` holds the same
+  parameters as one matrix, split after the product.
+
+Like nanoGPT's default (``bias = False`` in ``train.py``), the model has
+no biases, in linear layers or layer norms.
 
 Run ``uv run benchmarks/ml/02_nanogpt.py --help`` for the options.
 """
@@ -55,25 +81,34 @@ import xarray_sql as xql
 
 jax.config.update("jax_enable_x64", True)
 
-# A tiny character-level GPT.
-LAYERS = 1  # transformer blocks
-EMBED = 16  # e: channels of the residual stream
-HEADS = 2  # h: attention heads
+# A tiny character-level GPT. The comments name each constant in nanoGPT's
+# GPTConfig (https://github.com/karpathy/nanoGPT/blob/master/model.py) and
+# its value in nanoGPT's Shakespeare model
+# (https://github.com/karpathy/nanoGPT/blob/master/config/train_shakespeare_char.py).
+LAYERS = 1  # n_layer = 6: transformer blocks
+EMBED = 16  # n_embd = 384; e: channels of the residual stream
+HEADS = 2  # n_head = 6; h: attention heads
 HEAD = EMBED // HEADS  # c: channels per head
-HIDDEN = 4 * EMBED  # f: channels of the MLP
-CONTEXT = 16  # pos: characters per sequence
-LEARNING_RATE = 0.5
+HIDDEN = 4 * EMBED  # f: channels of the MLP, 4 × n_embd as in nanoGPT
+CONTEXT = 16  # block_size = 256; pos: characters per sequence
+LEARNING_RATE = 0.5  # for SGD; nanoGPT's AdamW uses 1e-3
 
-# Each parameter table's dimensions; its values are the column w.
+# Each parameter table's dimensions; its values are the column w. In
+# nanoGPT, wq, wk and wv are attn.c_attn; wo is attn.c_proj; w_fc and
+# w_proj are mlp.c_fc and mlp.c_proj; ln_1, ln_2 and ln_f are the layer
+# norms' weights.
 PARAMS = {
     "wte": ("tok", "e"),
     "wpe": ("pos", "e"),
+    "ln_1": ("layer", "e"),
     "wq": ("layer", "e", "h", "c"),
     "wk": ("layer", "e", "h", "c"),
     "wv": ("layer", "e", "h", "c"),
     "wo": ("layer", "h", "c", "e"),
+    "ln_2": ("layer", "e"),
     "w_fc": ("layer", "e", "f"),
     "w_proj": ("layer", "f", "e"),
+    "ln_f": ("e",),
 }
 
 # --------------------------------------------------------------------------
@@ -82,8 +117,10 @@ PARAMS = {
 # --------------------------------------------------------------------------
 
 
-def layer_norm(x: str, out: str) -> str:
-    """Normalize each position of ``x`` to zero mean and unit variance."""
+def layer_norm(x: str, out: str, gain: str, layer: int | None = None) -> str:
+    """Normalize each position of ``x`` to zero mean and unit variance,
+    then scale each channel by the table ``gain`` (of ``layer``, if set)."""
+    of_layer = "" if layer is None else f" AND g.layer = {layer}"
     return f"""
 {out}_mean AS (
   SELECT seq, pos, AVG(val) AS mean FROM {x} GROUP BY seq, pos),
@@ -92,10 +129,15 @@ def layer_norm(x: str, out: str) -> str:
   FROM {x} x JOIN {out}_mean m ON x.seq = m.seq AND x.pos = m.pos
   GROUP BY x.seq, x.pos),
 {out} AS (
-  SELECT x.seq, x.pos, x.e, (x.val - m.mean) / sqrt(v.var + 1e-5) AS val
+  SELECT x.seq, x.pos, x.e, (x.val - m.mean) / sqrt(v.var + 1e-5) * g.w AS val
   FROM {x} x
   JOIN {out}_mean m ON x.seq = m.seq AND x.pos = m.pos
-  JOIN {out}_var v ON x.seq = v.seq AND x.pos = v.pos),"""
+  JOIN {out}_var v ON x.seq = v.seq AND x.pos = v.pos
+  JOIN {gain} g ON x.e = g.e{of_layer}),"""
+
+
+# GELU's tanh approximation: x/2 · (1 + tanh(√(2/π) · (x + 0.044715 x³))).
+GELU_SCALE = np.sqrt(2 / np.pi)
 
 
 def block(layer: int, x: str, out: str) -> str:
@@ -111,7 +153,7 @@ def block(layer: int, x: str, out: str) -> str:
   GROUP BY x.seq, x.pos, p.h, p.c),"""
         for name in ("q", "k", "v")
     )
-    return f"""{layer_norm(x, f"{l}_ln1")}{projections}
+    return f"""{layer_norm(x, f"{l}_ln1", "ln_1", layer)}{projections}
 {l}_scores AS (
   SELECT q.seq, q.h, q.pos AS i, k.pos AS j,
          SUM(q.val * k.val) / {np.sqrt(HEAD)} AS s
@@ -119,6 +161,9 @@ def block(layer: int, x: str, out: str) -> str:
   WHERE q.pos >= k.pos
   GROUP BY q.seq, q.h, q.pos, k.pos),
 {l}_weights AS (
+  -- TODO(xqlsystems/ddx#142): remove ddx_stop_gradient from the window MAX
+  -- once ddx can differentiate a window aggregate. The max only keeps exp()
+  -- from overflowing, and cancels out of p / z, so its gradient is zero.
   SELECT seq, h, i, j,
          exp(s - ddx_stop_gradient(MAX(s) OVER (PARTITION BY seq, h, i))) AS p
   FROM {l}_scores),
@@ -138,12 +183,17 @@ def block(layer: int, x: str, out: str) -> str:
 {l}_mid AS (
   SELECT x.seq, x.pos, x.e, x.val + a.val AS val
   FROM {x} x JOIN {l}_attn a ON x.seq = a.seq AND x.pos = a.pos AND x.e = a.e),
-{layer_norm(f"{l}_mid", f"{l}_ln2")}
-{l}_hidden AS (
-  SELECT x.seq, x.pos, p.f, power(greatest(SUM(x.val * p.w), 0.0), 2) AS val
+{layer_norm(f"{l}_mid", f"{l}_ln2", "ln_2", layer)}
+{l}_fc AS (
+  SELECT x.seq, x.pos, p.f, SUM(x.val * p.w) AS val
   FROM {l}_ln2 x JOIN w_fc p ON x.e = p.e
   WHERE p.layer = {layer}
   GROUP BY x.seq, x.pos, p.f),
+{l}_hidden AS (
+  SELECT seq, pos, f,
+         0.5 * val * (1 + tanh({GELU_SCALE} * (val + 0.044715 * val * val * val)))
+           AS val
+  FROM {l}_fc),
 {l}_mlp AS (
   SELECT x.seq, x.pos, p.e, SUM(x.val * p.w) AS val
   FROM {l}_hidden x JOIN w_proj p ON x.f = p.f
@@ -167,12 +217,13 @@ x0 AS (
   JOIN wte te ON b.tok = te.tok
   JOIN wpe pe ON b.pos = pe.pos AND te.e = pe.e),
 {blocks}
-{layer_norm(f"x{LAYERS}", "final")}
+{layer_norm(f"x{LAYERS}", "final", "ln_f")}
 logits AS (
   SELECT x.seq, x.pos, te.tok, SUM(x.val * te.w) AS val
   FROM final x JOIN wte te ON x.e = te.e
   GROUP BY x.seq, x.pos, te.tok),
 shifted AS (
+  -- TODO(xqlsystems/ddx#142): as in the attention weights above.
   SELECT seq, pos, tok, val,
          ddx_stop_gradient(MAX(val) OVER (PARTITION BY seq, pos)) AS m
   FROM logits),
@@ -205,17 +256,17 @@ def loss_statement() -> str:
 # --------------------------------------------------------------------------
 
 
-def jax_layer_norm(x):
+def jax_layer_norm(x, gain):
     mean = x.mean(-1, keepdims=True)
     var = ((x - mean) ** 2).mean(-1, keepdims=True)
-    return (x - mean) / jnp.sqrt(var + 1e-5)
+    return (x - mean) / jnp.sqrt(var + 1e-5) * gain
 
 
 def jax_loss(p, tok, nxt):
     x = p["wte"][tok] + p["wpe"][None]
     causal = jnp.tril(jnp.ones((CONTEXT, CONTEXT), dtype=bool))
     for layer in range(LAYERS):
-        h = jax_layer_norm(x)
+        h = jax_layer_norm(x, p["ln_1"][layer])
         q, k, v = (
             jnp.einsum("bte,ehc->bhtc", h, p[w][layer])
             for w in ("wq", "wk", "wv")
@@ -224,10 +275,10 @@ def jax_loss(p, tok, nxt):
         a = jax.nn.softmax(jnp.where(causal, s, -jnp.inf), axis=-1)
         heads = jnp.einsum("bhij,bhjc->bhic", a, v)
         x = x + jnp.einsum("bhtc,hce->bte", heads, p["wo"][layer])
-        h = jax_layer_norm(x)
-        hidden = jnp.maximum(h @ p["w_fc"][layer], 0.0) ** 2
+        h = jax_layer_norm(x, p["ln_2"][layer])
+        hidden = jax.nn.gelu(h @ p["w_fc"][layer], approximate=True)
         x = x + hidden @ p["w_proj"][layer]
-    logits = jax_layer_norm(x) @ p["wte"].T
+    logits = jax_layer_norm(x, p["ln_f"]) @ p["wte"].T
     target = jnp.take_along_axis(logits, nxt[..., None], -1)[..., 0]
     return jnp.mean(jax.nn.logsumexp(logits, -1) - target)
 
@@ -273,7 +324,9 @@ def batches(text: str, size: int, rng):
 
 
 def init_params(vocab: int, rng) -> dict[str, np.ndarray]:
-    """GPT-2's initialization: normal, standard deviation 0.02."""
+    """nanoGPT's initialization, from GPT-2: weights normal with standard
+    deviation 0.02, or 0.02/√(2 × layers) for the two projections that add
+    to the residual stream; layer norm gains 1."""
     sizes = {
         "tok": vocab,
         "pos": CONTEXT,
@@ -283,10 +336,16 @@ def init_params(vocab: int, rng) -> dict[str, np.ndarray]:
         "c": HEAD,
         "f": HIDDEN,
     }
-    return {
-        name: rng.normal(0, 0.02, [sizes[d] for d in dims])
-        for name, dims in PARAMS.items()
-    }
+    params = {}
+    for name, dims in PARAMS.items():
+        shape = [sizes[d] for d in dims]
+        if name.startswith("ln_"):
+            params[name] = np.ones(shape)
+        elif name in ("wo", "w_proj"):
+            params[name] = rng.normal(0, 0.02 / np.sqrt(2 * LAYERS), shape)
+        else:
+            params[name] = rng.normal(0, 0.02, shape)
+    return params
 
 
 def as_table(name: str, values: np.ndarray) -> xr.Dataset:
@@ -309,8 +368,12 @@ def main():
     text = shakespeare()
     vocab = len(set(text))
     lines = len(loss_statement().splitlines())
+    count = sum(
+        v.size for v in init_params(vocab, np.random.default_rng(0)).values()
+    )
     print(
-        f"  {LAYERS}-layer GPT, vocab {vocab}: the loss is {lines} lines of SQL"
+        f"  {LAYERS}-layer GPT, vocab {vocab}, {count:,} parameters: "
+        f"the loss is {lines} lines of SQL"
     )
 
     for size in args.sizes:

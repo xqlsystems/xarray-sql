@@ -8,7 +8,16 @@ summarizes recurring maintainer review feedback so changes land clean.
 - Keep docstrings and comments self-contained. Do **not** put GitHub issue or PR
   numbers in docstrings or code comments; a reader should not need the issue
   tracker to understand the code. Issue references belong in the commit message
-  and PR description (e.g. `Closes #189`), not in the source.
+  and PR description (e.g. `Closes #189`), not in the source. The one exception
+  is a workaround's `TODO`, which names the issue that would remove it:
+  `TODO(#NN): <action item>`, or `TODO(owner/repo#NN): <action item>` for an
+  issue in another repository. The comment still explains the workaround.
+- Introduce every reference before relying on it. The first time a document
+  (a docstring, comment, README or docs page) mentions a project, paper,
+  algorithm, dataset or term of art, such as einfold, FlashAttention or a
+  section of another project's design, say in a few words what it is, and link
+  it where there is a link. Don't assume the reader has the context of the
+  conversation that produced the code.
 - Do not reference the review conversation, chat, or "the reporter" in comments.
   Describe the behavior, not how it came up.
 
