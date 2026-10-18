@@ -28,11 +28,16 @@ MLP                two einsums around GELU
 Output layer       an einsum with ``wte`` again (tied, as in GPT-2)
 Loss               log-sum-exp per position, minus the target's logit
 Gradients          ddx: ``grad(loss, w)``, one statement per table
-Optimizer step     ``w - lr * grad(loss, w)``, the new table
+Optimizer step     ``w - lr * grad(loss, w)``, the new table; or AdamW,
+                   with Adam's moments as columns beside ``w`` and
+                   the learning rate schedule as a table
 =================  ============================================
 
 Each training step updates every parameter table with its own
-statement; the statements share one backward pass. The same model in JAX
+statement; the statements share one backward pass. By default the
+optimizer is SGD at a fixed learning rate, the simplest step to read.
+``--optimizer adamw`` trains as nanoGPT does instead: it stores the
+gradients as tables, then updates each parameter table with AdamW. The same model in JAX
 (Google's library for differentiable array programs), from the same
 initial parameters and the same batches, is the reference: its loss at
 every step, and its parameters after every step, must match the SQL's.
@@ -53,8 +58,13 @@ Differences from nanoGPT's ``model.py`` and ``train.py``:
 * **GELU** is its tanh approximation, as GPT-2 computed it. nanoGPT's
   ``nn.GELU()`` uses the exact form, through the error function ``erf``,
   which DataFusion doesn't have. The two differ by less than 5e-4.
-* **The optimizer** is SGD at a fixed learning rate. nanoGPT trains with
-  AdamW, warmup, cosine decay and gradient clipping.
+* **The optimizer**, by default, is SGD at a fixed learning rate.
+  ``--optimizer adamw`` matches nanoGPT's: AdamW with its Shakespeare
+  settings, weight decay on all but the layer norms, gradients clipped to
+  a norm of 1, and the learning rate warming up, then decaying along a
+  cosine. The schedule is stretched to ``--steps``, where nanoGPT's spans
+  5,000. The JAX reference for this step matches ``torch.optim.AdamW``
+  after ``clip_grad_norm_`` exactly.
 * **No dropout**, nanoGPT's default, so that a run is deterministic and
   can be checked. Its Shakespeare configuration trains with 0.2.
 * **Q, K and V are three tables.** nanoGPT's ``c_attn`` holds the same
@@ -91,7 +101,18 @@ HEADS = 2  # n_head = 6; h: attention heads
 HEAD = EMBED // HEADS  # c: channels per head
 HIDDEN = 4 * EMBED  # f: channels of the MLP, 4 × n_embd as in nanoGPT
 CONTEXT = 16  # block_size = 256; pos: characters per sequence
-LEARNING_RATE = 0.5  # for SGD; nanoGPT's AdamW uses 1e-3
+LEARNING_RATE = 0.5  # for SGD; nanoGPT's AdamW uses 1e-3, below
+
+# AdamW (``--optimizer adamw``), with the settings of nanoGPT's Shakespeare
+# model: train.py's defaults, and config/train_shakespeare_char.py's.
+MAX_LR = 1e-3  # learning_rate
+MIN_LR = 1e-4  # min_lr
+WARMUP = 100 / 5000  # warmup_iters, as a fraction of max_iters
+BETA1 = 0.9  # beta1
+BETA2 = 0.99  # beta2
+EPS = 1e-8  # torch.optim.AdamW's default
+WEIGHT_DECAY = 0.1  # weight_decay, on every table but the layer norms' gains
+GRAD_CLIP = 1.0  # grad_clip: the largest norm of all gradients together
 
 # Each parameter table's dimensions; its values are the column w. In
 # nanoGPT, wq, wk and wv are attn.c_attn; wo is attn.c_proj; w_fc and
@@ -247,6 +268,53 @@ def step_statements(lr: float) -> list[str]:
     ]
 
 
+def gradient_statements() -> list[str]:
+    """The gradient of the loss with respect to each parameter table, as
+    the table ``{name}_grad``'s rows. The statements share one backward
+    pass."""
+    return [
+        f"WITH {model()} SELECT {', '.join(dims)}, grad(loss, w) AS g "
+        f"FROM {table} ORDER BY {', '.join(dims)}"
+        for table, dims in PARAMS.items()
+    ]
+
+
+def adamw_statement(table: str, step: int) -> str:
+    """One AdamW step on a parameter table with columns ``w``, ``m`` and
+    ``v`` (the weight and Adam's two moments), from its gradient in
+    ``{table}_grad`` and the learning rate in ``schedule``. This is
+    ``torch.optim.AdamW``, after nanoGPT clips the gradients."""
+    dims = PARAMS[table]
+    keys = ", ".join(f"p.{d}" for d in dims)
+    same_row = " AND ".join(f"p.{d} = g.{d}" for d in dims)
+    decay = 0.0 if table.startswith("ln_") else WEIGHT_DECAY
+    every_grad = "\n    UNION ALL ".join(
+        f"SELECT g FROM {t}_grad" for t in PARAMS
+    )
+    return f"""
+WITH grad_norm AS (
+  SELECT sqrt(SUM(g * g)) AS norm FROM (
+    {every_grad})),
+clip AS (
+  SELECT LEAST(1.0, {GRAD_CLIP} / (norm + 1e-6)) AS c FROM grad_norm),
+moments AS (
+  SELECT {keys}, p.w,
+         {BETA1} * p.m + (1 - {BETA1}) * g.g * clip.c AS m,
+         {BETA2} * p.v + (1 - {BETA2}) * power(g.g * clip.c, 2) AS v
+  FROM {table} p
+  JOIN {table}_grad g ON {same_row}
+  CROSS JOIN clip)
+SELECT {keys},
+       p.w * (1 - s.lr * {decay})
+         - s.lr * (p.m / (1 - power({BETA1}, s.step + 1)))
+           / (sqrt(p.v / (1 - power({BETA2}, s.step + 1))) + {EPS}) AS w,
+       p.m,
+       p.v
+FROM moments p JOIN schedule s ON s.step = {step}
+ORDER BY {keys}
+"""
+
+
 def loss_statement() -> str:
     return f"WITH {model()} SELECT l FROM loss"
 
@@ -281,6 +349,26 @@ def jax_loss(p, tok, nxt):
     logits = jax_layer_norm(x, p["ln_f"]) @ p["wte"].T
     target = jnp.take_along_axis(logits, nxt[..., None], -1)[..., 0]
     return jnp.mean(jax.nn.logsumexp(logits, -1) - target)
+
+
+def jax_adamw(params, moments, grads, step, lr):
+    """The reference AdamW step: new parameters and moments."""
+    norm = np.sqrt(sum(float(jnp.sum(g**2)) for g in grads.values()))
+    clip = min(1.0, GRAD_CLIP / (norm + 1e-6))
+    new_params, new_moments = {}, {}
+    for name, w in params.items():
+        g = grads[name] * clip
+        m, v = moments[name]
+        m = BETA1 * m + (1 - BETA1) * g
+        v = BETA2 * v + (1 - BETA2) * g**2
+        decay = 0.0 if name.startswith("ln_") else WEIGHT_DECAY
+        m_hat = m / (1 - BETA1 ** (step + 1))
+        v_hat = v / (1 - BETA2 ** (step + 1))
+        new_params[name] = w * (1 - lr * decay) - lr * m_hat / (
+            jnp.sqrt(v_hat) + EPS
+        )
+        new_moments[name] = (m, v)
+    return new_params, new_moments
 
 
 # --------------------------------------------------------------------------
@@ -348,22 +436,59 @@ def init_params(vocab: int, rng) -> dict[str, np.ndarray]:
     return params
 
 
-def as_table(name: str, values: np.ndarray) -> xr.Dataset:
+def as_table(name: str, w: np.ndarray, m=None, v=None) -> xr.Dataset:
+    """A parameter as a table: its weights ``w``, and Adam's moments ``m``
+    and ``v`` when they are given."""
     dims = PARAMS[name]
+    columns = {"w": w, "m": m, "v": v}
     return xr.Dataset(
-        {"w": (dims, values)},
-        coords={d: np.arange(n) for d, n in zip(dims, values.shape)},
+        {k: (dims, x) for k, x in columns.items() if x is not None},
+        coords={d: np.arange(n) for d, n in zip(dims, w.shape)},
     )
 
 
-def as_array(name: str, rows) -> np.ndarray:
-    return xql.to_dataset(rows, dims=list(PARAMS[name]))["w"].values
+def as_array(name: str, rows, column: str = "w") -> np.ndarray:
+    return xql.to_dataset(rows, dims=list(PARAMS[name]))[column].values
+
+
+def schedule(steps: int) -> xr.Dataset:
+    """nanoGPT's learning rate at each step, as the table
+    ``schedule(step, lr)``: a linear warmup, then a cosine decay to the
+    minimum, with train.py's ``max_iters`` and ``lr_decay_iters`` both
+    ``steps``."""
+    warmup = round(WARMUP * steps)
+    lr = []
+    for it in range(steps):
+        if it < warmup:
+            lr.append(MAX_LR * (it + 1) / (warmup + 1))
+        else:
+            decay = (it - warmup) / (steps - warmup)
+            coeff = 0.5 * (1 + np.cos(np.pi * decay))
+            lr.append(MIN_LR + coeff * (MAX_LR - MIN_LR))
+    return xr.Dataset({"lr": ("step", lr)}, coords={"step": np.arange(steps)})
+
+
+def adamw_step(host, step: int) -> list:
+    """One AdamW step on every parameter table: the gradients, in one
+    backward pass, registered as tables; then each table's update."""
+    gradients = host.query_all(gradient_statements())
+    for name, rows in zip(PARAMS, gradients):
+        host.load(f"{name}_grad", xql.to_dataset(rows, dims=list(PARAMS[name])))
+    return [host.query(adamw_statement(name, step)) for name in PARAMS]
 
 
 def main():
     parser = cli(__doc__.splitlines()[0], sizes=[4], size_name="batch")
-    parser.add_argument("--steps", type=int, default=5, help="SGD steps")
+    parser.add_argument("--steps", type=int, default=5, help="training steps")
+    parser.add_argument(
+        "--optimizer",
+        choices=["sgd", "adamw"],
+        default="sgd",
+        help="SGD at a fixed learning rate (default), or nanoGPT's AdamW",
+    )
     args = parser.parse_args()
+    adamw = args.optimizer == "adamw"
+    lr = schedule(args.steps)
     report = Report("nanogpt", "batch", args.reps)
     text = shakespeare()
     vocab = len(set(text))
@@ -386,8 +511,13 @@ def main():
 
         for host in hosts(args.hosts):
             reference = dict(init)
+            moments = {
+                n: (np.zeros_like(w), np.zeros_like(w)) for n, w in init.items()
+            }
             for name, values in init.items():
-                host.load(name, as_table(name, values))
+                state = moments[name] if adamw else ()
+                host.load(name, as_table(name, values, *state))
+            host.load("schedule", lr)
 
             for step, batch in data:
                 host.load("batch", batch)
@@ -407,31 +537,47 @@ def main():
                 report.note("loss", round(float(want), 6))
                 report.note("operators", host.operators(loss_statement()))
 
+                train = f"train ({args.optimizer}), step {step}"
                 if not host.differentiates:
-                    report.skip(
-                        f"train, step {step}", host, size, "no ddx backend"
-                    )
+                    report.skip(train, host, size, "no ddx backend")
                     continue
-                updated = report.time(
-                    f"train, step {step}",
-                    host,
-                    size,
-                    host.query_all,
-                    step_statements(LEARNING_RATE),
-                )
                 grads = jax.grad(jax_loss)(reference, tok, nxt)
+                if adamw:
+                    updated = report.time(
+                        train, host, size, adamw_step, host, step
+                    )
+                    reference, moments = jax_adamw(
+                        reference, moments, grads, step, lr["lr"].values[step]
+                    )
+                else:
+                    updated = report.time(
+                        train,
+                        host,
+                        size,
+                        host.query_all,
+                        step_statements(LEARNING_RATE),
+                    )
+                    reference = {
+                        name: w - LEARNING_RATE * grads[name]
+                        for name, w in reference.items()
+                    }
+
                 errors = []
                 for name, rows in zip(PARAMS, updated):
-                    reference[name] = (
-                        reference[name] - LEARNING_RATE * grads[name]
-                    )
-                    trained = as_array(name, rows)
-                    errors.append(
-                        assert_close(
-                            f"{name}, step {step}", trained, reference[name]
+                    expected = {"w": reference[name]}
+                    if adamw:
+                        expected["m"], expected["v"] = moments[name]
+                    for column, values in expected.items():
+                        errors.append(
+                            assert_close(
+                                f"{name}.{column}, step {step}",
+                                as_array(name, rows, column),
+                                values,
+                            )
                         )
+                    host.load(
+                        name, xql.to_dataset(rows, dims=list(PARAMS[name]))
                     )
-                    host.load(name, as_table(name, trained))
                 report.check(max(errors))
 
     report.finish(args.csv)
