@@ -112,6 +112,67 @@ def test_duckdb_st_within_on_geometry_column(grid, spatial_con):
     assert got == (expected.size, round(float(expected.mean()), 3))
 
 
+_POLYGON = (
+    "POLYGON ((-58.1 -28.75, -56.9 -28.75, -56.9 -27.9, "
+    "-58.1 -27.9, -58.1 -28.75))"
+)
+
+
+def test_duckdb_spatial_join_needs_a_point_or_a_table(grid, spatial_con):
+    """Joining the geometry column to a table of polygons fails inside
+    DuckDB's Arrow scan, which can't take the filter the spatial join
+    pushes into it. Building the point in the join, or copying the table
+    into DuckDB first, works. When DuckDB fixes this, the first assertion
+    fails: drop the workarounds from the docs then."""
+    duckdb = pytest.importorskip("duckdb")
+    con, _ = spatial_con
+    con.execute(
+        "CREATE TABLE regions AS "
+        f"SELECT ST_SetCRS(ST_GeomFromText('{_POLYGON}'), 'OGC:CRS84') AS geom"
+    )
+    want = int(((grid.y >= -28.75) & (grid.y <= -27.9)).sum()) * grid.sizes["x"]
+
+    with pytest.raises(duckdb.NotImplementedException, match="PyArrow"):
+        con.execute(
+            "SELECT count(*) FROM t JOIN regions r ON ST_Within(t.geometry, r.geom)"
+        ).fetchone()
+    got = con.execute(
+        "SELECT count(*) FROM t JOIN regions r ON "
+        "ST_Within(ST_SetCRS(ST_Point(t.x, t.y), 'OGC:CRS84'), r.geom)"
+    ).fetchone()
+    assert got == (want,)
+    con.execute("CREATE TABLE copied AS FROM t")
+    got = con.execute(
+        "SELECT count(*) FROM copied c JOIN regions r ON ST_Within(c.geometry, r.geom)"
+    ).fetchone()
+    assert got == (want,)
+
+
+def test_duckdb_compares_only_matching_crs_tags(grid):
+    """DuckDB's ST_Read tags GeoJSON as EPSG:4326, and ST_Within refuses
+    to compare it with the default OGC:CRS84 tag, though both are WGS84
+    longitude and latitude. geometry_crs="EPSG:4326" matches it."""
+    duckdb = pytest.importorskip("duckdb")
+    con = duckdb.connect()
+    try:
+        con.execute("INSTALL spatial; LOAD spatial;")
+    except duckdb.Error:
+        pytest.skip("duckdb spatial extension unavailable")
+    query = (
+        "SELECT count(*) FROM t WHERE ST_Within(geometry, "
+        f"ST_SetCRS(ST_GeomFromText('{_POLYGON}'), 'EPSG:4326'))"
+    )
+
+    xql.register(con, "t", grid, geometry=("x", "y"))
+    with pytest.raises(duckdb.BinderException, match="coordinate reference"):
+        con.execute(query).fetchone()
+    xql.register(con, "t", grid, geometry=("x", "y"), geometry_crs="EPSG:4326")
+    inside = (grid.y >= -28.75) & (grid.y <= -27.9)
+    assert con.execute(query).fetchone() == (
+        int(inside.sum()) * grid.sizes["x"],
+    )
+
+
 def test_geopandas_consumes_native_points(grid):
     gpd = pytest.importorskip("geopandas")
 
