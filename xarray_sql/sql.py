@@ -25,6 +25,14 @@ try:  # pyproj is an optional dependency (`pip install xarray-sql[geo]`).
 except ImportError:  # pragma: no cover - depends on the environment
     _proj = None
 
+_ad: ModuleType | None
+try:  # ddxdb is an optional dependency (`pip install xarray-sql[ml]`).
+    from . import ad
+
+    _ad = ad
+except ImportError:  # pragma: no cover - depends on the environment
+    _ad = None
+
 
 class Context(SessionContext):
     """A datafusion `SessionContext` that also supports `xarray.Dataset`s.
@@ -45,6 +53,10 @@ class Context(SessionContext):
         # reproject(x, y, src_crs, dst_crs), à la PostGIS ST_Transform.
         if _proj is not None:
             _proj.register(self)
+        # With ddxdb installed, .sql() also takes gradients: grad(), vjp()
+        # and jvp() in a select list, and ddx_stop_gradient().
+        if _ad is not None:
+            _ad.register(self)
 
     def from_dataset(
         self,
@@ -214,6 +226,10 @@ class Context(SessionContext):
         ``.to_dataset(dimension_columns=[...])`` for round-tripping the
         result back to an ``xr.Dataset``.
 
+        With the ml extension installed (``pip install xarray-sql[ml]``),
+        the query may also call ``grad``, ``vjp`` and ``jvp`` (see
+        [xarray_sql.ad][]).
+
         Args:
             query: A SQL query string.
             *args: Forwarded to ``SessionContext.sql``.
@@ -222,7 +238,17 @@ class Context(SessionContext):
         Returns:
             An [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame] wrapping the DataFusion DataFrame.
         """
-        inner = super().sql(query, *args, **kwargs)
+        if _ad is not None and _ad.calls_ad(query):
+            if args or kwargs:
+                raise TypeError(
+                    "a query that calls grad, vjp or jvp takes no other "
+                    "arguments"
+                )
+            return self._wrap(_ad.sql(self, query))
+        return self._wrap(super().sql(query, *args, **kwargs))
+
+    def _wrap(self, inner) -> XarrayDataFrame:
+        """Wrap a DataFusion DataFrame so it can round-trip to xarray."""
         return XarrayDataFrame(inner, templates=self._registered_datasets)
 
 
