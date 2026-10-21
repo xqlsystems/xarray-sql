@@ -150,27 +150,24 @@ def test_duckdb_spatial_join_needs_a_point_or_a_table(grid, spatial_con):
 
 def test_duckdb_compares_only_matching_crs_tags(grid):
     """DuckDB's ST_Read tags GeoJSON as EPSG:4326, and ST_Within refuses
-    to compare it with the default OGC:CRS84 tag, though both are WGS84
-    longitude and latitude. geometry_crs="EPSG:4326" matches it."""
+    to compare it with the points' OGC:CRS84 tag. Retagging the polygon
+    OGC:CRS84, the longitude-first order GeoJSON uses, makes them compare."""
     duckdb = pytest.importorskip("duckdb")
     con = duckdb.connect()
     try:
         con.execute("INSTALL spatial; LOAD spatial;")
     except duckdb.Error:
         pytest.skip("duckdb spatial extension unavailable")
-    query = (
-        "SELECT count(*) FROM t WHERE ST_Within(geometry, "
-        f"ST_SetCRS(ST_GeomFromText('{_POLYGON}'), 'EPSG:4326'))"
-    )
-
     xql.register(con, "t", grid, geometry=("x", "y"))
+    polygon = f"ST_SetCRS(ST_GeomFromText('{_POLYGON}'), 'EPSG:4326')"
+    query = "SELECT count(*) FROM t WHERE ST_Within(geometry, {})"
+
     with pytest.raises(duckdb.BinderException, match="coordinate reference"):
-        con.execute(query).fetchone()
-    xql.register(con, "t", grid, geometry=("x", "y"), geometry_crs="EPSG:4326")
+        con.execute(query.format(polygon)).fetchone()
+    retagged = f"ST_SetCRS({polygon}, 'OGC:CRS84')"
     inside = (grid.y >= -28.75) & (grid.y <= -27.9)
-    assert con.execute(query).fetchone() == (
-        int(inside.sum()) * grid.sizes["x"],
-    )
+    want = int(inside.sum()) * grid.sizes["x"]
+    assert con.execute(query.format(retagged)).fetchone() == (want,)
 
 
 def test_geopandas_consumes_native_points(grid):

@@ -77,8 +77,11 @@ Pick your engine:
       the polygons come from `ST_Read`, which tags GeoJSON
       `EPSG:4326`, while the registered points carry the default
       `OGC:CRS84`.
-    - *What to do:* register with `geometry_crs="EPSG:4326"`. Both tags
-      mean WGS84 longitude and latitude.
+    - *What to do:* retag the polygons, `ST_SetCRS(geom, 'OGC:CRS84')`.
+      Both tags are WGS84, but `EPSG:4326` officially puts latitude
+      first, while GeoJSON and the registered points put longitude
+      first, as `OGC:CRS84` says. (Tagging the points `EPSG:4326`
+      instead would mislead a later `ST_Transform`.)
 
 === "Polars"
 

@@ -318,8 +318,9 @@ destination. The CRS tag defaults to `OGC:CRS84`; pass
 
 DuckDB compares geometries only when their CRS tags match. Its `ST_Read` tags
 GeoJSON `EPSG:4326`, so to test the raster's points against polygons read that
-way, register with `geometry_crs="EPSG:4326"`: both tags mean WGS84 longitude
-and latitude. And for now, join the geometry column to a *table* of polygons
+way, retag the polygons with `ST_SetCRS(geom, 'OGC:CRS84')`. GeoJSON's
+coordinates are longitude first, which is what `OGC:CRS84` says; `EPSG:4326`
+officially puts latitude first. And for now, join the geometry column to a *table* of polygons
 through `ST_Point(x, y)` or a copied table; see
 [Known issues](limitations.md).
 
