@@ -328,11 +328,12 @@ con.sql("""
 """).fetchall()
 # => [('Hanoi', 17.0), ('Yangon', 16.0)]
 
-# Polygons from files, like ST_Read('countries.geojson'), are tagged
-# EPSG:4326, and ST_Within won't compare them with xarray-sql's default
-# OGC:CRS84 tag (both mean longitude and latitude): register with
-# geometry_crs="EPSG:4326". And join the geometry column to a table of
-# polygons through ST_Point(lon, lat): DuckDB can't yet join it directly.
+# Polygons from files, like ST_Read('countries.geojson'), come tagged
+# EPSG:4326, and ST_Within won't compare them with the points' OGC:CRS84
+# tag. Both are WGS84, but EPSG:4326 puts latitude first and OGC:CRS84
+# longitude first, as GeoJSON and these points do. So retag the polygons:
+# ST_SetCRS(geom, 'OGC:CRS84'). And join the geometry column to a table
+# of polygons through ST_Point(lon, lat): DuckDB can't yet join it directly.
 
 ####################################################
 ## 7. Serve Datasets to any Flight SQL client

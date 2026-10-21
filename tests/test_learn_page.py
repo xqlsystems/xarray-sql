@@ -82,12 +82,32 @@ def _check(value, expected, line):
     )
 
 
-def test_the_tour_runs_and_every_result_is_what_the_page_says():
-    try:  # the tour installs DuckDB extensions, which needs the network
+def _without_section(source: str, title: str) -> str:
+    """``source`` with the tour section named ``title`` blanked out, keeping
+    every other line where it was."""
+    banner = "#" * 52
+    pattern = re.compile(
+        rf"{banner}\n## \d+\. {re.escape(title)}.*?(?={banner}\n## )", re.DOTALL
+    )
+    match = pattern.search(source)
+    assert match, f"the tour has no section {title!r}"
+    blank = "\n" * match.group().count("\n")
+    return source[: match.start()] + blank + source[match.end() :]
+
+
+def _extensions_available() -> bool:
+    try:  # the geometry section installs DuckDB extensions from the network
         duckdb.connect().execute("INSTALL spatial; INSTALL h3 FROM community")
     except duckdb.Error:
-        pytest.skip("DuckDB's spatial and h3 extensions are unavailable")
+        return False
+    return True
+
+
+def test_the_tour_runs_and_every_result_is_what_the_page_says():
     source = _tour()
+    complete = _extensions_available()
+    if not complete:
+        source = _without_section(source, "Geometry and H3, in DuckDB")
     annotate = _Annotate(source.splitlines())
     tree = ast.fix_missing_locations(annotate.visit(ast.parse(source)))
     comments = [
@@ -97,3 +117,8 @@ def test_the_tour_runs_and_every_result_is_what_the_page_says():
     ]
     assert annotate.count == len(comments), "a # => comment annotates nothing"
     exec(compile(tree, str(PAGE), "exec"), {"_check": _check})
+    if not complete:
+        pytest.skip(
+            "ran the tour without its geometry section: DuckDB's spatial "
+            "and h3 extensions are unavailable"
+        )
