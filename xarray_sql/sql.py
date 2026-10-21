@@ -1,3 +1,5 @@
+import uuid
+
 import pyarrow as pa
 import xarray as xr
 from datafusion import SessionContext
@@ -182,14 +184,16 @@ class Context(SessionContext):
 
     def _in_memory_table(self, partitions: list[list[pa.RecordBatch]]):
         """A native DataFusion in-memory table of ``partitions``."""
-        before = set(self.catalog().schema().names())
-        view = self.create_dataframe(partitions).into_view()
-        # create_dataframe registers its in-memory table under a generated
-        # name. The view holds the table itself, not the name, so the name
-        # can go.
-        for name in set(self.catalog().schema().names()) - before:
-            self.deregister_table(name)
-        return view
+        # The in-memory table is reachable from Python only through a
+        # registered name, so register it under a placeholder, take the
+        # table, and drop the placeholder. The table, not a view of it, is
+        # what the caller registers, so a query's plan scans the caller's
+        # name, which ddx needs to find the table it differentiates.
+        placeholder = f"_xarray_sql_{uuid.uuid4().hex}"
+        self.register_record_batches(placeholder, partitions)
+        table = self.catalog().schema().table(placeholder)
+        self.deregister_table(placeholder)
+        return table
 
     def _maybe_register_cftime_udf(self, ds: xr.Dataset) -> None:
         """Auto-register a cftime() UDF for non-Gregorian cftime coordinates."""
