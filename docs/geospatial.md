@@ -44,7 +44,7 @@ actually runs — and this suite works through nearly all of it:
 | Transformed Eulerian Mean (circulation diagnostics — zonal means and anomalies) | cases 03, 04 |
 | Forecast evaluation (scoring forecasts against ground truth) | case 05 |
 | Regridding and reprojection (resolution and CRS changes) | cases 07, 08, 09 |
-| Spatial joins (large polygon-to-polygon joins) | partly: case 10 joins a raster, points and polygons, exactly and through H3 cells; polygon-to-polygon joins are a vector-data problem and not covered |
+| Spatial joins (large polygon-to-polygon joins) | *not covered* — a vector-data problem; the closest analogue here is the raster × vector join in case 06 |
 
 So the claim isn't that a few cherry-picked operations happen to be relational.
 It's that an independent survey of the operations geoscience runs at scale, run
@@ -63,7 +63,6 @@ through SQL one by one, turns out to be — almost entirely — queries.
 | Reprojection | per-pixel CRS transform | scalar **UDF** (`ST_Transform`-style) | [`07_reproject_udf.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/07_reproject_udf.py) |
 | Regridding | interpolation to a new grid | sparse-weight table `JOIN` | [`08_regrid_weights.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/08_regrid_weights.py) |
 | Warp (reproject + resample) | CRS transform *and* interpolation | reproject **UDF** → weight-table `JOIN` | [`09_warp.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/09_warp.py) |
-| Raster × points × polygons | point-in-polygon per pixel | `ST_Within` `JOIN`s, or H3 cell IDs and equality `JOIN`s | [`10_h3_join.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/10_h3_join.py) |
 
 ## 1. A pixel-wise formula is a column expression
 
@@ -207,69 +206,7 @@ the regions are a second SQL table, and the spatial relationship is an ordinary
 regions keep this simple; arbitrary polygons would follow the same shape, with a
 point-in-polygon test in the join.)
 
-## 6. Rasters, points and polygons: exact geometry, then H3
-
-Geospatial data comes in different shapes. A forecast is a raster, cities are
-points, countries are polygons, and the interesting questions join them: how
-hot will each country be tomorrow, and how many people live where it will pass
-35 °C? [`10_h3_join.py`](https://github.com/xqlsystems/xarray-sql/blob/main/benchmarks/geospatial/10_h3_join.py)
-asks both in DuckDB, over the latest
-[NOAA GFS forecast](https://dynamical.org/catalog/noaa-gfs-forecast/) and
-[Natural Earth](https://www.naturalearthdata.com/)'s countries (1:10m) and
-cities, two ways.
-
-**Exact geometry**, with DuckDB's
-[`spatial` extension](https://duckdb.org/docs/stable/core_extensions/spatial/overview).
-Registering with `geometry=("longitude", "latitude")` gives the raster a point
-column, so a country is a point-in-polygon test, and
-[`bbox_conjuncts`](#geoarrow-point-geometry-columns) lets the lazy forecast
-read only the chunks over it:
-
-```sql
-SELECT latitude, longitude, MAX(temperature_2m) AS t_max
-FROM gfs
-WHERE "longitude" BETWEEN 68.18 AND 97.40 AND "latitude" BETWEEN 7.97 AND 35.49
-  AND ST_Within(geometry, <India's outline>)
-GROUP BY latitude, longitude
-```
-
-**[H3](https://h3geo.org/)**, Uber's hierarchical grid of hexagons, with
-DuckDB's community [`h3` extension](https://duckdb.org/community_extensions/extensions/h3).
-Every shape becomes hexagon IDs: a grid cell or a city is the hexagon that
-contains it, and a country is the hexagons that cover it. Each spatial
-relationship is then an equality `JOIN` on the ID, which any engine runs as a
-hash join:
-
-```sql
-SELECT k.name AS country, AVG(h.t_max) AS t_max
-FROM country_cells AS k JOIN hex_high AS h ON h.cell = k.cell
-GROUP BY k.name
-```
-
-The two trade exactness for speed. Testing a million grid points against 258
-detailed country outlines takes a minute (60 s); covering the countries with
-hexagons takes 13 s once, and the mean high of every country then takes
-13 ms. On the forecast of 2026-10-21 the two agreed within 0.29 °C for half of
-the countries and 1.24 °C for 90%; the largest differences are small islands
-that only a few hexagons cover. Counting people in cities above 35 °C, the two
-agree within 10% for eight of the ten countries with the most, but H3 counts far
-fewer in two coastal ones (Mozambique, Saudi Arabia): a coastal city's hexagon
-averages land with cooler sea. Every step is checked against xarray, shapely and h3-py.
-
-Three details matter in practice:
-
-- **Weight by area.** A 0.25° grid's points crowd together toward the poles, so
-  an unweighted mean over a country's points overweights its high latitudes;
-  the exact query weights each point by `cos(latitude)`. H3's hexagons have
-  nearly equal areas, so a plain mean over them is already area-weighted.
-- **Cover the coasts.** Covering a country with the hexagons whose *centers* it
-  contains misses coastal hexagons whose center is at sea, and with them most
-  coastal cities. The case adds each such hexagon to one country it overlaps.
-- **Snap points to a regular grid with arithmetic.** A city's nearest GFS grid
-  cell is its coordinates rounded to 0.25°, so that join is an equality too,
-  no geometry needed.
-
-## 7. The hard cases: where a UDF fits, and where it doesn't
+## 6. The hard cases: where a UDF fits, and where it doesn't
 
 Reprojection and regridding are the operations most wedded to the array
 paradigm. They split cleanly along one line: **is the operation row-independent?**

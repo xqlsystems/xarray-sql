@@ -24,7 +24,6 @@ plain-English definition of the operation, and computes the same numbers.
 | 07 | `07_reproject_udf.py` | per-pixel CRS transform | scalar **UDF** (`reproject()` from the geo extension), à la PostGIS `ST_Transform` |
 | 08 | `08_regrid_weights.py` | interpolation to a new grid | sparse-weight table `JOIN` + weighted `GROUP BY` |
 | 09 | `09_warp.py` | reproject **and** resample (warp) | reproject **UDF** (07) → weight table `JOIN` (08) |
-| 10 | `10_h3_join.py` | point-in-polygon per pixel, city and country | `ST_Within` `JOIN`s (DuckDB `spatial`), or H3 cell IDs and equality `JOIN`s (DuckDB `h3`) |
 
 Cases 01–06 show operations that are *natively* relational. Cases 07–08 are the
 "hardest" array operations — reprojection and regridding — and show where a UDF
@@ -32,9 +31,6 @@ fits (a per-row coordinate transform) versus where the operation is really a
 sparse matrix multiply expressed as a `JOIN`. Case 09 composes the two into a full
 **warp** (GDAL/rasterio `reproject`): the 07 UDF reprojects the target grid, arrays
 turn the reprojected points into bilinear weights, and the 08 `JOIN` applies them.
-Case 10 joins a raster, points and polygons in DuckDB, first with exact
-geometry (`ST_Within`) and then through [H3](https://h3geo.org/) hexagon IDs,
-which turn each spatial relationship into an equality `JOIN`.
 See
 [`docs/geospatial.md`](../../docs/geospatial.md) for the full narrative,
 including *where the array paradigm still earns its keep* (generating the
@@ -64,13 +60,6 @@ interpolation weights — the geometry — which SQL applies but does not comput
   validates against xarray's `.interp()` at the reprojected points, with Earth
   Engine's own lon/lat SRTM as a second, cross-CRS check. All three run against
   Earth Engine using your existing `gcloud` login, and skip cleanly without it.
-- **10 H3 join** — the latest **NOAA GFS** forecast (0.25° global) from
-  [dynamical.org](https://dynamical.org)'s public Zarr store, and
-  [Natural Earth](https://www.naturalearthdata.com/)'s 1:10m countries and
-  populated places, which DuckDB reads straight from GeoJSON on GitHub. Needs
-  DuckDB's `spatial` extension and its community `h3` extension (installed on
-  first run), and skips cleanly offline. About three minutes, most of it the
-  exact point-in-polygon join and the h3-py reference.
 
 ## Running
 
