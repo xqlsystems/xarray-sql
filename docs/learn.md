@@ -14,6 +14,9 @@ it with `python`:
 pip install "xarray-sql[duckdb,polars,adbc]" adbc-driver-sqlite adbc-driver-flightsql
 ```
 
+DuckDB downloads its `spatial` and `h3` extensions the first time the tour
+installs them.
+
 To try SQL over a real forecast without installing anything, use the
 [demo that runs in your browser](browser.md).
 
@@ -284,7 +287,55 @@ with adbc_driver_sqlite.dbapi.connect() as sqlite:  # in memory
         cur.fetchone()  # => (6, 27.0)
 
 ####################################################
-## 6. Serve Datasets to any Flight SQL client
+## 6. Geometry and H3, in DuckDB
+####################################################
+
+# DuckDB's spatial extension adds geometry types and ST_ functions. Its
+# community h3 extension adds H3, Uber's grid of hexagons over the globe,
+# at 16 resolutions from continents to square meters.
+con.execute("INSTALL spatial; LOAD spatial; INSTALL h3 FROM community; LOAD h3")
+
+# geometry=(x, y) adds a point column built from two dims.
+xql.register(con, "cells", ds, geometry=("lon", "lat"))
+
+# ST_Within tests each point against a polygon. A function can't skip
+# chunks, but BETWEEN on a dim can, so pair the polygon with its bounding
+# box; bbox_conjuncts writes that part.
+bbox = xql.bbox_conjuncts((95, 5, 115, 15), x="lon", y="lat")
+bbox  # => '"lon" BETWEEN 95.0 AND 115.0 AND "lat" BETWEEN 5.0 AND 15.0'
+con.sql(f"""
+    SELECT AVG(temp) FROM cells
+    WHERE {bbox}
+      AND ST_Within(geometry, ST_GeomFromText(
+          'POLYGON ((95 5, 115 5, 115 15, 95 15, 95 5))'))
+""").fetchall()
+# => [(14.5,)]
+
+# H3 joins data of different shapes. Give every row the ID of the hexagon
+# it falls in, and "is near" becomes "=", which any engine joins fast.
+# Here a table of stations (points) meets the grid. (The page's grid is
+# 10 degrees apart, so the hexagons are coarse: resolution 1, ~600,000 km².)
+con.execute("""
+    CREATE TABLE stations AS
+    SELECT * FROM (VALUES ('Yangon', 16.8, 96.2), ('Hanoi', 21.0, 105.8))
+        AS t(name, lat, lon)
+""")
+con.sql("""
+    SELECT s.name, AVG(c.temp) AS temp
+    FROM stations AS s JOIN cells AS c
+      ON h3_latlng_to_cell(s.lat, s.lon, 1) = h3_latlng_to_cell(c.lat, c.lon, 1)
+    GROUP BY s.name ORDER BY s.name
+""").fetchall()
+# => [('Hanoi', 17.0), ('Yangon', 16.0)]
+
+# Polygons from files, like ST_Read('countries.geojson'), are tagged
+# EPSG:4326, and ST_Within won't compare them with xarray-sql's default
+# OGC:CRS84 tag (both mean longitude and latitude): register with
+# geometry_crs="EPSG:4326". And join the geometry column to a table of
+# polygons through ST_Point(lon, lat): DuckDB can't yet join it directly.
+
+####################################################
+## 7. Serve Datasets to any Flight SQL client
 ####################################################
 
 # xql.serve turns the process into an Arrow Flight SQL server, a protocol
@@ -312,7 +363,7 @@ server.shutdown()  # in a script, server.wait() serves until Ctrl+C
 # connections unless you pass host=. Read the Engines page before you do.
 
 ####################################################
-## 7. Gotchas
+## 8. Gotchas
 ####################################################
 
 # Quote a name in double quotes when it starts with a digit, has spaces or
@@ -338,7 +389,7 @@ rows("SELECT COUNT(*) FROM warm")  # => [(6,)]
 - [Engines](engines.md) covers DataFusion, DuckDB, Polars, ADBC and serving
   over Flight SQL in depth, with a support matrix.
 - [Geospatial in SQL](geospatial.md) poses climate and remote-sensing
-  analysis as queries.
+  analysis as queries, including geometry columns and their pruning.
 - [Performance](performance.md) explains chunk pruning and how to tune
   reads.
 - [Known issues](limitations.md) lists what doesn't work yet.

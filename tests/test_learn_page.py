@@ -13,7 +13,7 @@ import tokenize
 
 import pytest
 
-pytest.importorskip("duckdb")
+duckdb = pytest.importorskip("duckdb")
 pytest.importorskip("polars")
 pytest.importorskip("adbc_driver_sqlite")
 pytest.importorskip("adbc_driver_flightsql")
@@ -83,6 +83,10 @@ def _check(value, expected, line):
 
 
 def test_the_tour_runs_and_every_result_is_what_the_page_says():
+    try:  # the tour installs DuckDB extensions, which needs the network
+        duckdb.connect().execute("INSTALL spatial; INSTALL h3 FROM community")
+    except duckdb.Error:
+        pytest.skip("DuckDB's spatial and h3 extensions are unavailable")
     source = _tour()
     annotate = _Annotate(source.splitlines())
     tree = ast.fix_missing_locations(annotate.visit(ast.parse(source)))
