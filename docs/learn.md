@@ -40,7 +40,7 @@ Most of what you do with Xarray has a SQL spelling:
 | `ds[["temp"]]` | `SELECT temp` |
 | `ds.sel(lat=20.0)` | `WHERE lat = 20.0` |
 | `ds.temp.mean(["time", "lon"])` | `SELECT lat, AVG(temp) ... GROUP BY lat` |
-| `ds.groupby("time.month").mean()` | `GROUP BY date_part('month', time)` |
+| `ds.temp.groupby("time.month").mean()` | `SELECT date_part('month', time) AS month, AVG(temp) ... GROUP BY month` |
 | `xr.where(ds.rain > 5, 1, 0)` | `CASE WHEN rain > 5 THEN 1 ELSE 0 END` |
 | `ds.rain.cumsum("time")`, `.rolling(...)` | window functions: `SUM(rain) OVER (... ORDER BY time)` |
 | `a - b` on aligned arrays | `JOIN` on the dimension columns |
