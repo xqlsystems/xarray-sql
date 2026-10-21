@@ -85,10 +85,23 @@ ds = xr.Dataset(
         "lon": [100.0, 110.0],
     },
 )
+ds  # In a notebook or a REPL, this shows:
+# <xarray.Dataset> Size: 248B
+# Dimensions:  (time: 3, lat: 2, lon: 2)
+# Coordinates:
+#   * time     (time) datetime64[ns] 24B 2024-01-01 2024-01-02 2024-01-03
+#   * lat      (lat) float64 16B 10.0 20.0
+#   * lon      (lon) float64 16B 100.0 110.0
+# Data variables:
+#     temp     (time, lat, lon) float64 96B 10.0 11.0 12.0 13.0 ... 19.0 20.0 21.0
+#     rain     (time, lat, lon) float64 96B 0.0 1.0 2.0 nan ... 8.0 9.0 10.0 11.0
+
 ds.temp.sel(time="2024-01-02", lat=20.0, lon=110.0).item()  # => 17.0
 
 # xarray-sql "pivots" the Dataset into a table: a column per dim, a column
-# per variable, and one row per cell of the grid. 3 x 2 x 2 cells is 12 rows:
+# per variable, and one row per cell of the grid. The repr's three
+# Dimensions become the first three columns and its two Data variables
+# the last two; 3 x 2 x 2 cells is 12 rows:
 #
 #   time        lat    lon    temp  rain
 #   2024-01-01  10.0  100.0   10.0   0.0
