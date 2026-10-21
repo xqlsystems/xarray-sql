@@ -57,6 +57,7 @@ use async_trait::async_trait;
 use datafusion::catalog::streaming::StreamingTable;
 use datafusion::catalog::Session;
 use datafusion::common::stats::Precision;
+use datafusion::common::tree_node::TreeNodeRecursion;
 use datafusion::common::{
     ColumnStatistics, DataFusionError, Result as DFResult, ScalarValue, Statistics,
 };
@@ -69,7 +70,8 @@ use datafusion::logical_expr::{
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
 use datafusion::physical_plan::streaming::PartitionStream;
 use datafusion::physical_plan::{
-    DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties, SendableRecordBatchStream,
+    DisplayAs, DisplayFormatType, ExecutionPlan, PhysicalExpr, PlanProperties,
+    SendableRecordBatchStream,
 };
 use datafusion_ffi::proto::logical_extension_codec::FFI_LogicalExtensionCodec;
 use datafusion_ffi::table_provider::FFI_TableProvider;
@@ -1250,6 +1252,15 @@ impl ExecutionPlan for XarrayScanExec {
         Ok(self)
     }
 
+    fn apply_expressions(
+        &self,
+        f: &mut dyn FnMut(&Arc<dyn PhysicalExpr>) -> DFResult<TreeNodeRecursion>,
+    ) -> DFResult<TreeNodeRecursion> {
+        // The scan holds no expressions of its own; the inner plan says
+        // whether it does.
+        self.inner.apply_expressions(f)
+    }
+
     fn execute(
         &self,
         partition: usize,
@@ -1625,8 +1636,7 @@ impl LazyArrowStreamTable {
 
         let ffi_provider = FFI_TableProvider::new_with_ffi_codec(provider, true, None, codec);
 
-        let name = CString::new("datafusion_table_provider").unwrap();
-        PyCapsule::new(py, ffi_provider, Some(name))
+        PyCapsule::new_with_value(py, ffi_provider, c"datafusion_table_provider")
     }
 
     /// Get the schema of the table as a PyArrow Schema.

@@ -49,7 +49,7 @@ use datafusion::error::DataFusionError;
 use datafusion::execution::context::SQLOptions;
 use datafusion::execution::runtime_env::RuntimeEnvBuilder;
 use datafusion::prelude::{DataFrame, SessionConfig, SessionContext};
-use datafusion::sql::TableReference;
+use datafusion::common::TableReference;
 use futures::{stream, Stream, TryStreamExt};
 use prost::Message;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
