@@ -527,7 +527,7 @@ def main():
             )
         )
 
-        for host in hosts(args.hosts):
+        for host in hosts(args.hosts, args.memory):
             reference = dict(init)
             moments = {
                 n: (np.zeros_like(w), np.zeros_like(w)) for n, w in init.items()

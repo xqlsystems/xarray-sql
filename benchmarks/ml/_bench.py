@@ -50,13 +50,19 @@ def cli(description: str, sizes: Sequence[int], size_name: str = "n"):
         default=1,
         help="timed repetitions per step; the median is reported",
     )
+    parser.add_argument(
+        "--memory",
+        type=float,
+        default=6,
+        help="each host's memory limit, in GB, past which it spills to disk",
+    )
     parser.add_argument("--csv", help="also write the results table here")
     return parser
 
 
-def hosts(names: Sequence[str]) -> list[Host]:
-    """A fresh instance of each named host."""
-    return [HOSTS[name]() for name in names]
+def hosts(names: Sequence[str], memory: float = 6) -> list[Host]:
+    """A fresh instance of each named host, limited to ``memory`` GB."""
+    return [HOSTS[name](int(memory * 2**30)) for name in names]
 
 
 def assert_close(name: str, got, want, *, rtol=1e-9, atol=1e-9) -> float:
@@ -105,10 +111,11 @@ class Report:
         )
         return result
 
-    def check(self, error: float) -> None:
-        """Mark the last row's result as checked, with its error (from
-        :func:`assert_close`)."""
-        self.rows[-1]["check"] = f"ok ({error:.0e})"
+    def check(self, error: float, step: str | None = None) -> None:
+        """Mark a row's result as checked, with its error (from
+        :func:`assert_close`): the last row, or the last row of ``step``."""
+        row = next(r for r in reversed(self.rows) if step in (None, r["step"]))
+        row["check"] = f"ok ({error:.0e})"
 
     def skip(self, step: str, host: Host, size: int, why: str) -> None:
         """Record a step the host cannot run, and why."""

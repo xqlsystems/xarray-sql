@@ -5,7 +5,7 @@ rewrites SQL plans into array algorithms, calls the engine that runs a
 plan its *host*. Every demo writes
 its model once, as SQL, and runs that same text on each host, so a
 difference in time is a difference between engines, never between
-queries. A host does five things:
+queries. A host does these things:
 
 * ``load(name, data, **options)`` registers an ``xr.Dataset`` as the
   table ``name`` through xarray-sql, replacing any table of that name
@@ -17,13 +17,20 @@ queries. A host does five things:
   differentiates, shares the backward pass between those that take
   ``grad`` of the same loss;
 * ``operators(sql)`` counts the operators in the physical plan it would
-  run, which shows, for one, whether a CTE read twice is computed twice.
+  run, which shows, for one, whether a CTE read twice is computed twice;
+* ``store(name, sql)`` runs a statement and keeps its rows as the table
+  ``name``, and ``drop(name)`` removes it: a model too large for one query
+  runs as a program of stored stages.
 
 Forward queries run everywhere. Gradients (``grad``, ``vjp``, ``jvp``)
 need ddx (https://github.com/xqlsystems/ddx), which differentiates SQL
 queries and today runs its programs on DataFusion only; a host that
 cannot differentiate says so with ``differentiates = False``, and the
 demos report its gradient steps as not run rather than skip it silently.
+
+Every host gets the same memory limit, in bytes, and spills to
+``~/.cache/xarray-sql/spill`` past it, so a stage too large for memory
+slows down rather than taking the machine down.
 
 Adding a host (einfold's optimizer on DataFusion, DuckDB with a GPU
 extension, or DuckDB running ddx's programs once ddx supports it) is one
@@ -33,13 +40,18 @@ class here and one entry in ``HOSTS``.
 from __future__ import annotations
 
 import json
+import pathlib
 from collections.abc import Sequence
 
 import duckdb
 import pyarrow as pa
 import xarray as xr
+from datafusion import RuntimeEnvBuilder
 
 import xarray_sql as xql
+
+
+SPILL = pathlib.Path.home() / ".cache" / "xarray-sql" / "spill"
 
 
 class Host:
@@ -47,6 +59,9 @@ class Host:
 
     name = ""
     differentiates = False
+
+    def __init__(self, memory: int):
+        SPILL.mkdir(parents=True, exist_ok=True)
 
     def load(self, name: str, data: xr.Dataset, **options) -> None:
         raise NotImplementedError
@@ -63,6 +78,12 @@ class Host:
     def operators(self, sql: str) -> int:
         raise NotImplementedError
 
+    def store(self, name: str, sql: str) -> None:
+        raise NotImplementedError
+
+    def drop(self, name: str) -> None:
+        raise NotImplementedError
+
 
 class DataFusion(Host):
     """xarray-sql's ``Context``, with ddx's gradients (the ``ml`` extra)."""
@@ -70,8 +91,14 @@ class DataFusion(Host):
     name = "datafusion"
     differentiates = True
 
-    def __init__(self):
-        self.ctx = xql.Context()
+    def __init__(self, memory):
+        super().__init__(memory)
+        runtime = (
+            RuntimeEnvBuilder()
+            .with_disk_manager_specified(str(SPILL))
+            .with_fair_spill_pool(memory)
+        )
+        self.ctx = xql.Context(runtime=runtime)
 
     def load(self, name, data, **options):
         self.ctx.deregister_table(name)
@@ -90,14 +117,28 @@ class DataFusion(Host):
         plan = self.ctx.sql(sql).execution_plan().display_indent()
         return len(plan.splitlines())
 
+    def store(self, name, sql):
+        partitions = self.ctx.sql(sql).collect_partitioned()
+        self.ctx.deregister_table(name)
+        self.ctx.register_record_batches(name, partitions)
+
+    def drop(self, name):
+        self.ctx.deregister_table(name)
+
 
 class DuckDB(Host):
     """DuckDB, reading the same Datasets through xarray-sql's adapter."""
 
     name = "duckdb"
 
-    def __init__(self):
-        self.con = duckdb.connect()
+    def __init__(self, memory):
+        super().__init__(memory)
+        self.con = duckdb.connect(
+            config={
+                "memory_limit": f"{memory // 2**20}MB",
+                "temp_directory": str(SPILL),
+            }
+        )
 
     def load(self, name, data, **options):
         xql.register(self.con, name, data, **options)
@@ -111,6 +152,12 @@ class DuckDB(Host):
     def operators(self, sql):
         (_, plan), *_ = self.con.sql(f"EXPLAIN (FORMAT JSON) {sql}").fetchall()
         return sum(_count(node) for node in json.loads(plan))
+
+    def store(self, name, sql):
+        self.con.sql(f"CREATE OR REPLACE TABLE {name} AS {sql}")
+
+    def drop(self, name):
+        self.con.sql(f"DROP TABLE IF EXISTS {name}")
 
 
 def _count(node: dict) -> int:
