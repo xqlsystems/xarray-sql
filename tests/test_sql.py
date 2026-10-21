@@ -647,3 +647,17 @@ def test_large_in_memory_dataset_is_read_lazily():
     ctx.from_dataset("big", ds)
 
     assert "XarrayScanExec" in _scans(ctx, "big")
+
+
+@pytest.mark.parametrize("chunks", [None, {"a": 2}, {"b": 3}, {"a": 2, "b": 2}])
+def test_in_memory_table_shares_the_dataset_s_memory(chunks):
+    """A native table reads the Dataset's arrays, not a copy, whatever the
+    chunks: a change made in place shows in the next query, as it does for
+    a lazy table."""
+    ds = xr.Dataset({"w": (("a", "b"), np.zeros((4, 6)))})
+    ctx = XarrayContext()
+    ctx.from_dataset("t", ds, chunks=chunks)
+
+    ds["w"].values[...] = 7.0
+
+    assert ctx.sql("SELECT w FROM t").to_pandas()["w"].tolist() == [7.0] * 24
