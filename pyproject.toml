@@ -60,9 +60,9 @@ geo = [
 ]
 # Gradients in SQL: grad(), vjp() and jvp() from ddx. ddxdb is pre-1.0
 # and breaks its API between minor versions. It reads and writes the
-# Substrait of DataFusion 54, so bump it together with that pin.
+# Substrait of DataFusion 55, so bump it together with that pin.
 ml = [
-  "ddxdb>=0.3.3,<0.4; sys_platform != 'emscripten'",
+  "ddxdb>=0.4.0,<0.5; sys_platform != 'emscripten'",
 ]
 test = [
   "adbc-driver-flightsql>=1.12",
