@@ -101,8 +101,9 @@ einfold's optimizer or DuckDB with a GPU extension, write one class in
 
 Measured on 2026-10-17 on an Intel Core i7-8700 (6 cores, 12 threads)
 with DataFusion 54.0.0, DuckDB 1.5.5 and ddxdb 0.3.0, one repetition each.
-The demos' gradients were timed again on 2026-10-20 with ddxdb 0.3.3,
-alternating runs with ddxdb 0.3.2 on the same machine.
+The GPT and attention demos were timed again on 2026-10-21 with
+DataFusion 55.0.0 and ddxdb 0.4.0, after xarray-sql began registering
+small in-memory Datasets as DataFusion in-memory tables.
 
 **ddx's gradients agree with JAX.** The gradients of attention with
 respect to Q, K and V, in both spellings, match `jax.grad` to 3e-15 of the
@@ -122,26 +123,33 @@ read more than once a single time.
 
 | Query | DataFusion operators | DuckDB operators | DataFusion | DuckDB |
 |---|---:|---:|---:|---:|
-| GPT loss, 1 layer, batch 4 | 12,794 | 126 | 9.4 s | 0.058 s |
+| GPT loss, 1 layer, batch 4 | 13,756 | 126 | 3.0 s | 0.057 s |
 | GraphCast forecast, 1 round | 1,816 | 243 | 43 s | 17 s |
 | GraphCast forecast, 2 rounds | 5,948 | 282 | 159 s | 13 s |
 
-A GPT training step, forward and backward through ddx, takes 1.2 s on
-DataFusion with SGD and 1.55 s with AdamW, an eighth of its forward query
-alone (2.8 s and 3.2 s with ddxdb 0.3.2). ddx builds the gradient program
-on the first step, which takes 2.0 s, and runs it again on later ones. It
-plans each CTE the loss reads twice on its own, and stores the result of
-each step of its program as a table, so it computes each shared
-subexpression once. Doing the same for forward queries is the first
-thing xarray-sql's DataFusion path needs for these models, and einfold should plan them as graphs rather than
+The GraphCast rows are from 2026-10-17, before in-memory tables.
+
+Setting up each lazy read of a Dataset takes xarray-sql about 1.5 ms, so
+the GPT's 2,989 reads in one forward pass took 6.7 s of its 9.4 s. A small
+in-memory Dataset is now an in-memory table, which takes a quarter of a
+millisecond per read. A GPT training step, forward and backward through
+ddx, takes 0.75 s on DataFusion with SGD and 0.85 s with AdamW, a quarter
+of its forward query alone (1.2 s and 1.55 s with ddxdb 0.3.3 on
+DataFusion 54). ddx builds the gradient program on the first step, which
+takes 1.2 s, and runs it again on later ones. It plans each CTE the loss
+reads twice on its own, and stores the result of each step of its program
+as a table, so it computes each shared subexpression once. Doing the same
+for forward queries is the first thing xarray-sql's DataFusion path needs
+for these models, and einfold should plan them as graphs rather than
 trees.
 
 **Attention stores every score.** Causal attention's forward pass at 512
-tokens takes 0.68 s on DataFusion in the window spelling and 1.3 s in the
-`GROUP BY` spelling; DuckDB takes 0.52 s and 0.26 s. Both grow with the
-square of the tokens. The gradients take 1 to 2 times the forward pass: 1.1 s and 1.3 s on
-DataFusion at 512 tokens, against 2.8 s and 2.7 s with ddxdb 0.3.2,
-since ddx differentiates the masked product as `jax.grad` does.
+tokens takes 0.28 s on DataFusion in the window spelling and 0.37 s in the
+`GROUP BY` spelling; DuckDB takes 0.48 s and 0.27 s. Both grow with the
+square of the tokens. The gradients take 2.5 to 3.5 times the forward
+pass: 0.92 s and 0.93 s on DataFusion at 512 tokens, against 1.1 s and 1.3
+s with ddxdb 0.3.3 on DataFusion 54, and 2.8 s and 2.7 s with ddxdb 0.3.2,
+before ddx differentiated the masked product as `jax.grad` does.
 
 **A regional forecast costs what a global one does.** For the contiguous
 United States, the forecast covers 55 of 2,048 grid cells. Walking the
