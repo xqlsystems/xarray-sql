@@ -592,8 +592,9 @@ def _scans(ctx, table):
 
 
 def test_small_in_memory_dataset_is_a_native_table_with_the_same_rows():
-    """A small in-memory Dataset becomes a native in-memory table, and
-    queries over it give what a lazily read Dataset gives."""
+    """A small in-memory Dataset becomes a native in-memory table, which a
+    query's plan scans by its registered name, and queries over it give what
+    a lazily read Dataset gives."""
     ds = xr.Dataset(
         {"air": (("time", "lat"), np.random.rand(6, 4))},
         coords={"time": np.arange(6), "lat": np.arange(4) * 2.5},
@@ -604,6 +605,8 @@ def test_small_in_memory_dataset_is_a_native_table_with_the_same_rows():
 
     assert "XarrayScanExec" not in _scans(ctx, "eager")
     assert "XarrayScanExec" in _scans(ctx, "lazy")
+    plan = ctx.sql("SELECT * FROM eager").logical_plan().display_indent()
+    assert plan.splitlines()[-1].strip() == "TableScan: eager"
     query = "SELECT time, lat, air FROM {} WHERE lat > 2 ORDER BY time, lat"
     pd.testing.assert_frame_equal(
         ctx.sql(query.format("eager")).to_pandas(),
