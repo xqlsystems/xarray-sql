@@ -77,11 +77,13 @@ class Context(SessionContext):
 
         A Dataset is read lazily, chunk by chunk, as queries run, unless it
         is already in memory (NumPy arrays, not Dask or a lazily opened
-        file) and at most 64 MiB as a table. Such a Dataset is converted
-        to Arrow once, here, and registered as a native DataFusion
-        in-memory table, which is faster to scan many times, as a query
-        does when it reads a table in several places. It is held twice,
-        as arrays and as Arrow.
+        file) and at most 64 MiB as a table. Such a Dataset is registered
+        as a native DataFusion in-memory table, which is faster to scan
+        many times, as a query does when it reads a table in several
+        places. The table shares its data variables' memory with the
+        Dataset rather than copying it, so, as with a lazy table, changing
+        the Dataset's values in place changes what queries return. It adds
+        a column per dimension, one value per row.
 
         For datasets with non-Gregorian cftime coordinates (e.g. 360_day,
         julian), a ``cftime()`` scalar UDF is automatically registered so

@@ -10,6 +10,7 @@ actual stream implementation, wrapping xarray block iteration in a generator.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING
 
@@ -223,8 +224,16 @@ def _in_memory_partitions(
     DataFusion inlines a CTE or a view at every place that reads it. A
     Dataset that is already in memory gains nothing from being read lazily,
     so when it is also at most ``limit`` bytes as long-form Arrow, its rows
-    are converted once, one partition per chunk, for a native in-memory
-    table.
+    are converted once, for a native in-memory table.
+
+    The rows are in C order, and each partition is a contiguous range of
+    them, as many partitions as ``chunks`` makes chunks, up to the number
+    of CPUs. So a data variable whose array is C-contiguous isn't copied,
+    whatever the chunks: its Arrow column shares the array's memory, as
+    does DataFusion's table, through Arrow's C data interface. A NaN adds a validity bitmap beside it, one
+    bit per value. What the table adds is its dimension columns, one value
+    per row for each dimension, which long-form rows need. An array that
+    isn't C-contiguous (Fortran order) is copied, once.
 
     Returns ``None`` for a Dataset that isn't in memory (a Dask array or a
     lazily loaded file), is larger than ``limit``, or has no rows; it is
@@ -239,10 +248,26 @@ def _in_memory_partitions(
     num_rows = int(np.prod([ds.sizes[d] for d in ds.dims]))
     if num_rows == 0 or _arrow_size(schema, num_rows) > limit:
         return None
-    resolved = resolve_chunks(ds, chunks)
+    # A partition per chunk, for the parallelism the lazy table has, but cut
+    # from the rows rather than by `isel`: a chunk of a trailing dimension
+    # isn't contiguous in memory, and flattening it would copy. More
+    # partitions than cores only adds overhead, since an in-memory table has
+    # no partitions to prune.
+    count = min(
+        sum(
+            1
+            for _ in _block_slices_from_resolved(ds, resolve_chunks(ds, chunks))
+        ),
+        os.cpu_count() or 1,
+    )
+    # `per_partition` batches of `size` rows each make `count` partitions,
+    # with no batch over `batch_size` rows.
+    per_partition = -(-num_rows // (count * batch_size))
+    size = -(-num_rows // (count * per_partition))
+    batches = list(iter_record_batches(ds, schema, size))
     return [
-        list(iter_record_batches(ds.isel(block), schema, batch_size))
-        for block in _block_slices_from_resolved(ds, resolved)
+        batches[i : i + per_partition]
+        for i in range(0, len(batches), per_partition)
     ]
 
 
