@@ -8,6 +8,7 @@ repo_name = "xqlsystems/xarray-sql"
 edit_uri = "edit/main/docs/"
 nav = [
   {"Home" = "index.md"},
+  {"Learn in 15 minutes" = "learn.md"},
   {"Getting started" = "examples.md"},
   {"How it works" = "how-it-works.md"},
   {"Concepts" = [
