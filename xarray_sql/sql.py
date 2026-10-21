@@ -1,3 +1,4 @@
+import pyarrow as pa
 import xarray as xr
 from datafusion import SessionContext
 from datafusion.catalog import Schema
@@ -12,7 +13,7 @@ from .df import (
     shared_coord_arrays,
 )
 from .ds import XarrayDataFrame
-from .reader import read_xarray_table
+from .reader import _in_memory_partitions, read_xarray_table
 
 _proj: ModuleType | None
 try:  # pyproj is an optional dependency (`pip install xarray-sql[geo]`).
@@ -73,6 +74,14 @@ class Context(SessionContext):
                 table_names={('time', 'lat', 'lon'): 'surface'},
             )
             ctx.sql('SELECT * FROM era5.surface')
+
+        A Dataset is read lazily, chunk by chunk, as queries run, unless it
+        is already in memory (NumPy arrays, not Dask or a lazily opened
+        file) and at most 64 MiB as a table. Such a Dataset is converted
+        to Arrow once, here, and registered as a native DataFusion
+        in-memory table, which is faster to scan many times, as a query
+        does when it reads a table in several places. It is held twice,
+        as arrays and as Arrow.
 
         For datasets with non-Gregorian cftime coordinates (e.g. 360_day,
         julian), a ``cftime()`` scalar UDF is automatically registered so
@@ -158,12 +167,27 @@ class Context(SessionContext):
         register = (
             self.register_table if schema is None else schema.register_table
         )
-        register(
-            table_name,
-            read_xarray_table(input_table, chunks, coord_arrays=coord_arrays),
-        )
+        partitions = _in_memory_partitions(input_table, chunks)
+        if partitions is None:
+            table = read_xarray_table(
+                input_table, chunks, coord_arrays=coord_arrays
+            )
+        else:
+            table = self._in_memory_table(partitions)
+        register(table_name, table)
         self._maybe_register_cftime_udf(input_table)
         return self
+
+    def _in_memory_table(self, partitions: list[list[pa.RecordBatch]]):
+        """A native DataFusion in-memory table of ``partitions``."""
+        before = set(self.catalog().schema().names())
+        view = self.create_dataframe(partitions).into_view()
+        # create_dataframe registers its in-memory table under a generated
+        # name. The view holds the table itself, not the name, so the name
+        # can go.
+        for name in set(self.catalog().schema().names()) - before:
+            self.deregister_table(name)
+        return view
 
     def _maybe_register_cftime_udf(self, ds: xr.Dataset) -> None:
         """Auto-register a cftime() UDF for non-Gregorian cftime coordinates."""

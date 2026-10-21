@@ -193,6 +193,59 @@ def read_xarray(ds: xr.Dataset, chunks: Chunks = None) -> pa.RecordBatchReader:
     return pa.RecordBatchReader.from_stream(reader)
 
 
+# The largest Dataset, in bytes of long-form Arrow, that Context.from_dataset
+# registers as a native DataFusion in-memory table rather than a lazy one.
+_IN_MEMORY_TABLE_LIMIT: int = 64 * 2**20
+
+
+def _arrow_size(schema: pa.Schema, num_rows: int) -> int:
+    """An estimate of a table's size in bytes, counting 16 bytes for each
+    value of a variable-width column."""
+    widths: list[int] = [
+        field.type.bit_width // 8 if pa.types.is_primitive(field.type) else 16
+        for field in schema
+    ]
+    return num_rows * sum(widths)
+
+
+def _in_memory_partitions(
+    ds: xr.Dataset,
+    chunks: Chunks = None,
+    *,
+    limit: int = _IN_MEMORY_TABLE_LIMIT,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> list[list[pa.RecordBatch]] | None:
+    """A small in-memory Dataset's rows as Arrow partitions, or ``None``.
+
+    A lazy table pays a fixed cost on every scan, through DataFusion's FFI,
+    of about a millisecond and a half. That is noise for a large Dataset,
+    but a query that reads small tables many times pays it each time:
+    DataFusion inlines a CTE or a view at every place that reads it. A
+    Dataset that is already in memory gains nothing from being read lazily,
+    so when it is also at most ``limit`` bytes as long-form Arrow, its rows
+    are converted once, one partition per chunk, for a native in-memory
+    table.
+
+    Returns ``None`` for a Dataset that isn't in memory (a Dask array or a
+    lazily loaded file), is larger than ``limit``, or has no rows; it is
+    read lazily instead.
+    """
+    # `_in_memory` is xarray's own test for a variable whose values are
+    # loaded: a NumPy array, not a Dask array or a lazily indexed file.
+    if not all(var._in_memory for var in ds.variables.values()):
+        return None
+    ds = _ensure_default_indexes(ds)
+    schema = _parse_schema(ds)
+    num_rows = int(np.prod([ds.sizes[d] for d in ds.dims]))
+    if num_rows == 0 or _arrow_size(schema, num_rows) > limit:
+        return None
+    resolved = resolve_chunks(ds, chunks)
+    return [
+        list(iter_record_batches(ds.isel(block), schema, batch_size))
+        for block in _block_slices_from_resolved(ds, resolved)
+    ]
+
+
 def read_xarray_table(
     ds: xr.Dataset,
     chunks: Chunks = None,
