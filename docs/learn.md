@@ -40,7 +40,7 @@ Most of what you do with Xarray has a SQL spelling:
 | `ds[["temp"]]` | `SELECT temp` |
 | `ds.sel(lat=20.0)` | `WHERE lat = 20.0` |
 | `ds.temp.mean(["time", "lon"])` | `SELECT lat, AVG(temp) ... GROUP BY lat` |
-| `ds.temp.groupby("time.month").mean()` | `SELECT date_part('month', time) AS month, AVG(temp) ... GROUP BY month` |
+| `ds.temp.groupby("time.month").mean()` | `SELECT date_part('month', time) AS month, lat, lon, AVG(temp) ... GROUP BY month, lat, lon` |
 | `xr.where(ds.rain > 5, 1, 0)` | `CASE WHEN rain > 5 THEN 1 ELSE 0 END` |
 | `ds.rain.cumsum("time")`, `.rolling(...)` | window functions: `SUM(rain) OVER (... ORDER BY time)` |
 | `a - b` on aligned arrays | `JOIN` on the dimension columns |
@@ -146,7 +146,8 @@ rows("SELECT lat, AVG(temp) AS temp FROM weather GROUP BY lat ORDER BY lat")
 rows("SELECT SUM(rain), COUNT(rain), COUNT(*) FROM weather")
 # => [(63.0, 11, 12)]
 
-# ds.groupby("time.dayofweek") is GROUP BY on an expression of a column.
+# Grouping by an expression of a column is ds.groupby("time.dayofweek").
+# Here, the hottest cell each day, ds.temp.groupby("time.dayofweek").max(...)
 # (SQL's day of week counts from Sunday = 0; Xarray's from Monday = 0.)
 rows("""
     SELECT date_part('dow', time) AS dow, MAX(temp) AS hottest
