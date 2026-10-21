@@ -978,8 +978,8 @@ while a query runs.</p>
 <td><code>SELECT lat, AVG(temp) ... GROUP BY lat</code></td>
 </tr>
 <tr>
-<td><code>ds.groupby("time.month").mean()</code></td>
-<td><code>GROUP BY date_part('month', time)</code></td>
+<td><code>ds.temp.groupby("time.month").mean()</code></td>
+<td><code>SELECT date_part('month', time) AS month, AVG(temp) ... GROUP BY month</code></td>
 </tr>
 <tr>
 <td><code>xr.where(ds.rain &gt; 5, 1, 0)</code></td>
