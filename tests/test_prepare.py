@@ -67,6 +67,24 @@ def test_a_write_changes_the_registered_dataset():
     assert ctx.sql("SELECT SUM(v) AS s FROM a").to_pydict() == {"s": [12.0]}
 
 
+def test_a_write_matches_dims_by_name(ctx):
+    query = ctx.prepare(JOIN)
+    rng = np.random.default_rng(2)
+    a = _a(rng.normal(size=(4, 3)))
+    want = query(a=a)
+    assert query(a=a.transpose("j", "i")).equals(want)
+
+
+def test_a_write_reaches_a_table_read_lazily():
+    """An array that a table reads on every scan, rather than sharing (here,
+    one in Fortran order), takes writes too."""
+    v = np.asfortranarray(np.zeros((4, 3)))
+    ctx = Context()
+    ctx.from_dataset("a", _a(v))
+    query = ctx.prepare("SELECT SUM(v) AS s FROM a")
+    assert query(a=_a(np.ones((4, 3)))).column("s").to_pylist() == [12.0]
+
+
 def test_a_plan_with_several_partitions_runs_again():
     ctx = Context(SessionConfig().with_target_partitions(4))
     n = 64

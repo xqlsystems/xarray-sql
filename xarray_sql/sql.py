@@ -293,25 +293,24 @@ class Context(SessionContext):
                     )
             for var in registered.data_vars:
                 old, new = registered[var].variable, ds[var].variable
-                if new.dims != old.dims or new.dtype != old.dtype:
+                # Dims are matched by name, as xarray matches them.
+                if set(new.dims) != set(old.dims) or new.dtype != old.dtype:
                     raise ValueError(
                         f"{name}.{var} is {old.dtype} over {old.dims}, and "
                         f"the new values are {new.dtype} over {new.dims}"
                     )
                 target = old.data
-                # A table shares a C-contiguous NumPy array's memory; any
-                # other array, it read or copied when it was registered.
+                # A table reads a NumPy array's memory, shared or on every
+                # scan; a Dask array or a lazily opened file has none to
+                # write into.
                 if not (
-                    isinstance(target, np.ndarray)
-                    and target.flags.c_contiguous
-                    and target.flags.writeable
+                    isinstance(target, np.ndarray) and target.flags.writeable
                 ):
                     raise ValueError(
-                        f"{name}.{var} isn't a writable, C-contiguous NumPy "
-                        "array, which its table would share; register the "
-                        "new Dataset instead, and prepare the query again"
+                        f"{name}.{var} isn't a writable NumPy array; register "
+                        "the new Dataset instead, and prepare the query again"
                     )
-                values = np.asarray(new.values)
+                values = new.transpose(*old.dims).values
                 # A table works out which values are NULL (NaN) when it is
                 # registered, so a write must keep its NaNs in place.
                 if values.dtype.kind in "fc" and not np.array_equal(
@@ -322,9 +321,11 @@ class Context(SessionContext):
                         "places; xarray-sql reads a NaN as NULL, so register "
                         "the new Dataset instead, and prepare the query again"
                     )
-                copies.append((target, values))
+                copies.append((registered[var], ds[var]))
+        # Assigning into a registered DataArray writes into its array, which
+        # the table shares.
         for target, values in copies:
-            np.copyto(target, values)
+            target[...] = values
 
     def _wrap(self, inner) -> XarrayDataFrame:
         """Wrap a DataFusion DataFrame so it can round-trip to xarray."""
@@ -340,7 +341,7 @@ class PreparedQuery:
     first writes ``ds``'s values into the table ``w``.
 
     A write goes into the arrays of the Dataset registered as ``w``, as
-    ``w_ds["v"].values[...] = ds["v"].values`` would. That Dataset changes
+    ``w_ds["v"][...] = ds["v"]`` would, matching dims by name. That Dataset changes
     too, and so does what any other query of the table returns. The new
     Dataset must have the registered one's data variables, dtypes, dims and
     coordinates. Its NaNs must be in the same places too, since xarray-sql
