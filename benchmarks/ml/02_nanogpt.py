@@ -165,20 +165,21 @@ def layer_norm(x: str, out: str, gain: str, layer: int | None = None) -> str:
 GELU_SCALE = np.sqrt(2 / np.pi)
 
 
-def block(layer: int, x: str, out: str) -> str:
-    """One transformer block: ``out = x + attention(ln(x))``, then
-    ``out = out + mlp(ln(out))``."""
+def attention(layer: int, x: str, out: str) -> str:
+    """nanoGPT's ``CausalSelfAttention``: each position of ``x`` attends to
+    itself and the positions before it, in each head, and ``out`` is the
+    heads' outputs, projected back to the residual stream."""
     l = f"l{layer}"
     projections = "".join(
         f"""
 {l}_{name} AS (
   SELECT x.seq, x.pos, p.h, p.c, SUM(x.val * p.w) AS val
-  FROM {l}_ln1 x JOIN w{name} p ON x.e = p.e
+  FROM {x} x JOIN w{name} p ON x.e = p.e
   WHERE p.layer = {layer}
   GROUP BY x.seq, x.pos, p.h, p.c),"""
         for name in ("q", "k", "v")
     )
-    return f"""{layer_norm(x, f"{l}_ln1", "ln_1", layer)}{projections}
+    return f"""{projections}
 {l}_scores AS (
   SELECT q.seq, q.h, q.pos AS i, k.pos AS j,
          SUM(q.val * k.val) / {np.sqrt(HEAD)} AS s
@@ -198,18 +199,21 @@ def block(layer: int, x: str, out: str) -> str:
   JOIN {l}_v v ON a.seq = v.seq AND a.h = v.h AND a.j = v.pos
   JOIN {l}_norm n ON a.seq = n.seq AND a.h = n.h AND a.i = n.i
   GROUP BY a.seq, a.i, a.h, v.c),
-{l}_attn AS (
+{out} AS (
   SELECT a.seq, a.pos, p.e, SUM(a.val * p.w) AS val
   FROM {l}_heads a JOIN wo p ON a.h = p.h AND a.c = p.c
   WHERE p.layer = {layer}
-  GROUP BY a.seq, a.pos, p.e),
-{l}_mid AS (
-  SELECT x.seq, x.pos, x.e, x.val + a.val AS val
-  FROM {x} x JOIN {l}_attn a ON x.seq = a.seq AND x.pos = a.pos AND x.e = a.e),
-{layer_norm(f"{l}_mid", f"{l}_ln2", "ln_2", layer)}
+  GROUP BY a.seq, a.pos, p.e),"""
+
+
+def mlp(layer: int, x: str, out: str) -> str:
+    """nanoGPT's ``MLP``: each position of ``x`` through a hidden layer
+    four times as wide, and GELU, back to the residual stream as ``out``."""
+    l = f"l{layer}"
+    return f"""
 {l}_fc AS (
   SELECT x.seq, x.pos, p.f, SUM(x.val * p.w) AS val
-  FROM {l}_ln2 x JOIN w_fc p ON x.e = p.e
+  FROM {x} x JOIN w_fc p ON x.e = p.e
   WHERE p.layer = {layer}
   GROUP BY x.seq, x.pos, p.f),
 {l}_hidden AS (
@@ -217,14 +221,35 @@ def block(layer: int, x: str, out: str) -> str:
          0.5 * val * (1 + tanh({GELU_SCALE} * (val + 0.044715 * val * val * val)))
            AS val
   FROM {l}_fc),
-{l}_mlp AS (
+{out} AS (
   SELECT x.seq, x.pos, p.e, SUM(x.val * p.w) AS val
   FROM {l}_hidden x JOIN w_proj p ON x.f = p.f
   WHERE p.layer = {layer}
-  GROUP BY x.seq, x.pos, p.e),
+  GROUP BY x.seq, x.pos, p.e),"""
+
+
+def residual(x: str, y: str, out: str) -> str:
+    """``out = x + y``, channel by channel: a residual connection."""
+    return f"""
 {out} AS (
-  SELECT x.seq, x.pos, x.e, x.val + m.val AS val
-  FROM {l}_mid x JOIN {l}_mlp m ON x.seq = m.seq AND x.pos = m.pos AND x.e = m.e),"""
+  SELECT x.seq, x.pos, x.e, x.val + y.val AS val
+  FROM {x} x JOIN {y} y ON x.seq = y.seq AND x.pos = y.pos AND x.e = y.e),"""
+
+
+def block(layer: int, x: str, out: str) -> str:
+    """nanoGPT's ``Block``: ``mid = x + attention(ln_1(x))``, then
+    ``out = mid + mlp(ln_2(mid))``."""
+    l = f"l{layer}"
+    return "".join(
+        [
+            layer_norm(x, f"{l}_ln1", "ln_1", layer),
+            attention(layer, f"{l}_ln1", f"{l}_attn"),
+            residual(x, f"{l}_attn", f"{l}_mid"),
+            layer_norm(f"{l}_mid", f"{l}_ln2", "ln_2", layer),
+            mlp(layer, f"{l}_ln2", f"{l}_mlp"),
+            residual(f"{l}_mid", f"{l}_mlp", out),
+        ]
+    )
 
 
 def model() -> str:
