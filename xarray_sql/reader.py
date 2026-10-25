@@ -222,6 +222,23 @@ def _arrow_size(schema: pa.Schema, num_rows: int) -> int:
     return num_rows * sum(widths)
 
 
+def _shares_memory_with_arrow(values: np.ndarray) -> bool:
+    """Whether ``values``'s Arrow column, its rows in C order, can be its
+    own memory rather than a copy.
+
+    Arrow lays out a number or a datetime as NumPy does, in the machine's
+    byte order. It packs booleans into bits, and keeps strings in buffers
+    of its own, so those are copies; so is an array that isn't
+    C-contiguous, such as one in Fortran order or a transposed or strided
+    view, whose rows in C order aren't one run of memory.
+    """
+    return (
+        values.dtype.kind in "iufmM"
+        and values.dtype.isnative
+        and values.flags.c_contiguous
+    )
+
+
 def _in_memory_partitions(
     ds: xr.Dataset,
     chunks: Chunks = None,
@@ -241,22 +258,28 @@ def _in_memory_partitions(
 
     The rows are in C order, and each partition is a contiguous range of
     them, as many partitions as ``chunks`` makes chunks, up to the number
-    of CPUs. So a data variable whose array is C-contiguous isn't copied,
-    whatever the chunks: its Arrow column shares the array's memory, as
-    does DataFusion's table, through Arrow's C data interface. A NaN adds a
-    validity bitmap beside it, one bit per value, made here: a NaN written
-    into the array later isn't read as NULL. What the table adds is its
-    dimension columns, one value per row for each dimension, which
-    long-form rows need. An array that isn't C-contiguous (Fortran order)
-    is copied, once.
+    of CPUs. So no data variable is copied, whatever the chunks: its Arrow
+    column shares the array's memory, as does DataFusion's table, through
+    Arrow's C data interface, and a write into the array in place shows in
+    the next query, as it does for a lazy table. A NaN adds a validity
+    bitmap beside it, one bit per value, made here: a NaN written into the
+    array later isn't read as NULL. What the table adds is its dimension
+    columns, one value per row for each dimension, which long-form rows
+    need.
 
-    Returns ``None`` for a Dataset that isn't in memory (a Dask array or a
-    lazily loaded file), is larger than ``limit``, or has no rows; it is
-    read lazily instead.
+    Returns ``None``, for the Dataset to be read lazily instead, when it
+    isn't in memory (a Dask array or a lazily loaded file), is larger than
+    ``limit``, or has no rows; or when a data variable's Arrow column
+    would have to be a copy of its array, which a write in place wouldn't
+    reach (see `_shares_memory_with_arrow`).
     """
     # `_in_memory` is xarray's own test for a variable whose values are
     # loaded: a NumPy array, not a Dask array or a lazily indexed file.
     if not all(var._in_memory for var in ds.variables.values()):
+        return None
+    if not all(
+        _shares_memory_with_arrow(var.values) for var in ds.data_vars.values()
+    ):
         return None
     # TODO(#286): register a dimension that no data variable has (only a
     # coordinate does) as the lazy reader should, then drop this fallback.

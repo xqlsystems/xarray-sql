@@ -80,9 +80,9 @@ class Context(SessionContext):
         A Dataset is read lazily, chunk by chunk, as queries run. One
         already in memory (NumPy, not Dask or a lazily opened file) and at
         most 64 MiB as a table is instead a DataFusion in-memory table,
-        which is faster to scan many times. It shares the Dataset's memory,
-        so changing values in place changes what queries return, as long
-        as no value becomes or stops being NaN (which reads as NULL).
+        which is faster to scan many times. Either way, changing values in
+        place changes what queries return, as long as no value becomes or
+        stops being NaN (which reads as NULL) in an in-memory table.
 
         For datasets with non-Gregorian cftime coordinates (e.g. 360_day,
         julian), a ``cftime()`` scalar UDF is automatically registered so

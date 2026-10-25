@@ -666,6 +666,31 @@ def test_in_memory_table_shares_the_dataset_s_memory(chunks):
     assert ctx.sql("SELECT w FROM t").to_pandas()["w"].tolist() == [7.0] * 24
 
 
+@pytest.mark.parametrize(
+    "values, written",
+    [
+        (np.asfortranarray(np.zeros((4, 6))), 7.0),
+        (np.zeros((6, 4)).T, 7.0),
+        (np.zeros((4, 12))[:, ::2], 7.0),
+        (np.zeros((4, 6), dtype=bool), True),
+        (np.full((4, 6), "a"), "b"),
+    ],
+    ids=["fortran-order", "transposed", "strided", "bool", "str"],
+)
+def test_in_place_write_shows_where_arrow_would_copy(values, written):
+    """A write in place shows in the next query even for an array whose
+    Arrow column would be a copy, which isn't an in-memory table."""
+    ds = xr.Dataset({"w": (("a", "b"), values)})
+    ctx = XarrayContext()
+    ctx.from_dataset("t", ds)
+
+    ds["w"].values[...] = written
+
+    assert (
+        ctx.sql("SELECT w FROM t").to_pandas()["w"].tolist() == [written] * 24
+    )
+
+
 def test_in_memory_dataset_over_the_limit_in_arrow_is_read_lazily():
     """The 64 MiB limit is on the table as Arrow, which a long string can
     exceed when an estimate of its size doesn't."""
