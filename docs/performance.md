@@ -177,6 +177,27 @@ it or nothing happens:
 ctx.sql("CREATE OR REPLACE TABLE grid_cube AS ...").collect()
 ```
 
+## Plan once: prepare a query you run many times
+
+DataFusion plans a query each time it runs. For a query over small
+tables, as in a training loop, planning can take longer than running.
+`Context.prepare` plans the query once. A call runs that plan on the
+tables' current values, and can first write new values into a table
+in place:
+
+```python
+step = ctx.prepare(
+    "SELECT x.i, SUM(x.v * w.v) AS y FROM x JOIN w ON x.j = w.j GROUP BY x.i"
+)
+for weights in trajectory:  # Datasets shaped like w's
+    rows = step(w=weights)  # a pyarrow.Table
+```
+
+On a join of two 1,024-row tables, a call takes 0.33 ms, and `ctx.sql`
+takes 0.91 ms (one target partition). A write must keep the table's
+shape, dtypes, coordinates and NaN positions. A plan over a lazy table
+(Dask or a lazily opened file) is planned again on each call for now.
+
 ## Round-trip faster with ORDER BY
 
 Results that arrive **grid-ordered** — sorted by the dimension columns,

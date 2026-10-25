@@ -1,9 +1,11 @@
 import uuid
 
+import numpy as np
 import pyarrow as pa
 import xarray as xr
 from datafusion import SessionConfig, SessionContext
 from datafusion.catalog import Schema
+from datafusion.plan import ExecutionPlan
 from types import ModuleType
 
 from . import cftime as cft
@@ -238,8 +240,184 @@ class Context(SessionContext):
         Returns:
             An [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame] wrapping the DataFusion DataFrame.
         """
-        inner = super().sql(query, *args, **kwargs)
+        return self._wrap(super().sql(query, *args, **kwargs))
+
+    def prepare(self, query: str) -> "PreparedQuery":
+        """Plan a query once, to run it many times.
+
+        A training loop runs the same query on every step, and only the
+        values in its tables change. DataFusion plans a query each time it
+        runs, and for a query over small tables, planning can take far
+        longer than running. ``prepare`` plans the query once, and calling
+        the result runs that plan, as ``jax.jit`` traces a function once
+        and runs the compiled function after that. A call can first write
+        new values into the query's tables::
+
+            step = ctx.prepare(
+                "SELECT x.i, SUM(x.v * w.v) AS y "
+                "FROM x JOIN w ON x.j = w.j GROUP BY x.i"
+            )
+            for weights in trajectory:  # Datasets shaped like w's
+                rows = step(w=weights)
+
+        See [PreparedQuery][xarray_sql.PreparedQuery] for what a call
+        can write, and which plans are run again rather than planned again.
+
+        Args:
+            query: A SQL query string.
+
+        Returns:
+            A [PreparedQuery][xarray_sql.PreparedQuery]; call it to run
+            the query.
+        """
+        return PreparedQuery(self, query)
+
+    def _write(self, writes: dict[str, xr.Dataset]) -> None:
+        """Write each Dataset's values into the arrays of the Dataset
+        registered under its name, all or none of them."""
+        copies = []
+        for name, ds in writes.items():
+            registered = self._registered_datasets[name]
+            if set(ds.data_vars) != set(registered.data_vars):
+                raise ValueError(
+                    f"{name!r} has the data variables "
+                    f"{sorted(registered.data_vars)}, and the new Dataset "
+                    f"has {sorted(ds.data_vars)}"
+                )
+            for dim in registered.dims:
+                if dim not in ds.dims or not ds[dim].equals(registered[dim]):
+                    raise ValueError(
+                        f"the new Dataset for {name!r} has other coordinates "
+                        f"along {dim!r}; register it again, and prepare the "
+                        "query again"
+                    )
+            for var in registered.data_vars:
+                old, new = registered[var].variable, ds[var].variable
+                if new.dims != old.dims or new.dtype != old.dtype:
+                    raise ValueError(
+                        f"{name}.{var} is {old.dtype} over {old.dims}, and "
+                        f"the new values are {new.dtype} over {new.dims}"
+                    )
+                target = old.data
+                # A table shares a C-contiguous NumPy array's memory; any
+                # other array, it read or copied when it was registered.
+                if not (
+                    isinstance(target, np.ndarray)
+                    and target.flags.c_contiguous
+                    and target.flags.writeable
+                ):
+                    raise ValueError(
+                        f"{name}.{var} isn't a writable, C-contiguous NumPy "
+                        "array, which its table would share; register the "
+                        "new Dataset instead, and prepare the query again"
+                    )
+                values = np.asarray(new.values)
+                # A table works out which values are NULL (NaN) when it is
+                # registered, so a write must keep its NaNs in place.
+                if values.dtype.kind in "fc" and not np.array_equal(
+                    np.isnan(values), np.isnan(target)
+                ):
+                    raise ValueError(
+                        f"the new values of {name}.{var} have NaN in other "
+                        "places; xarray-sql reads a NaN as NULL, so register "
+                        "the new Dataset instead, and prepare the query again"
+                    )
+                copies.append((target, values))
+        for target, values in copies:
+            np.copyto(target, values)
+
+    def _wrap(self, inner) -> XarrayDataFrame:
+        """Wrap a DataFusion DataFrame so it can round-trip to xarray."""
         return XarrayDataFrame(inner, templates=self._registered_datasets)
+
+
+class PreparedQuery:
+    """A query planned once by [Context.prepare][xarray_sql.Context.prepare].
+
+    Call it to run the query, and get its rows as a ``pyarrow.Table``
+    ([to_dataset][xarray_sql.to_dataset] turns them back into a Dataset).
+    ``query()`` runs it on the values its tables hold now. ``query(w=ds)``
+    first writes ``ds``'s values into the table ``w``.
+
+    A write goes into the arrays of the Dataset registered as ``w``, as
+    ``w_ds["v"].values[...] = ds["v"].values`` would. That Dataset changes
+    too, and so does what any other query of the table returns. The new
+    Dataset must have the registered one's data variables, dtypes, dims and
+    coordinates. Its NaNs must be in the same places too, since xarray-sql
+    reads a NaN as NULL, and a table works out which values are NULL when it
+    is registered. To change anything else, register the new Dataset, and
+    prepare the query again: a prepared query reads the tables that were
+    registered when it was planned, and refuses to write into a name that
+    has been registered again since.
+
+    A plan keeps state from a run: a hash join, for one, keeps the table it
+    built. So each call runs a fresh copy of the plan, decoded from its
+    serialized form, which is much cheaper than planning. Some plans can't
+    be copied that way: a plan that reads a lazy table (a Dask array or a
+    lazily opened file), or one nested too deep to decode. These are
+    planned again on every call, so they return the right rows, without
+    the savings.
+    """
+
+    def __init__(self, ctx: Context, query: str):
+        self._ctx = ctx
+        self._query = query
+        # The Datasets a call may write into: those registered now.
+        self._registered = dict(ctx._registered_datasets)
+        self._plan: ExecutionPlan | None = None
+        df = SessionContext.sql(ctx, query)
+        self._schema = df.schema()
+        plan = df.execution_plan()
+        try:
+            _copy(ctx, plan)
+        except Exception:  # noqa: BLE001 - DataFusion raises a bare Exception
+            # It reads a table the plan's serialized form can't hold, or is
+            # nested deeper than protobuf decodes.
+            return
+        self._plan = plan
+
+    def __call__(self, **tables: xr.Dataset) -> pa.Table:
+        """Run the query, after writing each Dataset given into the table
+        of its name.
+
+        Args:
+            **tables: A Dataset for each table to write new values into.
+
+        Returns:
+            The query's rows.
+        """
+        for name in tables:
+            if name not in self._registered:
+                raise ValueError(
+                    f"no Dataset was registered as {name!r} when the query "
+                    "was prepared"
+                )
+            now = self._ctx._registered_datasets.get(name)
+            if now is not self._registered[name]:
+                raise ValueError(
+                    f"{name!r} has been registered again since the query was "
+                    "prepared, and the query reads the table it was planned "
+                    "with; prepare the query again"
+                )
+        self._ctx._write(tables)
+        if self._plan is None:
+            return self._ctx.sql(self._query).to_arrow_table()
+        plan = _copy(self._ctx, self._plan)
+        batches = [
+            batch.to_pyarrow()
+            for partition in range(plan.partition_count)
+            for batch in self._ctx.execute(plan, partition)
+        ]
+        return pa.Table.from_batches(batches, self._schema)
+
+
+def _copy(ctx: SessionContext, plan: ExecutionPlan) -> ExecutionPlan:
+    """A copy of ``plan`` with none of its state from a run, reading its
+    in-memory tables' values as they are now."""
+    # TODO(#283): reset the plan's state with datafusion-python's binding of
+    # reset_plan_states, once it has one, rather than decode it again.
+    # `plan` itself never runs, so it has no state to leave behind.
+    return ExecutionPlan.from_bytes(ctx, plan.to_bytes())
 
 
 XarrayContext = Context
