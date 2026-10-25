@@ -664,3 +664,26 @@ def test_in_memory_table_shares_the_dataset_s_memory(chunks):
     ds["w"].values[...] = 7.0
 
     assert ctx.sql("SELECT w FROM t").to_pandas()["w"].tolist() == [7.0] * 24
+
+
+def test_in_memory_dataset_over_the_limit_in_arrow_is_read_lazily():
+    """The 64 MiB limit is on the table as Arrow, which a long string can
+    exceed when an estimate of its size doesn't."""
+    ds = xr.Dataset({"s": (["x"], np.array([b"a" * 40 * 2**20] * 2))})
+    ctx = XarrayContext()
+    ctx.from_dataset("strings", ds)
+
+    assert "XarrayScanExec" in _scans(ctx, "strings")
+
+
+def test_dimension_no_data_variable_has_registers():
+    """A coordinate on a dimension that no data variable has doesn't stop
+    an in-memory Dataset from registering."""
+    ds = xr.Dataset(
+        {"t": (("x",), np.arange(3.0))},
+        coords={"x": [0, 1, 2], "y": [10, 20]},
+    )
+    ctx = XarrayContext()
+    ctx.from_dataset("t", ds)
+
+    assert "t" in ctx.catalog().schema().names()

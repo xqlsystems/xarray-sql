@@ -10,8 +10,10 @@ actual stream implementation, wrapping xarray block iteration in a generator.
 
 from __future__ import annotations
 
+import itertools
 import os
-from collections.abc import Callable, Iterator
+import sys
+from collections.abc import Callable, Iterable, Iterator
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -34,6 +36,17 @@ from .df import (
 
 if TYPE_CHECKING:
     from ._native import LazyArrowStreamTable
+
+if sys.version_info >= (3, 12):
+    _batched = itertools.batched
+else:
+
+    def _batched(iterable: Iterable, n: int) -> Iterator[tuple]:
+        """``itertools.batched``, which Python 3.12 added: ``iterable`` in
+        tuples of ``n``, the last one shorter."""
+        it = iter(iterable)
+        while batch := tuple(itertools.islice(it, n)):
+            yield batch
 
 
 class XarrayRecordBatchReader:
@@ -245,6 +258,11 @@ def _in_memory_partitions(
     # loaded: a NumPy array, not a Dask array or a lazily indexed file.
     if not all(var._in_memory for var in ds.variables.values()):
         return None
+    # TODO(#286): register a dimension that no data variable has (only a
+    # coordinate does) as the lazy reader should, then drop this fallback.
+    data_vars = list(ds.data_vars.values())
+    if data_vars and set(ds.dims) - set(data_vars[0].dims):
+        return None
     ds = _ensure_default_indexes(ds)
     schema = _parse_schema(ds)
     num_rows = int(np.prod([ds.sizes[d] for d in ds.dims]))
@@ -267,10 +285,11 @@ def _in_memory_partitions(
     per_partition = -(-num_rows // (count * batch_size))
     size = -(-num_rows // (count * per_partition))
     batches = list(iter_record_batches(ds, schema, size))
-    return [
-        batches[i : i + per_partition]
-        for i in range(0, len(batches), per_partition)
-    ]
+    # The estimate undercounts booleans and long strings, so check the
+    # batches themselves.
+    if sum(batch.nbytes for batch in batches) > limit:
+        return None
+    return [list(p) for p in _batched(batches, per_partition)]
 
 
 def read_xarray_table(

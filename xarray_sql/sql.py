@@ -77,19 +77,12 @@ class Context(SessionContext):
             )
             ctx.sql('SELECT * FROM era5.surface')
 
-        A Dataset is read lazily, chunk by chunk, as queries run, unless it
-        is already in memory (NumPy arrays, not Dask or a lazily opened
-        file) and at most 64 MiB as a table. Such a Dataset is registered
-        as a native DataFusion in-memory table, which is faster to scan
-        many times, as a query does when it reads a table in several
-        places. The table shares its data variables' memory with the
-        Dataset rather than copying it, so, as with a lazy table, changing
-        the Dataset's values in place changes what queries return. The one
-        exception is NaN, which a query reads as NULL: the table records
-        which values are NaN when it is registered. So an in-place write
-        must keep the NaNs where they were, or the Dataset must be
-        registered again. The table adds a column per dimension, one value
-        per row.
+        A Dataset is read lazily, chunk by chunk, as queries run. One
+        already in memory (NumPy, not Dask or a lazily opened file) and at
+        most 64 MiB as a table is instead a DataFusion in-memory table,
+        which is faster to scan many times. It shares the Dataset's memory,
+        so changing values in place changes what queries return, as long
+        as no value becomes or stops being NaN (which reads as NULL).
 
         For datasets with non-Gregorian cftime coordinates (e.g. 360_day,
         julian), a ``cftime()`` scalar UDF is automatically registered so
