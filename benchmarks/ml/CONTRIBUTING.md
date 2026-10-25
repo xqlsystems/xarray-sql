@@ -81,8 +81,12 @@ is one script, `NN_name.py`, numbered after the last one, with:
 - **Make results deterministic** with `ORDER BY`, so they can be checked
   against JAX.
 - **Use no NaN as a value.** xarray-sql reads a NaN as SQL `NULL`, which
-  aggregates skip. To check a mask, use an infinity instead, as
-  `01_attention.py` does.
+  aggregates skip, so it can't show where a value went. To test that a
+  value never reaches an output, plant an infinity instead. Demo 1 does
+  this to check that its causal mask leaves the masked pairs out, as rows
+  the query drops (`WHERE q.t >= k.t`): an infinity at a masked position
+  must not reach that output. A plan that multiplied it by a zero weight
+  instead would give NaN (0 · ∞).
 - **Run the same SQL on every host.** If an engine needs different
   SQL, that difference is a finding: write it up rather than fork the
   query.
