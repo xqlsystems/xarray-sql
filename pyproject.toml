@@ -62,7 +62,7 @@ geo = [
 # and breaks its API between minor versions. It reads and writes the
 # Substrait of DataFusion 55, so bump it together with that pin.
 ml = [
-  "ddxdb>=0.4.0,<0.5; sys_platform != 'emscripten'",
+  "ddxdb>=0.4.2,<0.5; sys_platform != 'emscripten'",
 ]
 test = [
   "adbc-driver-flightsql>=1.12",

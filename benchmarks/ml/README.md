@@ -115,7 +115,9 @@ Measured on 2026-10-17 on an Intel Core i7-8700 (6 cores, 12 threads)
 with DataFusion 54.0.0, DuckDB 1.5.5 and ddxdb 0.3.0, one repetition each.
 The GPT and attention demos were timed again on 2026-10-21 with
 DataFusion 55.0.0 and ddxdb 0.4.0, after xarray-sql began registering
-small in-memory Datasets as DataFusion in-memory tables.
+small in-memory Datasets as DataFusion in-memory tables. Both demos were
+timed again on 2026-10-25 with DataFusion 55.0.0, DuckDB 1.5.5 and
+ddxdb 0.4.2; where those runs give new numbers, they are given here.
 
 **ddx's gradients agree with JAX.** The gradients of attention with
 respect to Q, K and V, in both spellings, match `jax.grad` to 3e-15 of the
@@ -134,13 +136,13 @@ read more than once a single time.
 
 | Query | DataFusion operators | DuckDB operators | DataFusion | DuckDB |
 |---|---:|---:|---:|---:|
-| GPT loss, 1 layer, batch 4 | 13,756 | 126 | 3.0 s | 0.057 s |
+| GPT loss, 1 layer, batch 4 | 13,756 | 126 | 3.0 s | 0.063 s |
 
 Setting up each lazy read of a Dataset takes xarray-sql about 1.5 ms, so
 the GPT's 2,989 reads in one forward pass took 6.7 s of its 9.4 s. A small
 in-memory Dataset is now an in-memory table, which takes a quarter of a
 millisecond per read. A GPT training step, forward and backward through
-ddx, takes 0.75 s on DataFusion with SGD and 0.85 s with AdamW, a quarter
+ddx, takes 0.65 s on DataFusion with SGD and 0.74 s with AdamW, a quarter
 of its forward query alone (1.2 s and 1.55 s with ddxdb 0.3.3 on
 DataFusion 54). ddx builds the gradient program on the first step, which
 takes 1.2 s, and runs it again on later ones. It plans each CTE the loss
@@ -172,26 +174,24 @@ whose time is in running its joins, and thousands of times on the GPT,
 whose time is in planning.
 
 **Attention stores every score.** Causal attention's forward pass at 512
-tokens takes 0.28 s on DataFusion in the window spelling and 0.37 s in the
-`GROUP BY` spelling; DuckDB takes 0.48 s and 0.27 s. Both grow with the
+tokens takes 0.27 s on DataFusion in the window spelling and 0.39 s in the
+`GROUP BY` spelling; DuckDB takes 0.47 s and 0.26 s. Both grow with the
 square of the tokens. The gradients take 2.5 to 3.5 times the forward
-pass: 0.92 s and 0.93 s on DataFusion at 512 tokens, against 1.1 s and 1.3
+pass: 0.84 s and 0.95 s on DataFusion at 512 tokens, against 1.1 s and 1.3
 s with ddxdb 0.3.3 on DataFusion 54, and 2.8 s and 2.7 s with ddxdb 0.3.2,
 before ddx differentiated the masked product as `jax.grad` does.
 
-**ddx differentiates on DuckDB.** Measured on 2026-10-24 with ddx's
-development branch (after ddxdb 0.4.1) and DuckDB 1.5.6. The gradients
-of attention in the `GROUP BY` spelling match `jax.grad` to 2e-15 on
-DuckDB, and take 0.26 s, 0.78 s and 2.4 s at 64, 256 and 512 tokens,
-against 0.10 s, 0.31 s and 0.94 s on DataFusion. Nearly all of DuckDB's
+**ddx differentiates on DuckDB.** Measured with ddxdb 0.4.2. The
+gradients of attention in the `GROUP BY` spelling match `jax.grad` to
+2e-15 on DuckDB, and take 0.25 s, 0.78 s and 2.4 s at 64, 256 and 512
+tokens, against 0.095 s, 0.31 s and 0.95 s on DataFusion. Nearly all of DuckDB's
 time is in running ddx's program, not planning it: two contractions over
 about 8 and 17 million joined rows take half of it. DuckDB orders those
 joins worse when it reads a table through an Arrow scan, as
 `xql.register` gives it, than when it reads a native table (0.64 s
 against 0.20 s for one step), but copying Q, K and V into native tables
-only brings the gradient to 1.7 s, and slows the forward pass. With the
-same ddx, a GPT training step on DataFusion takes 0.67 s after the
-first.
+only brings the gradient to 1.7 s, and slows the forward pass (measured
+on 2026-10-24, with ddx's development branch and DuckDB 1.5.6).
 
 **What ddx cannot differentiate yet.** Each of these raised a typed
 error naming the construct, never a wrong number:
@@ -199,14 +199,15 @@ error naming the construct, never a wrong number:
 - A `GROUP BY` key that depends on a differentiated column. einfold's
   window spelling groups by the normalizer `z`; the demos divide inside
   the sum instead, `SUM(w / z * v)`, which einfold also lists.
-- On DuckDB, two views whose CTEs are read more than once: one whose
-  CTE computes a window, as the softmax does in attention's window
-  spelling and in the GPT; and any such view, when the loss also takes a
-  gradient with respect to a table the view doesn't read. ddx reads
-  DuckDB's plans as [Substrait](https://substrait.io/), a portable format
-  for query plans, and DuckDB's Substrait producer has no plan for a CTE
-  it computes once for several reads. These rows say
-  `refused: Not implemented Error: CTE`.
+- On DuckDB, a view whose CTE computes a window and is read more than
+  once, as the softmax's weights are in attention's window spelling and
+  in the GPT, so neither trains on DuckDB yet. ddx reads DuckDB's plans
+  as [Substrait](https://substrait.io/), a portable format for query
+  plans, and DuckDB's Substrait producer has no plan for a CTE it
+  computes once for several reads. ddxdb 0.4.2 writes such a view's SQL
+  into the query instead, except when the CTE computes a window
+  ([ddx#204](https://github.com/xqlsystems/ddx/issues/204)). These rows
+  say `refused: Not implemented Error: CTE`.
 
 **xarray-sql reads NaN as missing.** A NaN in a Dataset becomes SQL
 `NULL`, which `SUM` skips, so Demo 1 checks masks with an infinity: a

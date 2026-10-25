@@ -522,15 +522,15 @@ wheels = [
 
 [[package]]
 name = "ddxdb"
-version = "0.4.0"
+version = "0.4.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/92/9b/e545bc8537ec63c8c41d0642e52798956eda3393feaeccb0406a3a5950c7/ddxdb-0.4.0.tar.gz", hash = "sha256:0c0d4a14b82af02d6b83b9ed243014c64401a167f123c8a84d9fc19429d5f1ed", size = 291824, upload-time = "2026-10-21T09:04:11.42Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/49/58d710ea5363481e7bdd27567eb3944d0215459f4970eeb9fa8c7cee0266/ddxdb-0.4.2.tar.gz", hash = "sha256:169867a6a9bf7f9c9fd7093b079e26258a89b1614b147c7895a6b36fc3d8ee5c", size = 338983, upload-time = "2026-10-25T20:06:47.298Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c4/7e/acbeeca83355880e4404a7b15d765ed82d85efa4a79952941c9401931885/ddxdb-0.4.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:be538a452d2c45577fb060a2be3134631ea68658caa9c3a2a854b5b13a0f21d9", size = 6725712, upload-time = "2026-10-21T09:04:00.956Z" },
-    { url = "https://files.pythonhosted.org/packages/23/b9/0fc5bbb27bd323533089c6372adc80f79875679f7741a9d4e738eabff1b2/ddxdb-0.4.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:8c4a752f27db4219ad0bd8d6b301e88bea192bc3753b54bc909dd81bbf562781", size = 6644600, upload-time = "2026-10-21T09:04:03.238Z" },
-    { url = "https://files.pythonhosted.org/packages/ae/8a/b76f44799346a5d6b9f88c1dde5d2aae19934ce31b6c992b27629eee8709/ddxdb-0.4.0-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:0636c7d4d52e64e0d3bc71dcf1bb3a15d1e1e494c553e6b184da192df147be69", size = 6739521, upload-time = "2026-10-21T09:04:05.205Z" },
-    { url = "https://files.pythonhosted.org/packages/f5/cc/2b80f26e102beb2c655dc2b60bf2e427b0d9e0e588c723343c8ea300dac4/ddxdb-0.4.0-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:b2f745b7cd057f0a7fc550f0f5984a836683a6e3252a677fc18e6f6045dbb80d", size = 7179153, upload-time = "2026-10-21T09:04:07.276Z" },
-    { url = "https://files.pythonhosted.org/packages/d6/dc/0231a760cbea1a86a8c71d0526ec9ff45d7850573ea73aacddcf3d9916b6/ddxdb-0.4.0-cp310-abi3-win_amd64.whl", hash = "sha256:f38c950fdc8ec1a4c347d80715c6b3c04499922f2e71dac004ef51b2adc71101", size = 7133649, upload-time = "2026-10-21T09:04:09.43Z" },
+    { url = "https://files.pythonhosted.org/packages/e9/3b/599e254908a3b36867309841e1cb5a53f4a0c9b0cafb98ab4dedc5a609a9/ddxdb-0.4.2-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:7e3eaea2ed3b21c834626ef793b66ed927d2d2ff1d4fd077e15277ab2f4d4c61", size = 6828615, upload-time = "2026-10-25T20:06:37.132Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/47/6d205060124dec023b6ee8f343275ca9a0365c36502f1695db590ea6991f/ddxdb-0.4.2-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:9c2129ebc9e6e1113c23fdecc2d168c940fe9240fd57b01a82d1468c31e132e1", size = 6706126, upload-time = "2026-10-25T20:06:39.012Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/4d/c060c21b3e3b31bc29d3e773ffc3ec89f84762d1f644cc40a81e1441701b/ddxdb-0.4.2-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:9301f571a3ffb8b546db9b6c0c1b820d68ab911f6477a7f5b03a1d75ef3f28e0", size = 6799863, upload-time = "2026-10-25T20:06:41.11Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/43/13004abb0b3ea778c5aab57150a4d09f7990995814764a002efeb81c1643/ddxdb-0.4.2-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:c6dcff7743858582f63a6da2474889cc6b633bb4fd272a7a9f505e87c4f4a867", size = 7297851, upload-time = "2026-10-25T20:06:43.219Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/a4/bf14d45ce82aa23725d384145106926f191390ca39f3fb9cb4631fefddfe/ddxdb-0.4.2-cp310-abi3-win_amd64.whl", hash = "sha256:937aee96a2fbc61a12361d5c9ceee52205e02d214de605bbb16efd5790565ba1", size = 7253013, upload-time = "2026-10-25T20:06:45.579Z" },
 ]
 
 [[package]]
@@ -2917,7 +2917,7 @@ requires-dist = [
     { name = "cftime", marker = "extra == 'test'" },
     { name = "dask", marker = "extra == 'dask'", specifier = ">=2024.8.0" },
     { name = "datafusion", marker = "sys_platform != 'emscripten'", specifier = "==55.0.0" },
-    { name = "ddxdb", marker = "sys_platform != 'emscripten' and extra == 'ml'", specifier = ">=0.4.0,<0.5" },
+    { name = "ddxdb", marker = "sys_platform != 'emscripten' and extra == 'ml'", specifier = ">=0.4.2,<0.5" },
     { name = "duckdb", marker = "extra == 'duckdb'", specifier = ">=1.4.0" },
     { name = "gcsfs", marker = "extra == 'test'" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'" },
