@@ -1,14 +1,14 @@
 # Machine learning in SQL
 
-These scripts write three machine-learning models as SQL over tables that
+These scripts write machine-learning models as SQL over tables that
 [xarray-sql](../../README.md) registers from xarray Datasets, and time the
 same SQL on several engines. Two related projects shape them:
 
 - [ddx](https://github.com/xqlsystems/ddx) differentiates SQL queries: it
   turns the gradient of a query into more SQL, which trains the models.
 - [einfold](https://github.com/xqlsystems/einfold) is a query optimizer
-  that rewrites SQL plans into array algorithms. These models are its
-  three [target demos](https://github.com/xqlsystems/einfold/blob/main/docs/demos.md),
+  that rewrites SQL plans into array algorithms. Two of these models
+  are its [target demos](https://github.com/xqlsystems/einfold/blob/main/docs/demos.md),
   and this SQL is the baseline its plans must beat.
 
 Each script checks its results against the same model in
@@ -19,7 +19,6 @@ array programs.
 |---|---|---|---|
 | 01 | [`01_attention.py`](01_attention.py) | causal softmax attention, the core of a transformer, as a view (the model) in einfold's window and `GROUP BY` spellings, and a loss that reads it | the naive plan, which stores every score, for [FlashAttention](https://arxiv.org/abs/2205.14135)'s tiled plan to beat; gradients with respect to Q, K and V; masked pairs as absent rows; a control that isn't attention, the Nadaraya–Watson kernel average |
 | 02 | [`02_nanogpt.py`](02_nanogpt.py) | [nanoGPT](https://github.com/karpathy/nanoGPT)'s GPT-2 model, at 1 layer and 4,416 parameters, as a view, and a cross-entropy loss that reads it, on Tiny Shakespeare | the loss on each host; training steps with SGD or, as nanoGPT trains, AdamW, every parameter table checked after every step |
-| 03 | [`03_graphcast.py`](03_graphcast.py) | a miniature [GraphCast](https://arxiv.org/abs/2212.12794), DeepMind's graph neural network for weather forecasting, over [ERA5](https://www.ecmwf.int/en/forecasts/dataset/ecmwf-reanalysis-v5) reanalysis in Zarr | a global against a regional forecast; the gradient of the forecast error; the receptive field of a region |
 
 The SQL favors legibility over speed. Each model reads like its definition,
 and the slow parts are left slow on purpose: they are what ddx, xarray-sql
@@ -34,16 +33,15 @@ mismatch fails the run.
 ```shell
 uv run benchmarks/ml/01_attention.py
 uv run benchmarks/ml/02_nanogpt.py --steps 5
-uv run benchmarks/ml/03_graphcast.py --rounds 1
 ```
 
 Each script carries [inline `uv` metadata](https://docs.astral.sh/uv/guides/scripts/)
 and runs against the xarray-sql in this checkout, with the `ml` extra. The
-options are the same in all three:
+options are the same in each:
 
 ```shell
 --hosts datafusion duckdb   # the engines to run on (default: all)
---sizes 64 256              # problem sizes: tokens, batch size, or mesh refinements
+--sizes 64 256              # problem sizes: tokens, or batch size
 --reps 3                    # timed repetitions; the median is reported
 --csv results.csv           # also write the results table
 ```
@@ -52,8 +50,7 @@ Demo 2 adds `--steps`, the number of training steps, and `--optimizer`:
 `sgd` (the default), or `adamw` to train as nanoGPT does, and the
 model's size: `--layers`, `--embed`, `--heads` and `--context`, nanoGPT's
 `n_layer`, `n_embd`, `n_head` and `block_size` (1, 16, 2 and 16 by
-default; nanoGPT's Shakespeare model is 6, 384, 6 and 256). Demo 3 adds
-`--rounds`, the number of processor rounds.
+default; nanoGPT's Shakespeare model is 6, 384, 6 and 256).
 
 The output ends with one table: a row per step, host and size, with its
 median time, its error against JAX, and the number of operators in the
@@ -126,18 +123,13 @@ transcription matches PyTorch exactly.
 
 **DataFusion computes a CTE once for every place that reads it.** A
 model reads its activations more than once: a layer norm reads its input
-three times, a residual connection twice, a message-passing round reads
-the mesh as sender, receiver and residual. DataFusion inlines each read,
+three times, a residual connection twice. DataFusion inlines each read,
 so the plan grows with the model's depth; DuckDB computes a CTE that is
 read more than once a single time.
 
 | Query | DataFusion operators | DuckDB operators | DataFusion | DuckDB |
 |---|---:|---:|---:|---:|
 | GPT loss, 1 layer, batch 4 | 13,756 | 126 | 3.0 s | 0.057 s |
-| GraphCast forecast, 1 round | 1,816 | 243 | 43 s | 17 s |
-| GraphCast forecast, 2 rounds | 5,948 | 282 | 159 s | 13 s |
-
-The GraphCast rows are from 2026-10-17, before in-memory tables.
 
 Setting up each lazy read of a Dataset takes xarray-sql about 1.5 ms, so
 the GPT's 2,989 reads in one forward pass took 6.7 s of its 9.4 s. A small
@@ -196,23 +188,12 @@ only brings the gradient to 1.7 s, and slows the forward pass. With the
 same ddx, a GPT training step on DataFusion takes 0.67 s after the
 first.
 
-**A regional forecast costs what a global one does.** For the contiguous
-United States, the forecast covers 55 of 2,048 grid cells. Walking the
-graph back from them, the decoder needs 15 mesh nodes, the processor's
-two rounds need 36 and then 82, and the encoder reads 1,103 grid cells
-(54%); with one round, 576 (28%). Neither host uses any of this: the
-regional forecast takes as long as the global one on both. Pushing the
-region's filter back through the graph is einfold's Demo 3.
-
 **What ddx cannot differentiate yet.** Each of these raised a typed
 error naming the construct, never a wrong number:
 
 - A `GROUP BY` key that depends on a differentiated column. einfold's
   window spelling groups by the normalizer `z`; the demos divide inside
   the sum instead, `SUM(w / z * v)`, which einfold also lists.
-- `UNION ALL` between a parameter table and the loss. GraphCast
-  concatenates features with `UNION ALL`, so its gradient row records the
-  error. It passes once ddx differentiates a union.
 - On DuckDB, two views whose CTEs are read more than once: one whose
   CTE computes a window, as the softmax does in attention's window
   spelling and in the GPT; and any such view, when the loss also takes a
