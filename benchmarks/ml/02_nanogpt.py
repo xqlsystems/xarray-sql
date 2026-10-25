@@ -560,22 +560,27 @@ def main():
                 if not host.differentiates:
                     report.skip(train, host, size, "no ddx backend")
                     continue
-                grads = jax.grad(jax_loss)(reference, tok, nxt)
                 if adamw:
-                    updated = report.time(
+                    updated = report.attempt(
                         train, host, size, adamw_step, host, step
                     )
-                    reference, moments = jax_adamw(
-                        reference, moments, grads, step, lr["lr"].values[step]
-                    )
                 else:
-                    updated = report.time(
+                    updated = report.attempt(
                         train,
                         host,
                         size,
                         host.query_all,
                         step_statements(LEARNING_RATE),
                     )
+                if updated is None:
+                    # Every later step starts from this one's weights.
+                    break
+                grads = jax.grad(jax_loss)(reference, tok, nxt)
+                if adamw:
+                    reference, moments = jax_adamw(
+                        reference, moments, grads, step, lr["lr"].values[step]
+                    )
+                else:
                     reference = {
                         name: w - LEARNING_RATE * grads[name]
                         for name, w in reference.items()

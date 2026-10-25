@@ -105,6 +105,17 @@ class Report:
         )
         return result
 
+    def attempt(self, step: str, host: Host, size: int, run: Callable, *args):
+        """As :meth:`time`, but a step the host refuses (one of its
+        ``refusals``) is recorded with the reason, and returns None."""
+        try:
+            return self.time(step, host, size, run, *args)
+        except host.refusals as e:
+            reason = str(e).splitlines()[0]
+            print(f"  {step:<28} {host.name:<11} refused: {reason}", flush=True)
+            self.skip(step, host, size, f"refused: {reason}")
+            return None
+
     def check(self, error: float) -> None:
         """Mark the last row's result as checked, with its error (from
         :func:`assert_close`)."""

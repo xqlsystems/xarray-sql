@@ -21,13 +21,14 @@ queries. A host does five things:
 
 Forward queries run everywhere. Gradients (``grad``, ``vjp``, ``jvp``)
 need ddx (https://github.com/xqlsystems/ddx), which differentiates SQL
-queries and today runs its programs on DataFusion only; a host that
+queries and runs its programs on DataFusion and DuckDB; a host that
 cannot differentiate says so with ``differentiates = False``, and the
 demos report its gradient steps as not run rather than skip it silently.
+A gradient that ddx (or the engine under it) refuses to plan raises one
+of the host's ``refusals``, and the demos report that step with the reason.
 
-Adding a host (einfold's optimizer on DataFusion, DuckDB with a GPU
-extension, or DuckDB running ddx's programs once ddx supports it) is one
-class here and one entry in ``HOSTS``.
+Adding a host (einfold's optimizer on DataFusion, or DuckDB with a GPU
+extension) is one class here and one entry in ``HOSTS``.
 """
 
 from __future__ import annotations
@@ -38,6 +39,8 @@ from collections.abc import Sequence
 import duckdb
 import pyarrow as pa
 import xarray as xr
+from ddxdb import DdxError
+from ddxdb import duckdb as ddx_duckdb
 
 import xarray_sql as xql
 
@@ -47,6 +50,7 @@ class Host:
 
     name = ""
     differentiates = False
+    refusals: tuple[type[Exception], ...] = ()
 
     def load(self, name: str, data: xr.Dataset, **options) -> None:
         raise NotImplementedError
@@ -69,6 +73,7 @@ class DataFusion(Host):
 
     name = "datafusion"
     differentiates = True
+    refusals = (DdxError,)
 
     def __init__(self):
         self.ctx = xql.Context()
@@ -92,9 +97,15 @@ class DataFusion(Host):
 
 
 class DuckDB(Host):
-    """DuckDB, reading the same Datasets through xarray-sql's adapter."""
+    """DuckDB, reading the same Datasets through xarray-sql's adapter, with
+    ddx's gradients (``ddxdb[duckdb]``)."""
 
     name = "duckdb"
+    differentiates = True
+    # ddx reads DuckDB's plans as Substrait, a portable format for query
+    # plans, and DuckDB's Substrait producer raises its own error for a
+    # plan it can't write.
+    refusals = (DdxError, duckdb.NotImplementedException)
 
     def __init__(self):
         self.con = duckdb.connect()
@@ -106,7 +117,17 @@ class DuckDB(Host):
         self.con.execute(sql)
 
     def query(self, sql):
+        # As xarray-sql's Context does, send ddx only the statements that
+        # take a gradient.
+        if xql.ad.calls_ad(sql):
+            return self.query_all([sql])[0]
         return self.con.sql(sql).fetch_arrow_table()
+
+    def query_all(self, sqls):
+        return [
+            rel.fetch_arrow_table()
+            for rel in ddx_duckdb.sql_all(self.con, sqls)
+        ]
 
     def operators(self, sql):
         (_, plan), *_ = self.con.sql(f"EXPLAIN (FORMAT JSON) {sql}").fetchall()

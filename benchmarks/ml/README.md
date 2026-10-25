@@ -56,6 +56,11 @@ The output ends with one table: a row per step, host and size, with its
 median time, its error against JAX, and the number of operators in the
 host's physical plan.
 
+To run against a ddx checkout rather than the release, build ddxdb into
+this checkout's `.venv` (`maturin develop --release` in ddx's
+`python/ddxdb`) and run the scripts with `uv run --no-sync`, or the
+venv's `python`: a plain `uv run` or `uv sync` reinstalls the release.
+
 ## The `ml` extra
 
 ```shell
@@ -90,10 +95,12 @@ in its plan.
 | Host | Forward pass | Gradients |
 |---|---|---|
 | `datafusion` | `xarray_sql.Context` | ddx |
-| `duckdb` | DuckDB, through `xql.register` | not yet: ddx runs its programs on DataFusion only |
+| `duckdb` | DuckDB, through `xql.register` | ddx, with the `duckdb` extra of ddxdb |
 
 A host that cannot differentiate still runs every forward query, and its
-gradient rows say `no ddx backend`. To add a host, such as DataFusion with
+gradient rows say `no ddx backend`. A gradient that ddx, or the engine
+it plans with, refuses is reported as `refused:` with the error, and a
+refused training step ends that host's training run. To add a host, such as DataFusion with
 einfold's optimizer or DuckDB with a GPU extension, write one class in
 `_hosts.py` and add it to `HOSTS`.
 
@@ -151,6 +158,20 @@ pass: 0.92 s and 0.93 s on DataFusion at 512 tokens, against 1.1 s and 1.3
 s with ddxdb 0.3.3 on DataFusion 54, and 2.8 s and 2.7 s with ddxdb 0.3.2,
 before ddx differentiated the masked product as `jax.grad` does.
 
+**ddx differentiates on DuckDB.** Measured on 2026-10-24 with ddx's
+development branch (after ddxdb 0.4.1) and DuckDB 1.5.6. The gradients
+of attention in the `GROUP BY` spelling match `jax.grad` to 2e-15 on
+DuckDB, and take 0.26 s, 0.78 s and 2.4 s at 64, 256 and 512 tokens,
+against 0.10 s, 0.31 s and 0.94 s on DataFusion. Nearly all of DuckDB's
+time is in running ddx's program, not planning it: two contractions over
+about 8 and 17 million joined rows take half of it. DuckDB orders those
+joins worse when it reads a table through an Arrow scan, as
+`xql.register` gives it, than when it reads a native table (0.64 s
+against 0.20 s for one step), but copying Q, K and V into native tables
+only brings the gradient to 1.7 s, and slows the forward pass. With the
+same ddx, a GPT training step on DataFusion takes 0.67 s after the
+first.
+
 **A regional forecast costs what a global one does.** For the contiguous
 United States, the forecast covers 55 of 2,048 grid cells. Walking the
 graph back from them, the decoder needs 15 mesh nodes, the processor's
@@ -168,7 +189,14 @@ error naming the construct, never a wrong number:
 - `UNION ALL` between a parameter table and the loss. GraphCast
   concatenates features with `UNION ALL`, so its gradient row records the
   error. It passes once ddx differentiates a union.
-- Any engine but DataFusion: ddx's DuckDB support is planned.
+- On DuckDB, two views whose CTEs are read more than once: one whose
+  CTE computes a window, as the softmax does in attention's window
+  spelling and in the GPT; and any such view, when the loss also takes a
+  gradient with respect to a table the view doesn't read. ddx reads
+  DuckDB's plans as [Substrait](https://substrait.io/), a portable format
+  for query plans, and DuckDB's Substrait producer has no plan for a CTE
+  it computes once for several reads. These rows say
+  `refused: Not implemented Error: CTE`.
 
 **xarray-sql reads NaN as missing.** A NaN in a Dataset becomes SQL
 `NULL`, which `SUM` skips, so Demo 1 checks masks with an infinity: a

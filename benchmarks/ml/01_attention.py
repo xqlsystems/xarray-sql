@@ -201,7 +201,9 @@ def main():
                 if not host.differentiates:
                     report.skip(step, host, n, "no ddx backend")
                     continue
-                rows = report.time(step, host, n, host.query, GRADIENT)
+                rows = report.attempt(step, host, n, host.query, GRADIENT)
+                if rows is None:
+                    continue
                 errors = [
                     assert_close(f"d/d{name}", matrix(rows, f"d{name}"), ref)
                     for name, ref in zip("qkv", want_grads)
