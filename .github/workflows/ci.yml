@@ -82,3 +82,45 @@ jobs:
         env:
           VIRTUAL_ENV: ${{ github.workspace }}/.venv
         run: uv run --no-project pytest -v . -m "not integration"
+
+  ml-demos:
+    # Each ML demo in benchmarks/ml, at its smallest size, checked against
+    # JAX (tests/test_ml_demos.py).
+    name: "ml demos"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Configure sccache
+        run: |
+          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo
+          key: cargo-cache-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('Cargo.lock') }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install xarray_sql
+        run: uv sync --dev --no-install-package xarray-sql
+      - name: build rust
+        run: uv run --no-project maturin develop --uv
+      - name: Install JAX
+        env:
+          VIRTUAL_ENV: ${{ github.workspace }}/.venv
+        run: uv pip install jax
+      - name: Run the demos
+        env:
+          VIRTUAL_ENV: ${{ github.workspace }}/.venv
+        run: uv run --no-project pytest -v tests/test_ml_demos.py

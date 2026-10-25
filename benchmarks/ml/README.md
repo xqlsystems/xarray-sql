@@ -24,6 +24,11 @@ The SQL favors legibility over speed. Each model reads like its definition,
 and the slow parts are left slow on purpose: they are what ddx, xarray-sql
 and einfold need to make fast.
 
+To add a demo, see [CONTRIBUTING.md](CONTRIBUTING.md). The work to make
+these models fast is tracked in
+[#285](https://github.com/xqlsystems/xarray-sql/issues/285), which lists
+places to start.
+
 Every result is checked before it is timed into the table. Each script
 computes the same model in JAX from the same inputs and parameters, and a
 mismatch fails the run.
@@ -210,12 +215,11 @@ SQL gives a number.
 
 ## Next
 
-- Part B of the NanoGPT demo: the four tricks behind a record of the
-  [NanoGPT speedrun](https://github.com/KellerJordan/modded-nanogpt), a
-  public race to train GPT-2 fastest, as a small diff to `02_nanogpt.py`.
-  Its sparse optimizer updates build on `--optimizer adamw`.
-- Peak memory per host, from a fresh process per measurement.
-- An einfold host, once einfold produces plans.
+The open work, and how to measure it, is in
+[#285](https://github.com/xqlsystems/xarray-sql/issues/285). Part B of
+the NanoGPT demo is also still to come: the four tricks behind a record
+of the [NanoGPT speedrun](https://github.com/KellerJordan/modded-nanogpt),
+a public race to train GPT-2 fastest, as a small diff to `02_nanogpt.py`.
 
 [`_bench.py`](_bench.py) holds the shared command line, timing, checks and
 results table.
