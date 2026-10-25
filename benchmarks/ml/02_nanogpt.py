@@ -496,6 +496,8 @@ def adamw_step(host, step: int) -> list:
 
 
 def main():
+    # The model's size, from the command line, as module constants.
+    global LAYERS, EMBED, HEADS, HEAD, HIDDEN, CONTEXT
     parser = cli(__doc__.splitlines()[0], sizes=[4], size_name="batch")
     parser.add_argument("--steps", type=int, default=5, help="training steps")
     parser.add_argument(
@@ -504,7 +506,22 @@ def main():
         default="sgd",
         help="SGD at a fixed learning rate (default), or nanoGPT's AdamW",
     )
+    parser.add_argument("--layers", type=int, default=LAYERS, help="n_layer")
+    parser.add_argument("--embed", type=int, default=EMBED, help="n_embd")
+    parser.add_argument("--heads", type=int, default=HEADS, help="n_head")
+    parser.add_argument(
+        "--context", type=int, default=CONTEXT, help="block_size"
+    )
     args = parser.parse_args()
+    if args.embed % args.heads:
+        parser.error("--embed must be a multiple of --heads")
+    LAYERS, EMBED, HEADS, CONTEXT = (
+        args.layers,
+        args.embed,
+        args.heads,
+        args.context,
+    )
+    HEAD, HIDDEN = EMBED // HEADS, 4 * EMBED
     adamw = args.optimizer == "adamw"
     lr = schedule(args.steps)
     report = Report("nanogpt", "batch", args.reps)

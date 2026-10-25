@@ -49,7 +49,10 @@ options are the same in all three:
 ```
 
 Demo 2 adds `--steps`, the number of training steps, and `--optimizer`:
-`sgd` (the default), or `adamw` to train as nanoGPT does. Demo 3 adds
+`sgd` (the default), or `adamw` to train as nanoGPT does, and the
+model's size: `--layers`, `--embed`, `--heads` and `--context`, nanoGPT's
+`n_layer`, `n_embd`, `n_head` and `block_size` (1, 16, 2 and 16 by
+default; nanoGPT's Shakespeare model is 6, 384, 6 and 256). Demo 3 adds
 `--rounds`, the number of processor rounds.
 
 The output ends with one table: a row per step, host and size, with its
@@ -149,6 +152,27 @@ as a table, so it computes each shared subexpression once. Doing the same
 for forward queries is the first thing xarray-sql's DataFusion path needs
 for these models, and einfold should plan them as graphs rather than
 trees.
+
+**DataFusion spends the GPT's time planning, not running.** Measured on
+2026-10-24 with DataFusion 55.0.0. Of the 1-layer loss's 2.5 s, turning
+its SQL into a physical plan takes nearly all; the same physical plan,
+built once and run again, takes 1.8 ms (with one partition, and the same
+tables). A second layer multiplies the plan by about 100, to 1.74
+million logical nodes and 313,789 table scans: the SQL planner takes 8.6
+s to build it, and planning it runs out of 8 GB. DuckDB plans the 2-layer
+loss in 211 operators and runs it in 0.12 s. DataFusion 56 plans a CTE
+written `WITH … AS MATERIALIZED` once, which the GPT needs to grow past
+one layer on DataFusion. A ddx training step runs 76 small queries, of
+5.4 ms each, and about 4 ms of each is planning; with one partition
+instead of twelve, and one optimizer pass, a step takes 0.40 s instead
+of 0.66 s.
+
+**JAX is the target.** JAX, compiled with `jax.jit` on the same CPU,
+computes the GPT's loss in 0.15 ms and an SGD step in 0.37 ms, and
+attention at 512 tokens in 0.92 ms forward and 2.4 ms with its
+gradients: 300 to 400 times faster than either engine on attention,
+whose time is in running its joins, and thousands of times on the GPT,
+whose time is in planning.
 
 **Attention stores every score.** Causal attention's forward pass at 512
 tokens takes 0.28 s on DataFusion in the window spelling and 0.37 s in the
