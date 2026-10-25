@@ -84,8 +84,12 @@ class Context(SessionContext):
         many times, as a query does when it reads a table in several
         places. The table shares its data variables' memory with the
         Dataset rather than copying it, so, as with a lazy table, changing
-        the Dataset's values in place changes what queries return. It adds
-        a column per dimension, one value per row.
+        the Dataset's values in place changes what queries return. The one
+        exception is NaN, which a query reads as NULL: the table records
+        which values are NaN when it is registered. So an in-place write
+        must keep the NaNs where they were, or the Dataset must be
+        registered again. The table adds a column per dimension, one value
+        per row.
 
         For datasets with non-Gregorian cftime coordinates (e.g. 360_day,
         julian), a ``cftime()`` scalar UDF is automatically registered so

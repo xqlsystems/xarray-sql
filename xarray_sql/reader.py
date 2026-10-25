@@ -230,10 +230,12 @@ def _in_memory_partitions(
     them, as many partitions as ``chunks`` makes chunks, up to the number
     of CPUs. So a data variable whose array is C-contiguous isn't copied,
     whatever the chunks: its Arrow column shares the array's memory, as
-    does DataFusion's table, through Arrow's C data interface. A NaN adds a validity bitmap beside it, one
-    bit per value. What the table adds is its dimension columns, one value
-    per row for each dimension, which long-form rows need. An array that
-    isn't C-contiguous (Fortran order) is copied, once.
+    does DataFusion's table, through Arrow's C data interface. A NaN adds a
+    validity bitmap beside it, one bit per value, made here: a NaN written
+    into the array later isn't read as NULL. What the table adds is its
+    dimension columns, one value per row for each dimension, which
+    long-form rows need. An array that isn't C-contiguous (Fortran order)
+    is copied, once.
 
     Returns ``None`` for a Dataset that isn't in memory (a Dask array or a
     lazily loaded file), is larger than ``limit``, or has no rows; it is
