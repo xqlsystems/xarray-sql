@@ -4,6 +4,10 @@ DataFusion 54 forwards ``Statistics`` across the ``datafusion-ffi`` boundary,
 so the exact statistics ``XarrayScanExec`` reports are visible to the query
 optimizer: num_rows (product of a chunk's dimension sizes), total byte size,
 and per dimension-column min/max bounds. These tests pin that behaviour.
+
+``XarrayScanExec`` scans a lazy table, so each test registers a Dask-backed
+Dataset (``ds.chunk()``): a small Dataset that is already in memory becomes
+a native DataFusion in-memory table instead.
 """
 
 import numpy as np
@@ -30,7 +34,7 @@ def test_exact_rows_in_scan_statistics():
         },
     )
     ctx = XarrayContext()
-    ctx.from_dataset("air", ds, chunks={"time": 50})
+    ctx.from_dataset("air", ds.chunk(), chunks={"time": 50})
     plan = _explain(ctx, "SELECT lat, lon, air FROM air")
     total = 100 * 4 * 5
     assert f"Rows=Exact({total})" in plan
@@ -47,7 +51,7 @@ def test_exact_byte_size_in_scan_statistics():
         },
     )
     ctx = XarrayContext()
-    ctx.from_dataset("air", ds, chunks={"time": 50})
+    ctx.from_dataset("air", ds.chunk(), chunks={"time": 50})
     plan = _explain(ctx, "SELECT lat, lon, air FROM air")
     # 2000 rows x (lat int64 + lon int64 + air float64) = 2000 x 24 bytes.
     assert f"Bytes=Exact({100 * 4 * 5 * 24})" in plan
@@ -69,7 +73,7 @@ def test_dimension_column_min_max_in_scan_statistics():
         },
     )
     ctx = XarrayContext()
-    ctx.from_dataset("air", ds, chunks={"time": 50})
+    ctx.from_dataset("air", ds.chunk(), chunks={"time": 50})
     plan = _explain(ctx, "SELECT lat, lon, air FROM air")
     # lat spans 0..3, lon spans 0..4, both never null.
     assert "Min=Exact(Int64(0)) Max=Exact(Int64(3)) Null=Exact(0)" in plan
@@ -101,7 +105,7 @@ def test_coordinate_statistics_preserve_logical_type(coord, expected):
         coords={"x": coord},
     )
     ctx = XarrayContext()
-    ctx.from_dataset("values", ds, chunks={"x": 2})
+    ctx.from_dataset("values", ds.chunk(), chunks={"x": 2})
 
     plan = _explain(ctx, "SELECT x, value FROM values")
 
@@ -114,7 +118,7 @@ def test_missing_partition_bound_removes_global_coordinate_statistics():
         coords={"x": np.asarray([0.0, 1.0, np.nan, 3.0])},
     )
     ctx = XarrayContext()
-    ctx.from_dataset("values", ds, chunks={"x": 2})
+    ctx.from_dataset("values", ds.chunk(), chunks={"x": 2})
 
     plan = _explain(ctx, "SELECT x, value FROM values")
 
@@ -134,7 +138,7 @@ def test_count_star_answered_from_statistics():
         },
     )
     ctx = XarrayContext()
-    ctx.from_dataset("air", ds, chunks={"time": 50})
+    ctx.from_dataset("air", ds.chunk(), chunks={"time": 50})
     n = ctx.sql("SELECT COUNT(*) AS n FROM air").to_pandas()["n"][0]
     assert int(n) == 100 * 4 * 5
 
@@ -159,8 +163,8 @@ def test_join_picks_small_build_side():
         coords={"lat": np.arange(8), "lon": np.arange(8)},
     )
     ctx = XarrayContext()
-    ctx.from_dataset("big", big, chunks={"time": 50})
-    ctx.from_dataset("small", small, chunks={"lat": 8})
+    ctx.from_dataset("big", big.chunk(), chunks={"time": 50})
+    ctx.from_dataset("small", small.chunk(), chunks={"lat": 8})
 
     plan = _explain(
         ctx,

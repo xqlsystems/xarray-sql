@@ -45,7 +45,8 @@ def test_timedelta_microseconds_register_filter_and_prune(monkeypatch):
     )
     ctx = XarrayContext()
 
-    ctx.from_dataset("forecast", ds, chunks={"lead_time": 2})
+    # A Dask-backed Dataset, so it is read lazily, and pruned.
+    ctx.from_dataset("forecast", ds.chunk(), chunks={"lead_time": 2})
     result = ctx.sql(
         "SELECT value FROM forecast "
         "WHERE lead_time >= INTERVAL '4 microseconds' ORDER BY value"
@@ -584,3 +585,130 @@ class TestFromDatasetMultiDims:
         pd.testing.assert_frame_equal(
             result, expected, check_dtype=False, check_like=True
         )
+
+
+def _scans(ctx, table):
+    return ctx.sql(f"SELECT * FROM {table}").execution_plan().display_indent()
+
+
+def test_small_in_memory_dataset_is_a_native_table_with_the_same_rows():
+    """A small in-memory Dataset becomes a native in-memory table, which a
+    query's plan scans by its registered name, and queries over it give what
+    a lazily read Dataset gives."""
+    ds = xr.Dataset(
+        {"air": (("time", "lat"), np.random.rand(6, 4))},
+        coords={"time": np.arange(6), "lat": np.arange(4) * 2.5},
+    )
+    ctx = XarrayContext()
+    ctx.from_dataset("eager", ds, chunks={"time": 2})
+    ctx.from_dataset("lazy", ds.chunk(), chunks={"time": 2})
+
+    assert "XarrayScanExec" not in _scans(ctx, "eager")
+    assert "XarrayScanExec" in _scans(ctx, "lazy")
+    plan = ctx.sql("SELECT * FROM eager").logical_plan().display_indent()
+    assert plan.splitlines()[-1].strip() == "TableScan: eager"
+    query = "SELECT time, lat, air FROM {} WHERE lat > 2 ORDER BY time, lat"
+    pd.testing.assert_frame_equal(
+        ctx.sql(query.format("eager")).to_pandas(),
+        ctx.sql(query.format("lazy")).to_pandas(),
+    )
+    assert set(ctx.catalog().schema().names()) == {"eager", "lazy"}
+
+
+def test_mixed_dimension_in_memory_dataset_registers_native_tables():
+    """Each dimension group of a small in-memory Dataset is a native table
+    in the Dataset's schema, with nothing else left in the catalog."""
+    ds = xr.Dataset(
+        {
+            "surface": (("time", "lat"), np.random.rand(3, 2)),
+            "column": (("time", "lat", "level"), np.random.rand(3, 2, 4)),
+        },
+        coords={
+            "time": np.arange(3),
+            "lat": np.arange(2),
+            "level": np.arange(4),
+        },
+    )
+    ctx = XarrayContext()
+    ctx.from_dataset("era5", ds)
+
+    assert "XarrayScanExec" not in _scans(ctx, "era5.time_lat_level")
+    counts = ctx.sql(
+        "SELECT (SELECT COUNT(*) FROM era5.time_lat) AS surface, "
+        "(SELECT COUNT(*) FROM era5.time_lat_level) AS column_"
+    ).to_pandas()
+    assert counts.iloc[0].tolist() == [6, 24]
+    assert set(ctx.catalog().schema().names()) == set()
+
+
+def test_large_in_memory_dataset_is_read_lazily():
+    """An in-memory Dataset over 64 MiB as a table stays a lazy table, so
+    it isn't held twice."""
+    rows = 64 * 2**20 // 16 + 1  # x (int64) and value (float64): 16 bytes
+    ds = xr.Dataset({"value": (["x"], np.zeros(rows))})
+    ctx = XarrayContext()
+    ctx.from_dataset("big", ds)
+
+    assert "XarrayScanExec" in _scans(ctx, "big")
+
+
+@pytest.mark.parametrize("chunks", [None, {"a": 2}, {"b": 3}, {"a": 2, "b": 2}])
+def test_in_memory_table_shares_the_dataset_s_memory(chunks):
+    """A native table reads the Dataset's arrays, not a copy, whatever the
+    chunks: a change made in place shows in the next query, as it does for
+    a lazy table."""
+    ds = xr.Dataset({"w": (("a", "b"), np.zeros((4, 6)))})
+    ctx = XarrayContext()
+    ctx.from_dataset("t", ds, chunks=chunks)
+
+    ds["w"].values[...] = 7.0
+
+    assert ctx.sql("SELECT w FROM t").to_pandas()["w"].tolist() == [7.0] * 24
+
+
+@pytest.mark.parametrize(
+    "values, written",
+    [
+        (np.asfortranarray(np.zeros((4, 6))), 7.0),
+        (np.zeros((6, 4)).T, 7.0),
+        (np.zeros((4, 12))[:, ::2], 7.0),
+        (np.zeros((4, 6), dtype=bool), True),
+        (np.full((4, 6), "a"), "b"),
+    ],
+    ids=["fortran-order", "transposed", "strided", "bool", "str"],
+)
+def test_in_place_write_shows_where_arrow_would_copy(values, written):
+    """A write in place shows in the next query even for an array whose
+    Arrow column would be a copy, which isn't an in-memory table."""
+    ds = xr.Dataset({"w": (("a", "b"), values)})
+    ctx = XarrayContext()
+    ctx.from_dataset("t", ds)
+
+    ds["w"].values[...] = written
+
+    assert (
+        ctx.sql("SELECT w FROM t").to_pandas()["w"].tolist() == [written] * 24
+    )
+
+
+def test_in_memory_dataset_over_the_limit_in_arrow_is_read_lazily():
+    """The 64 MiB limit is on the table as Arrow, which a long string can
+    exceed when an estimate of its size doesn't."""
+    ds = xr.Dataset({"s": (["x"], np.array([b"a" * 40 * 2**20] * 2))})
+    ctx = XarrayContext()
+    ctx.from_dataset("strings", ds)
+
+    assert "XarrayScanExec" in _scans(ctx, "strings")
+
+
+def test_dimension_no_data_variable_has_registers():
+    """A coordinate on a dimension that no data variable has doesn't stop
+    an in-memory Dataset from registering."""
+    ds = xr.Dataset(
+        {"t": (("x",), np.arange(3.0))},
+        coords={"x": [0, 1, 2], "y": [10, 20]},
+    )
+    ctx = XarrayContext()
+    ctx.from_dataset("t", ds)
+
+    assert "t" in ctx.catalog().schema().names()
