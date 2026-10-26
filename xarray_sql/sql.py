@@ -252,15 +252,18 @@ class Context(SessionContext):
         # plans it, replacing a table without deregistering it.
         replaced = _table_replaced(query)
         if replaced is not None:
-            self._deregistrations[replaced] = (
-                self._deregistrations.get(replaced, 0) + 1
-            )
+            self._forget(replaced)
         return self._wrap(super().sql(query, *args, **kwargs))
 
     def deregister_table(self, name: str) -> None:
         """Remove a table from the session, and forget the Dataset
         registered under its name."""
         super().deregister_table(name)
+        self._forget(name)
+
+    def _forget(self, name: str) -> None:
+        """Forget the Dataset registered as ``name``, whose table has been
+        removed or replaced."""
         self._registered_datasets.pop(name, None)
         self._deregistrations[name] = self._deregistrations.get(name, 0) + 1
 
@@ -470,9 +473,11 @@ def _tables_read(plan: LogicalPlan) -> set[str]:
 
 
 _TABLE_DDL = re.compile(
-    r"\s*(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:EXTERNAL\s+)?TABLE|DROP\s+TABLE)"
+    # Any comments before the statement, then the statement.
+    r"(?:\s+|--[^\n]*|/\*.*?\*/)*"
+    r"(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:EXTERNAL\s+)?TABLE|DROP\s+TABLE)"
     r"\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(\"[^\"]+\"|[\w.]+)",
-    re.IGNORECASE,
+    re.IGNORECASE | re.DOTALL,
 )
 
 

@@ -222,11 +222,21 @@ def test_now_is_the_time_a_query_over_a_lazy_table_was_prepared():
     assert query().equals(first)
 
 
-def test_a_table_replaced_in_sql_counts_too():
+@pytest.mark.parametrize("comment", ["", "-- refresh\n", "/* refresh */ "])
+def test_a_table_replaced_in_sql_counts_too(comment):
     ctx = Context()
     ctx.sql("CREATE TABLE c AS VALUES (1), (2)").collect()
     query = ctx.prepare("SELECT COUNT(*) AS n FROM c")
     assert query().column("n").to_pylist() == [2]
-    ctx.sql("CREATE OR REPLACE TABLE c AS VALUES (1), (2), (3)").collect()
+    ctx.sql(
+        comment + "CREATE OR REPLACE TABLE c AS VALUES (1), (2), (3)"
+    ).collect()
     with pytest.raises(ValueError, match="registered again"):
         query()
+
+
+def test_a_dataset_replaced_in_sql_takes_no_writes(ctx):
+    ctx.sql("CREATE OR REPLACE TABLE a AS SELECT * FROM b").collect()
+    query = ctx.prepare("SELECT SUM(w) AS s FROM a")
+    with pytest.raises(ValueError, match="no Dataset"):
+        query(a=_a(np.ones((4, 3))))
