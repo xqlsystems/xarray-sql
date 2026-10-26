@@ -2,7 +2,7 @@ import uuid
 
 import pyarrow as pa
 import xarray as xr
-from datafusion import SessionContext
+from datafusion import SessionConfig, SessionContext
 from datafusion.catalog import Schema
 from types import ModuleType
 
@@ -29,11 +29,30 @@ except ImportError:  # pragma: no cover - depends on the environment
 class Context(SessionContext):
     """A datafusion `SessionContext` that also supports `xarray.Dataset`s.
 
+    Without a `config`, a context splits a query's work across partitions
+    only where enough rows reach it, by DataFusion's estimate. DataFusion
+    otherwise splits every input whose row count is an estimate, as it is
+    after a join, a filter or an aggregate, however few rows that is.
+    Splitting small inputs makes a query of a few thousand rows two to
+    three times slower to run. A `config` given is used as it is.
+
     Also available under its original name, ``XarrayContext``.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, config: SessionConfig | None = None, *args, **kwargs):
+        if config is None:
+            # A bare SessionConfig turns off the information schema, which
+            # SessionContext() turns on; otherwise the two are the same.
+            config = (
+                SessionConfig()
+                .with_information_schema(True)
+                .set(
+                    "datafusion.execution."
+                    "use_row_number_estimates_to_optimize_partitioning",
+                    "true",
+                )
+            )
+        super().__init__(config, *args, **kwargs)
         # Track registered xarray Datasets so XarrayDataFrame can recover
         # defaults (dimension_columns) and metadata (var/dataset attrs,
         # non-dim coords, dim-coord dtype) that the forward pivot drops.

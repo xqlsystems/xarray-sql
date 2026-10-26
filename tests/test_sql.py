@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+from datafusion import SessionConfig
 
 import xarray_sql
 from xarray_sql import XarrayContext
@@ -11,6 +12,39 @@ from xarray_sql import XarrayContext
 
 def test_context_is_the_xarray_context():
     assert xarray_sql.Context is XarrayContext
+
+
+SMALL_JOIN = """
+SELECT a.j, SUM(a.v * b.v) AS s FROM a JOIN b ON a.i = b.i AND a.j = b.j
+GROUP BY a.j ORDER BY a.j
+"""
+
+
+def _small_join_plan(ctx):
+    ds = xr.Dataset(
+        {"v": (("i", "j"), np.ones((40, 25)))},
+        coords={"i": np.arange(40), "j": np.arange(25)},
+    )
+    ctx.from_dataset("a", ds)
+    ctx.from_dataset("b", ds)
+    assert ctx.sql(SMALL_JOIN).to_pydict()["s"] == [40.0] * 25
+    return ctx.sql(SMALL_JOIN).execution_plan().display_indent()
+
+
+def test_a_small_query_is_not_split_across_partitions():
+    assert "RepartitionExec" not in _small_join_plan(xarray_sql.Context())
+
+
+def test_a_config_given_is_used_as_it_is():
+    config = SessionConfig().with_target_partitions(4)
+    assert "RepartitionExec" in _small_join_plan(xarray_sql.Context(config))
+
+
+def test_a_context_has_the_information_schema():
+    rows = xarray_sql.Context().sql(
+        "SELECT table_name FROM information_schema.tables"
+    )
+    assert rows.count() > 0
 
 
 def test_sanity(air_dataset_small):
