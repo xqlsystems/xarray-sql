@@ -240,3 +240,25 @@ def test_a_dataset_replaced_in_sql_takes_no_writes(ctx):
     query = ctx.prepare("SELECT SUM(w) AS s FROM a")
     with pytest.raises(ValueError, match="no Dataset"):
         query(a=_a(np.ones((4, 3))))
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "CREATE TABLE IF NOT EXISTS a AS SELECT * FROM b",
+        "DROP TABLE IF EXISTS c",
+    ],
+)
+def test_sql_that_changes_no_table_keeps_a_prepared_query(ctx, statement):
+    query = ctx.prepare("SELECT SUM(v) AS s FROM a")
+    ctx.sql(statement).collect()
+    assert query(a=_a(np.ones((4, 3)))).column("s").to_pylist() == [12.0]
+
+
+def test_a_quoted_table_replaced_in_sql_counts_too():
+    ctx = Context()
+    ctx.sql('CREATE TABLE "Mixed" AS VALUES (1)').collect()
+    query = ctx.prepare('SELECT COUNT(*) AS n FROM "Mixed"')
+    ctx.sql('CREATE OR REPLACE TABLE "Mixed" AS VALUES (1), (2)').collect()
+    with pytest.raises(ValueError, match="registered again"):
+        query()

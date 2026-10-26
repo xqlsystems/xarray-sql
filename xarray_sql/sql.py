@@ -68,7 +68,7 @@ class Context(SessionContext):
         # How many times each name's table has been removed or replaced.
         # DataFusion refuses to register a name that's taken, so a table
         # registered again from Python was deregistered first; SQL that
-        # creates or drops a table counts too (see sql()).
+        # replaces or drops a table counts too (see sql()).
         self._deregistrations: dict[str, int] = {}
         # With pyproj installed, every context speaks CRS out of the box:
         # reproject(x, y, src_crs, dst_crs), à la PostGIS ST_Transform.
@@ -248,12 +248,17 @@ class Context(SessionContext):
         Returns:
             An [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame] wrapping the DataFusion DataFrame.
         """
-        # DataFusion runs a statement that creates or drops a table as it
-        # plans it, replacing a table without deregistering it.
+        # DataFusion runs a statement that replaces or drops a table as it
+        # plans it, without deregistering the table.
         replaced = _table_replaced(query)
-        if replaced is not None:
-            self._forget(replaced)
-        return self._wrap(super().sql(query, *args, **kwargs))
+        existed = replaced is not None and self.table_exist(replaced)
+        df = super().sql(query, *args, **kwargs)
+        if existed:
+            # DataFusion keeps a quoted name's case, and lowers an unquoted
+            # one.
+            quoted = replaced.startswith('"')
+            self._forget(replaced[1:-1] if quoted else replaced.lower())
+        return self._wrap(df)
 
     def deregister_table(self, name: str) -> None:
         """Remove a table from the session, and forget the Dataset
@@ -475,21 +480,17 @@ def _tables_read(plan: LogicalPlan) -> set[str]:
 _TABLE_DDL = re.compile(
     # Any comments before the statement, then the statement.
     r"(?:\s+|--[^\n]*|/\*.*?\*/)*"
-    r"(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:EXTERNAL\s+)?TABLE|DROP\s+TABLE)"
-    r"\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(\"[^\"]+\"|[\w.]+)",
+    r"(?:CREATE\s+OR\s+REPLACE\s+(?:EXTERNAL\s+)?TABLE|DROP\s+TABLE)"
+    r"\s+(?:IF\s+EXISTS\s+)?(\"[^\"]+\"|[\w.]+)",
     re.IGNORECASE | re.DOTALL,
 )
 
 
 def _table_replaced(query: str) -> str | None:
-    """The name of the table ``query`` creates or drops, as DataFusion
-    resolves it, or ``None`` for any other statement."""
+    """The name of the table ``query`` replaces or drops, as it's written,
+    or ``None`` for any other statement."""
     match = _TABLE_DDL.match(query)
-    if match is None:
-        return None
-    name = match.group(1)
-    # DataFusion keeps a quoted name's case, and lowers an unquoted one.
-    return name[1:-1] if name.startswith('"') else name.lower()
+    return None if match is None else match.group(1)
 
 
 def _missing(values: np.ndarray) -> np.ndarray | None:
