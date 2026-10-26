@@ -190,3 +190,43 @@ def test_now_is_the_time_the_query_was_prepared(ctx):
     first = query()
     time.sleep(0.01)
     assert query().equals(first)
+
+
+def test_a_write_must_keep_every_coordinate(ctx):
+    query = ctx.prepare(JOIN)
+    # A coordinate along both dims, which neither dim's coordinate holds.
+    labelled = _a(np.ones((4, 3))).assign_coords(
+        area=(("i", "j"), np.ones((4, 3)))
+    )
+    with pytest.raises(ValueError, match="coordinates"):
+        query(a=labelled)
+
+
+def test_a_table_not_from_a_dataset_counts_too(ctx):
+    ctx.register_record_batches("c", [ctx.sql("SELECT i, j FROM a").collect()])
+    query = ctx.prepare("SELECT COUNT(*) AS n FROM a JOIN c USING (i, j)")
+    assert query().column("n").to_pylist() == [12]
+    ctx.deregister_table("c")
+    ctx.register_record_batches("c", [ctx.sql("SELECT i, j FROM b").collect()])
+    with pytest.raises(ValueError, match="registered again"):
+        query()
+
+
+def test_now_is_the_time_a_query_over_a_lazy_table_was_prepared():
+    pytest.importorskip("dask")
+    ctx = Context()
+    ctx.from_dataset("a", _a(np.ones((4, 3))).chunk({"i": 2}))
+    query = ctx.prepare("SELECT now() AS t, SUM(v) AS s FROM a")
+    first = query()
+    time.sleep(0.01)
+    assert query().equals(first)
+
+
+def test_a_table_replaced_in_sql_counts_too():
+    ctx = Context()
+    ctx.sql("CREATE TABLE c AS VALUES (1), (2)").collect()
+    query = ctx.prepare("SELECT COUNT(*) AS n FROM c")
+    assert query().column("n").to_pylist() == [2]
+    ctx.sql("CREATE OR REPLACE TABLE c AS VALUES (1), (2), (3)").collect()
+    with pytest.raises(ValueError, match="registered again"):
+        query()

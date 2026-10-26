@@ -1,3 +1,4 @@
+import re
 import time
 import uuid
 
@@ -64,6 +65,11 @@ class Context(SessionContext):
         # in SQL (e.g. ``"air"`` for a uniform-dim Dataset, or
         # ``"era5.surface"`` for one entry from a multi-dim-group split).
         self._registered_datasets: dict[str, xr.Dataset] = {}
+        # How many times each name's table has been removed or replaced.
+        # DataFusion refuses to register a name that's taken, so a table
+        # registered again from Python was deregistered first; SQL that
+        # creates or drops a table counts too (see sql()).
+        self._deregistrations: dict[str, int] = {}
         # With pyproj installed, every context speaks CRS out of the box:
         # reproject(x, y, src_crs, dst_crs), à la PostGIS ST_Transform.
         if _proj is not None:
@@ -242,6 +248,13 @@ class Context(SessionContext):
         Returns:
             An [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame] wrapping the DataFusion DataFrame.
         """
+        # DataFusion runs a statement that creates or drops a table as it
+        # plans it, replacing a table without deregistering it.
+        replaced = _table_replaced(query)
+        if replaced is not None:
+            self._deregistrations[replaced] = (
+                self._deregistrations.get(replaced, 0) + 1
+            )
         return self._wrap(super().sql(query, *args, **kwargs))
 
     def deregister_table(self, name: str) -> None:
@@ -249,6 +262,7 @@ class Context(SessionContext):
         registered under its name."""
         super().deregister_table(name)
         self._registered_datasets.pop(name, None)
+        self._deregistrations[name] = self._deregistrations.get(name, 0) + 1
 
     def prepare(self, query: str) -> "PreparedQuery":
         """Plan a query once, to run it many times.
@@ -292,11 +306,13 @@ class Context(SessionContext):
                     f"{sorted(registered.data_vars)}, and the new Dataset "
                     f"has {sorted(ds.data_vars)}"
                 )
-            for dim in registered.dims:
-                if dim not in ds.dims or not ds[dim].equals(registered[dim]):
+            for coord in set(registered.coords) | set(ds.coords):
+                if coord not in ds.coords or not ds[coord].equals(
+                    registered.coords.get(coord)
+                ):
                     raise ValueError(
                         f"the new Dataset for {name!r} has other coordinates "
-                        f"along {dim!r}; register it again, and prepare the "
+                        f"({coord!r}); register it again, and prepare the "
                         "query again"
                     )
             for var in registered.data_vars:
@@ -361,16 +377,24 @@ class PreparedQuery:
 
     def __init__(self, ctx: Context, query: str):
         self._ctx = ctx
-        self._query = query
         start = time.perf_counter()
         df = SessionContext.sql(ctx, query)
         plan = df.execution_plan()
         planning = time.perf_counter() - start
         self._schema = df.schema()
-        # The Datasets the query reads, as they are registered now.
+        # Planned again from its optimized form, the query reads the tables
+        # it was prepared with, and functions such as now() keep the values
+        # they were folded into.
+        self._optimized = df.optimized_logical_plan()
+        # Each table the query reads, by how often its name had been
+        # deregistered; and of those, the Datasets a call may write into.
+        self._read = {
+            name: ctx._deregistrations.get(name, 0)
+            for name in _tables_read(df.logical_plan())
+        }
         self._registered = {
             name: ctx._registered_datasets[name]
-            for name in _tables_read(df.logical_plan())
+            for name in self._read
             if name in ctx._registered_datasets
         }
         # A plan keeps state from a run (a hash join keeps the table it
@@ -404,15 +428,16 @@ class PreparedQuery:
                     f"the query reads no Dataset registered as {name!r} "
                     "when it was prepared"
                 )
-        for name, registered in self._registered.items():
-            if self._ctx._registered_datasets.get(name) is not registered:
+        for name, deregistrations in self._read.items():
+            if self._ctx._deregistrations.get(name, 0) != deregistrations:
                 raise ValueError(
                     f"{name!r} has been registered again since the query was "
                     "prepared; prepare the query again"
                 )
         self._ctx._write(tables)
         if self._plan is None:
-            return SessionContext.sql(self._ctx, self._query).to_arrow_table()
+            df = self._ctx.create_dataframe_from_logical_plan(self._optimized)
+            return df.to_arrow_table()
         plan = _copy(self._ctx, self._plan)
         batches = [
             batch.to_pyarrow()
@@ -442,6 +467,24 @@ def _tables_read(plan: LogicalPlan) -> set[str]:
             names.add(variant.table_name())
         stack.extend(node.inputs())
     return names
+
+
+_TABLE_DDL = re.compile(
+    r"\s*(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:EXTERNAL\s+)?TABLE|DROP\s+TABLE)"
+    r"\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(\"[^\"]+\"|[\w.]+)",
+    re.IGNORECASE,
+)
+
+
+def _table_replaced(query: str) -> str | None:
+    """The name of the table ``query`` creates or drops, as DataFusion
+    resolves it, or ``None`` for any other statement."""
+    match = _TABLE_DDL.match(query)
+    if match is None:
+        return None
+    name = match.group(1)
+    # DataFusion keeps a quoted name's case, and lowers an unquoted one.
+    return name[1:-1] if name.startswith('"') else name.lower()
 
 
 def _missing(values: np.ndarray) -> np.ndarray | None:
