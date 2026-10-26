@@ -1,3 +1,4 @@
+import time
 import uuid
 
 import numpy as np
@@ -5,7 +6,8 @@ import pyarrow as pa
 import xarray as xr
 from datafusion import SessionConfig, SessionContext
 from datafusion.catalog import Schema
-from datafusion.plan import ExecutionPlan
+from datafusion.expr import TableScan
+from datafusion.plan import ExecutionPlan, LogicalPlan
 from types import ModuleType
 
 from . import cftime as cft
@@ -242,6 +244,12 @@ class Context(SessionContext):
         """
         return self._wrap(super().sql(query, *args, **kwargs))
 
+    def deregister_table(self, name: str) -> None:
+        """Remove a table from the session, and forget the Dataset
+        registered under its name."""
+        super().deregister_table(name)
+        self._registered_datasets.pop(name, None)
+
     def prepare(self, query: str) -> "PreparedQuery":
         """Plan a query once, to run it many times.
 
@@ -261,7 +269,7 @@ class Context(SessionContext):
                 rows = step(w=weights)
 
         See [PreparedQuery][xarray_sql.PreparedQuery] for what a call
-        can write, and which plans are run again rather than planned again.
+        can write.
 
         Args:
             query: A SQL query string.
@@ -311,15 +319,17 @@ class Context(SessionContext):
                         "the new Dataset instead, and prepare the query again"
                     )
                 values = new.transpose(*old.dims).values
-                # A table works out which values are NULL (NaN) when it is
-                # registered, so a write must keep its NaNs in place.
-                if values.dtype.kind in "fc" and not np.array_equal(
-                    np.isnan(values), np.isnan(target)
+                # A table works out which values are NULL (NaN or NaT) when
+                # it is registered, so a write must keep them in place.
+                missing = _missing(values)
+                if missing is not None and not np.array_equal(
+                    missing, _missing(target)
                 ):
                     raise ValueError(
-                        f"the new values of {name}.{var} have NaN in other "
-                        "places; xarray-sql reads a NaN as NULL, so register "
-                        "the new Dataset instead, and prepare the query again"
+                        f"the new values of {name}.{var} have NaN or NaT in "
+                        "other places; xarray-sql reads them as NULL, so "
+                        "register the new Dataset instead, and prepare the "
+                        "query again"
                     )
                 copies.append((registered[var], ds[var]))
         # Assigning into a registered DataArray writes into its array, which
@@ -335,47 +345,48 @@ class Context(SessionContext):
 class PreparedQuery:
     """A query planned once by [Context.prepare][xarray_sql.Context.prepare].
 
-    Call it to run the query, and get its rows as a ``pyarrow.Table``
-    ([to_dataset][xarray_sql.to_dataset] turns them back into a Dataset).
-    ``query()`` runs it on the values its tables hold now. ``query(w=ds)``
-    first writes ``ds``'s values into the table ``w``.
+    ``query()`` runs it on the values its tables hold now, and returns its
+    rows as a ``pyarrow.Table``. ``query(w=ds)`` first writes ``ds``'s
+    values into the Dataset registered as ``w``, as
+    ``w_ds["v"][...] = ds["v"]`` would, so other queries of ``w`` see them
+    too. ``ds`` must match ``w_ds`` in all but its values: the same data
+    variables, dtypes, dims and coordinates, and NaN or NaT in the same
+    places, since xarray-sql reads them as NULL.
 
-    A write goes into the arrays of the Dataset registered as ``w``, as
-    ``w_ds["v"][...] = ds["v"]`` would, matching dims by name. That Dataset changes
-    too, and so does what any other query of the table returns. The new
-    Dataset must have the registered one's data variables, dtypes, dims and
-    coordinates. Its NaNs must be in the same places too, since xarray-sql
-    reads a NaN as NULL, and a table works out which values are NULL when it
-    is registered. To change anything else, register the new Dataset, and
-    prepare the query again: a prepared query reads the tables that were
-    registered when it was planned, and refuses to write into a name that
-    has been registered again since.
-
-    A plan keeps state from a run: a hash join, for one, keeps the table it
-    built. So each call runs a fresh copy of the plan, decoded from its
-    serialized form, which is much cheaper than planning. Some plans can't
-    be copied that way: a plan that reads a lazy table (a Dask array or a
-    lazily opened file), or one nested too deep to decode. These are
-    planned again on every call, so they return the right rows, without
-    the savings.
+    To change anything else, register the new Dataset and prepare the
+    query again. A call raises if a table the query reads has been
+    registered again since it was prepared. Functions such as ``now()``
+    are evaluated once, when the query is prepared.
     """
 
     def __init__(self, ctx: Context, query: str):
         self._ctx = ctx
         self._query = query
-        # The Datasets a call may write into: those registered now.
-        self._registered = dict(ctx._registered_datasets)
-        self._plan: ExecutionPlan | None = None
+        start = time.perf_counter()
         df = SessionContext.sql(ctx, query)
-        self._schema = df.schema()
         plan = df.execution_plan()
+        planning = time.perf_counter() - start
+        self._schema = df.schema()
+        # The Datasets the query reads, as they are registered now.
+        self._registered = {
+            name: ctx._registered_datasets[name]
+            for name in _tables_read(df.logical_plan())
+            if name in ctx._registered_datasets
+        }
+        # A plan keeps state from a run (a hash join keeps the table it
+        # built), so each call runs a fresh copy of it, decoded from its
+        # serialized form. Copying a plan copies its in-memory tables, so
+        # over large ones it's slower than planning again; a plan that reads
+        # a lazy table, or is nested deeper than protobuf decodes, can't be
+        # copied at all. Either way, each call plans the query again.
+        self._plan: ExecutionPlan | None = None
+        start = time.perf_counter()
         try:
             _copy(ctx, plan)
         except Exception:  # noqa: BLE001 - DataFusion raises a bare Exception
-            # It reads a table the plan's serialized form can't hold, or is
-            # nested deeper than protobuf decodes.
             return
-        self._plan = plan
+        if time.perf_counter() - start < planning:
+            self._plan = plan
 
     def __call__(self, **tables: xr.Dataset) -> pa.Table:
         """Run the query, after writing each Dataset given into the table
@@ -390,19 +401,18 @@ class PreparedQuery:
         for name in tables:
             if name not in self._registered:
                 raise ValueError(
-                    f"no Dataset was registered as {name!r} when the query "
-                    "was prepared"
+                    f"the query reads no Dataset registered as {name!r} "
+                    "when it was prepared"
                 )
-            now = self._ctx._registered_datasets.get(name)
-            if now is not self._registered[name]:
+        for name, registered in self._registered.items():
+            if self._ctx._registered_datasets.get(name) is not registered:
                 raise ValueError(
                     f"{name!r} has been registered again since the query was "
-                    "prepared, and the query reads the table it was planned "
-                    "with; prepare the query again"
+                    "prepared; prepare the query again"
                 )
         self._ctx._write(tables)
         if self._plan is None:
-            return self._ctx.sql(self._query).to_arrow_table()
+            return SessionContext.sql(self._ctx, self._query).to_arrow_table()
         plan = _copy(self._ctx, self._plan)
         batches = [
             batch.to_pyarrow()
@@ -419,6 +429,29 @@ def _copy(ctx: SessionContext, plan: ExecutionPlan) -> ExecutionPlan:
     # reset_plan_states, once it has one, rather than decode it again.
     # `plan` itself never runs, so it has no state to leave behind.
     return ExecutionPlan.from_bytes(ctx, plan.to_bytes())
+
+
+def _tables_read(plan: LogicalPlan) -> set[str]:
+    """The names of the tables ``plan`` scans, through any views."""
+    names = set()
+    stack = [plan]
+    while stack:
+        node = stack.pop()
+        variant = node.to_variant()
+        if isinstance(variant, TableScan):
+            names.add(variant.table_name())
+        stack.extend(node.inputs())
+    return names
+
+
+def _missing(values: np.ndarray) -> np.ndarray | None:
+    """Where ``values`` holds NaN or NaT, which xarray-sql reads as NULL, or
+    ``None`` for a dtype that holds neither."""
+    if values.dtype.kind in "fc":
+        return np.isnan(values)
+    if values.dtype.kind in "mM":
+        return np.isnat(values)
+    return None
 
 
 XarrayContext = Context

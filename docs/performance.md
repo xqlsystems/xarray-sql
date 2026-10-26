@@ -193,10 +193,16 @@ for weights in trajectory:  # Datasets shaped like w's
     rows = step(w=weights)  # a pyarrow.Table
 ```
 
-On a join of two 1,024-row tables, a call takes 0.33 ms, and `ctx.sql`
-takes 0.91 ms (one target partition). A write must keep the table's
-shape, dtypes, coordinates and NaN positions. A plan over a lazy table
-(Dask or a lazily opened file) is planned again on each call for now.
+On a join of two 1,024-row tables, a call takes 0.41 ms, and `ctx.sql`
+takes 0.99 ms (one target partition). A write must keep the table's
+shape, dtypes, coordinates, and NaN and NaT positions. Functions such as
+`now()` are evaluated once, when the query is prepared.
+
+The savings are for small tables. Each call runs a copy of the plan,
+which copies the in-memory tables it reads. Where that's slower than
+planning, as it is over tables of more than about a megabyte, a call
+plans the query again and runs as fast as `ctx.sql`. So does a call of
+a plan over a lazy table (Dask or a lazily opened file).
 
 ## Round-trip faster with ORDER BY
 

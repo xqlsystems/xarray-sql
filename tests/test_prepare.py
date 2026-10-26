@@ -1,5 +1,7 @@
 """Tests for queries planned once and run many times (`Context.prepare`)."""
 
+import time
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -135,3 +137,56 @@ def test_a_write_needs_the_table_the_query_was_planned_with(ctx):
     ctx.from_dataset("a", _a(np.ones((4, 3))))
     with pytest.raises(ValueError, match="registered again"):
         query(a=_a(np.ones((4, 3))))
+
+
+def _times(*days):
+    t = np.array(
+        [np.datetime64("NaT") if d is None else np.datetime64(d) for d in days],
+        dtype="datetime64[ns]",
+    )
+    return xr.Dataset({"t": ("i", t)}, coords={"i": np.arange(len(t))})
+
+
+def test_a_write_must_keep_nat_in_place():
+    ctx = Context()
+    ctx.from_dataset("a", _times("2000-01-01", None, "2000-01-03"))
+    query = ctx.prepare("SELECT COUNT(t) AS n, MIN(t) AS m FROM a")
+    with pytest.raises(ValueError, match="NaT"):
+        query(a=_times(None, "2000-01-02", "2000-01-03"))
+    rows = query(a=_times("2000-01-04", None, "2000-01-02")).to_pydict()
+    assert rows["n"] == [2]
+    assert str(rows["m"][0]) == "2000-01-02 00:00:00"
+
+
+def test_a_query_reads_its_tables_as_they_were_prepared():
+    pytest.importorskip("dask")
+    ctx = Context()
+    ctx.from_dataset("a", _a(np.ones((4, 3))).chunk({"i": 2}))
+    query = ctx.prepare("SELECT SUM(v) AS s FROM a")
+    ctx.deregister_table("a")
+    ctx.from_dataset("a", _a(np.full((4, 3), 2.0)))
+    with pytest.raises(ValueError, match="registered again"):
+        query()
+
+
+def test_a_table_replaced_by_datafusion_counts_as_registered_again(ctx):
+    query = ctx.prepare(JOIN)
+    ctx.deregister_table("a")
+    ctx.register_record_batches("a", [ctx.sql("SELECT * FROM b").collect()])
+    with pytest.raises(ValueError, match="registered again"):
+        query()
+
+
+def test_a_table_the_query_doesnt_read_can_be_registered_again(ctx):
+    query = ctx.prepare("SELECT SUM(v) AS s FROM a")
+    want = query()
+    ctx.deregister_table("b")
+    ctx.from_dataset("b", _b(np.ones((4, 3))))
+    assert query().equals(want)
+
+
+def test_now_is_the_time_the_query_was_prepared(ctx):
+    query = ctx.prepare("SELECT now() AS t")
+    first = query()
+    time.sleep(0.01)
+    assert query().equals(first)
