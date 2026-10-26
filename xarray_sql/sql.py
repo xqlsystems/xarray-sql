@@ -19,6 +19,7 @@ from .df import (
     resolve_table_names,
     shared_coord_arrays,
 )
+from ._native import share as _share_sql
 from .ds import XarrayDataFrame
 from .reader import _in_memory_partitions, read_xarray_table
 
@@ -380,45 +381,35 @@ class PreparedQuery:
     To change anything else, register the new Dataset and prepare the
     query again. A call raises if a table the query reads has been
     registered again since it was prepared. Functions such as ``now()``
-    are evaluated once, when the query is prepared.
+    are evaluated once, when the query is prepared. A CTE or view the
+    query reads more than once runs once per call.
     """
 
     def __init__(self, ctx: Context, query: str):
         self._ctx = ctx
-        start = time.perf_counter()
-        df = SessionContext.sql(ctx, query)
-        plan = df.execution_plan()
-        planning = time.perf_counter() - start
-        self._schema = df.schema()
-        # Planned again from its optimized form, the query reads the tables
-        # it was prepared with, and functions such as now() keep the values
-        # they were folded into.
-        self._optimized = df.optimized_logical_plan()
+        # Each CTE or view read more than once runs as a step of its own,
+        # whose rows are stored, under a name of this query's, as a table
+        # the later steps and the query read.
+        shared = _share(ctx, query, f"_xql_{uuid.uuid4().hex}_")
+        steps, query = shared if shared is not None else ([], query)
+        self._steps = []
+        for name, sql in steps:
+            step = _Statement(ctx, sql)
+            self._steps.append((step, _Stored(ctx, name, step())))
+        self._query = _Statement(ctx, query)
+        stored = {name for name, _ in steps}
         # Each table the query reads, by how often its name had been
         # deregistered; and of those, the Datasets a call may write into.
         self._read = {
             name: ctx._deregistrations.get(name, 0)
-            for name in _tables_read(df.logical_plan())
+            for statement in [step for step, _ in self._steps] + [self._query]
+            for name in statement.reads - stored
         }
         self._registered = {
             name: ctx._registered_datasets[name]
             for name in self._read
             if name in ctx._registered_datasets
         }
-        # A plan keeps state from a run (a hash join keeps the table it
-        # built), so each call runs a fresh copy of it, decoded from its
-        # serialized form. Copying a plan copies its in-memory tables, so
-        # over large ones it's slower than planning again; a plan that reads
-        # a lazy table, or is nested deeper than protobuf decodes, can't be
-        # copied at all. Either way, each call plans the query again.
-        self._plan: ExecutionPlan | None = None
-        start = time.perf_counter()
-        try:
-            _copy(ctx, plan)
-        except Exception:  # noqa: BLE001 - DataFusion raises a bare Exception
-            return
-        if time.perf_counter() - start < planning:
-            self._plan = plan
 
     def __call__(self, **tables: xr.Dataset) -> pa.Table:
         """Run the query, after writing each Dataset given into the table
@@ -443,6 +434,55 @@ class PreparedQuery:
                     "prepared; prepare the query again"
                 )
         self._ctx._write(tables)
+        for i, (step, stored) in enumerate(self._steps):
+            rows = step()
+            if not stored.write(rows):
+                # The rows don't fit the table the later statements were
+                # planned over, so store them in a new one and plan those
+                # statements again.
+                stored.replace(rows)
+                for j in range(i + 1, len(self._steps)):
+                    later, stored = self._steps[j]
+                    later = _Statement(self._ctx, later.sql)
+                    stored.replace(later())
+                    self._steps[j] = (later, stored)
+                self._query = _Statement(self._ctx, self._query.sql)
+                break
+        return self._query()
+
+
+class _Statement:
+    """One query, planned once, to run many times."""
+
+    def __init__(self, ctx: SessionContext, sql: str):
+        self._ctx = ctx
+        self.sql = sql
+        start = time.perf_counter()
+        df = SessionContext.sql(ctx, sql)
+        plan = df.execution_plan()
+        planning = time.perf_counter() - start
+        self._schema = df.schema()
+        # Planned again from its optimized form, the query reads the tables
+        # it was prepared with, and functions such as now() keep the values
+        # they were folded into.
+        self._optimized = df.optimized_logical_plan()
+        self.reads = _tables_read(df.logical_plan())
+        # A plan keeps state from a run (a hash join keeps the table it
+        # built), so each call runs a fresh copy of it, decoded from its
+        # serialized form. Copying a plan copies its in-memory tables, so
+        # over large ones it's slower than planning again; a plan that reads
+        # a lazy table, or is nested deeper than protobuf decodes, can't be
+        # copied at all. Either way, each call plans the query again.
+        self._plan: ExecutionPlan | None = None
+        start = time.perf_counter()
+        try:
+            _copy(ctx, plan)
+        except Exception:  # noqa: BLE001 - DataFusion raises a bare Exception
+            return
+        if time.perf_counter() - start < planning:
+            self._plan = plan
+
+    def __call__(self) -> pa.Table:
         if self._plan is None:
             df = self._ctx.create_dataframe_from_logical_plan(self._optimized)
             return df.to_arrow_table()
@@ -453,6 +493,79 @@ class PreparedQuery:
             for batch in self._ctx.execute(plan, partition)
         ]
         return pa.Table.from_batches(batches, self._schema)
+
+
+class _Stored:
+    """A step's rows, stored as a table that the statements after it read.
+
+    Its numeric columns share memory with arrays it owns, so a step's new
+    rows can be written into the table in place.
+    """
+
+    def __init__(self, ctx: SessionContext, name: str, rows: pa.Table):
+        self._ctx = ctx
+        self._name = name
+        self.replace(rows)
+
+    def replace(self, rows: pa.Table) -> None:
+        """Store ``rows`` as a new table under the name."""
+        self._schema = rows.schema
+        self._rows = rows.num_rows
+        self._arrays = [_writable(column) for column in rows.columns]
+        columns = [
+            pa.array(array) if array is not None else column.combine_chunks()
+            for array, column in zip(self._arrays, rows.columns)
+        ]
+        batch = pa.RecordBatch.from_arrays(columns, schema=self._schema)
+        SessionContext.deregister_table(self._ctx, self._name)
+        SessionContext.register_record_batches(self._ctx, self._name, [[batch]])
+
+    def write(self, rows: pa.Table) -> bool:
+        """Write ``rows`` into the table in place, if they fit it: the same
+        schema and number of rows, in numeric columns without nulls."""
+        if rows.schema != self._schema or rows.num_rows != self._rows:
+            return False
+        if any(
+            array is None or column.null_count
+            for array, column in zip(self._arrays, rows.columns)
+        ):
+            return False
+        for array, column in zip(self._arrays, rows.columns):
+            array[...] = column.to_numpy()
+        return True
+
+
+def _writable(column: pa.ChunkedArray) -> np.ndarray | None:
+    """A copy of ``column`` that pyarrow can share memory with, if it's
+    numeric and has no nulls."""
+    numeric = pa.types.is_integer(column.type) or pa.types.is_floating(column.type)
+    if not numeric or column.null_count:
+        return None
+    return np.array(column.to_numpy(), copy=True)
+
+
+def _share(
+    ctx: SessionContext, query: str, prefix: str
+) -> tuple[list[tuple[str, str]], str] | None:
+    """``query`` as steps that each run a CTE or view it reads more than
+    once, and the query reading what they store: see ``_native.share``."""
+    try:
+        views = SessionContext.sql(
+            ctx,
+            "SELECT v.table_name, v.definition FROM information_schema.views v"
+            " JOIN information_schema.df_settings c"
+            " ON c.name = 'datafusion.catalog.default_catalog'"
+            " AND v.table_catalog = c.value"
+            " JOIN information_schema.df_settings s"
+            " ON s.name = 'datafusion.catalog.default_schema'"
+            " AND v.table_schema = s.value"
+            " WHERE v.definition IS NOT NULL",
+        ).to_pydict()
+    except Exception:  # noqa: BLE001 - no information schema to read
+        views = {"table_name": [], "definition": []}
+    return _share_sql(
+        query, dict(zip(views["table_name"], views["definition"])), prefix
+    )
 
 
 def _copy(ctx: SessionContext, plan: ExecutionPlan) -> ExecutionPlan:
