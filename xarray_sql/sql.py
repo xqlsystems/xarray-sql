@@ -12,6 +12,7 @@ from datafusion.plan import ExecutionPlan, LogicalPlan
 from types import ModuleType
 
 from . import cftime as cft
+from ._native import share as _share_sql
 from .df import (
     Chunks,
     TableNames,
@@ -19,7 +20,6 @@ from .df import (
     resolve_table_names,
     shared_coord_arrays,
 )
-from ._native import share as _share_sql
 from .ds import XarrayDataFrame
 from .reader import _in_memory_partitions, read_xarray_table
 
@@ -525,12 +525,12 @@ class _Stored:
         schema and number of rows, in numeric columns without nulls."""
         if rows.schema != self._schema or rows.num_rows != self._rows:
             return False
-        if any(
-            array is None or column.null_count
-            for array, column in zip(self._arrays, rows.columns)
+        arrays = [array for array in self._arrays if array is not None]
+        if len(arrays) < len(self._arrays) or any(
+            column.null_count for column in rows.columns
         ):
             return False
-        for array, column in zip(self._arrays, rows.columns):
+        for array, column in zip(arrays, rows.columns):
             array[...] = column.to_numpy()
         return True
 
@@ -538,7 +538,9 @@ class _Stored:
 def _writable(column: pa.ChunkedArray) -> np.ndarray | None:
     """A copy of ``column`` that pyarrow can share memory with, if it's
     numeric and has no nulls."""
-    numeric = pa.types.is_integer(column.type) or pa.types.is_floating(column.type)
+    numeric = pa.types.is_integer(column.type) or pa.types.is_floating(
+        column.type
+    )
     if not numeric or column.null_count:
         return None
     return np.array(column.to_numpy(), copy=True)
@@ -563,9 +565,10 @@ def _share(
         ).to_pydict()
     except Exception:  # noqa: BLE001 - no information schema to read
         views = {"table_name": [], "definition": []}
-    return _share_sql(
+    shared: tuple[list[tuple[str, str]], str] | None = _share_sql(
         query, dict(zip(views["table_name"], views["definition"])), prefix
     )
+    return shared
 
 
 def _copy(ctx: SessionContext, plan: ExecutionPlan) -> ExecutionPlan:
