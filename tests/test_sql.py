@@ -37,7 +37,8 @@ def test_a_small_query_is_not_split_across_partitions():
 
 def test_a_config_given_is_used_as_it_is():
     config = SessionConfig().with_target_partitions(4)
-    assert "RepartitionExec" in _small_join_plan(xarray_sql.Context(config))
+    plan = _small_join_plan(xarray_sql.Context(config))
+    assert "RepartitionExec: partitioning=RoundRobinBatch(4)" in plan
 
 
 def test_a_context_has_the_information_schema():
