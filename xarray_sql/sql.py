@@ -253,7 +253,7 @@ class Context(SessionContext):
         replaced = _table_replaced(query)
         existed = replaced is not None and self.table_exist(replaced)
         df = super().sql(query, *args, **kwargs)
-        if existed:
+        if replaced is not None and existed:
             # DataFusion keeps a quoted name's case, and lowers an unquoted
             # one.
             quoted = replaced.startswith('"')
