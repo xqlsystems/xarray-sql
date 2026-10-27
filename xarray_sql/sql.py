@@ -1,9 +1,14 @@
+import re
+import time
 import uuid
 
+import numpy as np
 import pyarrow as pa
 import xarray as xr
 from datafusion import SessionConfig, SessionContext
 from datafusion.catalog import Schema
+from datafusion.expr import TableScan
+from datafusion.plan import ExecutionPlan, LogicalPlan
 from types import ModuleType
 
 from . import cftime as cft
@@ -60,6 +65,11 @@ class Context(SessionContext):
         # in SQL (e.g. ``"air"`` for a uniform-dim Dataset, or
         # ``"era5.surface"`` for one entry from a multi-dim-group split).
         self._registered_datasets: dict[str, xr.Dataset] = {}
+        # How many times each name's table has been removed or replaced.
+        # DataFusion refuses to register a name that's taken, so a table
+        # registered again from Python was deregistered first; SQL that
+        # replaces or drops a table counts too (see sql()).
+        self._deregistrations: dict[str, int] = {}
         # With pyproj installed, every context speaks CRS out of the box:
         # reproject(x, y, src_crs, dst_crs), à la PostGIS ST_Transform.
         if _proj is not None:
@@ -238,8 +248,259 @@ class Context(SessionContext):
         Returns:
             An [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame] wrapping the DataFusion DataFrame.
         """
-        inner = super().sql(query, *args, **kwargs)
+        # DataFusion runs a statement that replaces or drops a table as it
+        # plans it, without deregistering the table.
+        replaced = _table_replaced(query)
+        existed = replaced is not None and self.table_exist(replaced)
+        df = super().sql(query, *args, **kwargs)
+        if replaced is not None and existed:
+            # DataFusion keeps a quoted name's case, and lowers an unquoted
+            # one.
+            quoted = replaced.startswith('"')
+            self._forget(replaced[1:-1] if quoted else replaced.lower())
+        return self._wrap(df)
+
+    def deregister_table(self, name: str) -> None:
+        """Remove a table from the session, and forget the Dataset
+        registered under its name."""
+        super().deregister_table(name)
+        self._forget(name)
+
+    def _forget(self, name: str) -> None:
+        """Forget the Dataset registered as ``name``, whose table has been
+        removed or replaced."""
+        self._registered_datasets.pop(name, None)
+        self._deregistrations[name] = self._deregistrations.get(name, 0) + 1
+
+    def prepare(self, query: str) -> "PreparedQuery":
+        """Plan a query once, to run it many times.
+
+        A training loop runs the same query on every step, and only the
+        values in its tables change. DataFusion plans a query each time it
+        runs, and for a query over small tables, planning can take far
+        longer than running. ``prepare`` plans the query once, and calling
+        the result runs that plan, as ``jax.jit`` traces a function once
+        and runs the compiled function after that. A call can first write
+        new values into the query's tables::
+
+            step = ctx.prepare(
+                "SELECT x.i, SUM(x.v * w.v) AS y "
+                "FROM x JOIN w ON x.j = w.j GROUP BY x.i"
+            )
+            for weights in trajectory:  # Datasets shaped like w's
+                rows = step(w=weights)
+
+        See [PreparedQuery][xarray_sql.PreparedQuery] for what a call
+        can write.
+
+        Args:
+            query: A SQL query string.
+
+        Returns:
+            A [PreparedQuery][xarray_sql.PreparedQuery]; call it to run
+            the query.
+        """
+        return PreparedQuery(self, query)
+
+    def _write(self, writes: dict[str, xr.Dataset]) -> None:
+        """Write each Dataset's values into the arrays of the Dataset
+        registered under its name, all or none of them."""
+        copies = []
+        for name, ds in writes.items():
+            registered = self._registered_datasets[name]
+            if set(ds.data_vars) != set(registered.data_vars):
+                raise ValueError(
+                    f"{name!r} has the data variables "
+                    f"{sorted(registered.data_vars)}, and the new Dataset "
+                    f"has {sorted(ds.data_vars)}"
+                )
+            for coord in set(registered.coords) | set(ds.coords):
+                if coord not in ds.coords or not ds[coord].equals(
+                    registered.coords.get(coord)
+                ):
+                    raise ValueError(
+                        f"the new Dataset for {name!r} has other coordinates "
+                        f"({coord!r}); register it again, and prepare the "
+                        "query again"
+                    )
+            for var in registered.data_vars:
+                old, new = registered[var].variable, ds[var].variable
+                # Dims are matched by name, as xarray matches them.
+                if set(new.dims) != set(old.dims) or new.dtype != old.dtype:
+                    raise ValueError(
+                        f"{name}.{var} is {old.dtype} over {old.dims}, and "
+                        f"the new values are {new.dtype} over {new.dims}"
+                    )
+                target = old.data
+                # A table reads a NumPy array's memory, shared or on every
+                # scan; a Dask array or a lazily opened file has none to
+                # write into.
+                if not (
+                    isinstance(target, np.ndarray) and target.flags.writeable
+                ):
+                    raise ValueError(
+                        f"{name}.{var} isn't a writable NumPy array; register "
+                        "the new Dataset instead, and prepare the query again"
+                    )
+                values = new.transpose(*old.dims).values
+                # A table works out which values are NULL (NaN or NaT) when
+                # it is registered, so a write must keep them in place.
+                missing = _missing(values)
+                if missing is not None and not np.array_equal(
+                    missing, _missing(target)
+                ):
+                    raise ValueError(
+                        f"the new values of {name}.{var} have NaN or NaT in "
+                        "other places; xarray-sql reads them as NULL, so "
+                        "register the new Dataset instead, and prepare the "
+                        "query again"
+                    )
+                copies.append((registered[var], ds[var]))
+        # Assigning into a registered DataArray writes into its array, which
+        # the table shares.
+        for target, values in copies:
+            target[...] = values
+
+    def _wrap(self, inner) -> XarrayDataFrame:
+        """Wrap a DataFusion DataFrame so it can round-trip to xarray."""
         return XarrayDataFrame(inner, templates=self._registered_datasets)
+
+
+class PreparedQuery:
+    """A query planned once by [Context.prepare][xarray_sql.Context.prepare].
+
+    ``query()`` runs it on the values its tables hold now, and returns its
+    rows as a ``pyarrow.Table``. ``query(w=ds)`` first writes ``ds``'s
+    values into the Dataset registered as ``w``, as
+    ``w_ds["v"][...] = ds["v"]`` would, so other queries of ``w`` see them
+    too. ``ds`` must match ``w_ds`` in all but its values: the same data
+    variables, dtypes, dims and coordinates, and NaN or NaT in the same
+    places, since xarray-sql reads them as NULL.
+
+    To change anything else, register the new Dataset and prepare the
+    query again. A call raises if a table the query reads has been
+    registered again since it was prepared. Functions such as ``now()``
+    are evaluated once, when the query is prepared.
+    """
+
+    def __init__(self, ctx: Context, query: str):
+        self._ctx = ctx
+        start = time.perf_counter()
+        df = SessionContext.sql(ctx, query)
+        plan = df.execution_plan()
+        planning = time.perf_counter() - start
+        self._schema = df.schema()
+        # Planned again from its optimized form, the query reads the tables
+        # it was prepared with, and functions such as now() keep the values
+        # they were folded into.
+        self._optimized = df.optimized_logical_plan()
+        # Each table the query reads, by how often its name had been
+        # deregistered; and of those, the Datasets a call may write into.
+        self._read = {
+            name: ctx._deregistrations.get(name, 0)
+            for name in _tables_read(df.logical_plan())
+        }
+        self._registered = {
+            name: ctx._registered_datasets[name]
+            for name in self._read
+            if name in ctx._registered_datasets
+        }
+        # A plan keeps state from a run (a hash join keeps the table it
+        # built), so each call runs a fresh copy of it, decoded from its
+        # serialized form. Copying a plan copies its in-memory tables, so
+        # over large ones it's slower than planning again; a plan that reads
+        # a lazy table, or is nested deeper than protobuf decodes, can't be
+        # copied at all. Either way, each call plans the query again.
+        self._plan: ExecutionPlan | None = None
+        start = time.perf_counter()
+        try:
+            _copy(ctx, plan)
+        except Exception:  # noqa: BLE001 - DataFusion raises a bare Exception
+            return
+        if time.perf_counter() - start < planning:
+            self._plan = plan
+
+    def __call__(self, **tables: xr.Dataset) -> pa.Table:
+        """Run the query, after writing each Dataset given into the table
+        of its name.
+
+        Args:
+            **tables: A Dataset for each table to write new values into.
+
+        Returns:
+            The query's rows.
+        """
+        for name in tables:
+            if name not in self._registered:
+                raise ValueError(
+                    f"the query reads no Dataset registered as {name!r} "
+                    "when it was prepared"
+                )
+        for name, deregistrations in self._read.items():
+            if self._ctx._deregistrations.get(name, 0) != deregistrations:
+                raise ValueError(
+                    f"{name!r} has been registered again since the query was "
+                    "prepared; prepare the query again"
+                )
+        self._ctx._write(tables)
+        if self._plan is None:
+            df = self._ctx.create_dataframe_from_logical_plan(self._optimized)
+            return df.to_arrow_table()
+        plan = _copy(self._ctx, self._plan)
+        batches = [
+            batch.to_pyarrow()
+            for partition in range(plan.partition_count)
+            for batch in self._ctx.execute(plan, partition)
+        ]
+        return pa.Table.from_batches(batches, self._schema)
+
+
+def _copy(ctx: SessionContext, plan: ExecutionPlan) -> ExecutionPlan:
+    """A copy of ``plan`` with none of its state from a run, reading its
+    in-memory tables' values as they are now."""
+    # TODO(#283): reset the plan's state with datafusion-python's binding of
+    # reset_plan_states, once it has one, rather than decode it again.
+    # `plan` itself never runs, so it has no state to leave behind.
+    return ExecutionPlan.from_bytes(ctx, plan.to_bytes())
+
+
+def _tables_read(plan: LogicalPlan) -> set[str]:
+    """The names of the tables ``plan`` scans, through any views."""
+    names = set()
+    stack = [plan]
+    while stack:
+        node = stack.pop()
+        variant = node.to_variant()
+        if isinstance(variant, TableScan):
+            names.add(variant.table_name())
+        stack.extend(node.inputs())
+    return names
+
+
+_TABLE_DDL = re.compile(
+    # Any comments before the statement, then the statement.
+    r"(?:\s+|--[^\n]*|/\*.*?\*/)*"
+    r"(?:CREATE\s+OR\s+REPLACE\s+(?:EXTERNAL\s+)?TABLE|DROP\s+TABLE)"
+    r"\s+(?:IF\s+EXISTS\s+)?(\"[^\"]+\"|[\w.]+)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _table_replaced(query: str) -> str | None:
+    """The name of the table ``query`` replaces or drops, as it's written,
+    or ``None`` for any other statement."""
+    match = _TABLE_DDL.match(query)
+    return None if match is None else match.group(1)
+
+
+def _missing(values: np.ndarray) -> np.ndarray | None:
+    """Where ``values`` holds NaN or NaT, which xarray-sql reads as NULL, or
+    ``None`` for a dtype that holds neither."""
+    if values.dtype.kind in "fc":
+        return np.isnan(values)
+    if values.dtype.kind in "mM":
+        return np.isnat(values)
+    return None
 
 
 XarrayContext = Context
