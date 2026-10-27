@@ -26,7 +26,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.72">
+      <meta name="generator" content="zensical-0.0.73">
     
     
       
@@ -698,6 +698,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#plan-once-prepare-a-query-you-run-many-times" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Plan once: prepare a query you run many times
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#round-trip-faster-with-order-by" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1013,6 +1024,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#plan-once-prepare-a-query-you-run-many-times" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Plan once: prepare a query you run many times
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#round-trip-faster-with-order-by" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1202,6 +1224,27 @@ sorted runs) and zone maps prune range predicates.</p>
 it or nothing happens:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">ctx</span><span class="o">.</span><span class="n">sql</span><span class="p">(</span><span class="s2">"CREATE OR REPLACE TABLE grid_cube AS ..."</span><span class="p">)</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
 </span></code></pre></div>
+<h2 id="plan-once-prepare-a-query-you-run-many-times">Plan once: prepare a query you run many times<a class="headerlink" href="#plan-once-prepare-a-query-you-run-many-times" title="Permanent link">&para;</a></h2>
+<p>DataFusion plans a query each time it runs. For a query over small
+tables, as in a training loop, planning can take longer than running.
+<code>Context.prepare</code> plans the query once. A call runs that plan on the
+tables' current values, and can first write new values into a table
+in place:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">step</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="s2">"SELECT x.i, SUM(x.v * w.v) AS y FROM x JOIN w ON x.j = w.j GROUP BY x.i"</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="p">)</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">for</span> <span class="n">weights</span> <span class="ow">in</span> <span class="n">trajectory</span><span class="p">:</span>  <span class="c1"># Datasets shaped like w's</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">rows</span> <span class="o">=</span> <span class="n">step</span><span class="p">(</span><span class="n">w</span><span class="o">=</span><span class="n">weights</span><span class="p">)</span>  <span class="c1"># a pyarrow.Table</span>
+</span></code></pre></div>
+<p>On a join of two 1,024-row tables, a call takes 0.41 ms, and <code>ctx.sql</code>
+takes 0.99 ms (one target partition). A write must keep the table's
+shape, dtypes, coordinates, and NaN and NaT positions. Functions such as
+<code>now()</code> are evaluated once, when the query is prepared.</p>
+<p>The savings are for small tables. Each call runs a copy of the plan,
+which copies the in-memory tables it reads. Where that's slower than
+planning, as it is over tables of more than about a megabyte, a call
+plans the query again and runs as fast as <code>ctx.sql</code>. So does a call of
+a plan over a lazy table (Dask or a lazily opened file).</p>
 <h2 id="round-trip-faster-with-order-by">Round-trip faster with ORDER BY<a class="headerlink" href="#round-trip-faster-with-order-by" title="Permanent link">&para;</a></h2>
 <p>Results that arrive <strong>grid-ordered</strong> — sorted by the dimension columns,
 outermost first — reconstruct with a single reshape; unordered results
@@ -1232,11 +1275,11 @@ connection-local: <code>con.cursor()</code> does not inherit them, and one
 connection's result slot is not thread-safe. For multithreaded
 querying, give each thread its own cursor and register the <em>same</em>
 dataset object on it:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">dataset</span> <span class="o">=</span> <span class="n">xql</span><span class="o">.</span><span class="n">arrow_dataset</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">worker</span><span class="p">():</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">cur</span> <span class="o">=</span> <span class="n">con</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">cur</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="s2">"t"</span><span class="p">,</span> <span class="n">dataset</span><span class="p">)</span>   <span class="c1"># cheap; shares the pruning index</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="o">...</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">dataset</span> <span class="o">=</span> <span class="n">xql</span><span class="o">.</span><span class="n">arrow_dataset</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">worker</span><span class="p">():</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="n">cur</span> <span class="o">=</span> <span class="n">con</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">cur</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="s2">"t"</span><span class="p">,</span> <span class="n">dataset</span><span class="p">)</span>   <span class="c1"># cheap; shares the pruning index</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="o">...</span>
 </span></code></pre></div>
 <p>The dataset object itself is safe to share across threads
 (verified under concurrent query load).</p>
@@ -1392,7 +1435,7 @@ memory bounded; the lazy round-trip's windows already do this.</p>
       <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["announce.dismiss","content.action.edit","content.action.view","content.code.annotate","content.code.copy","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.sections","navigation.top","navigation.tracking","search.highlight","search.share","search.suggest","toc.follow"],"redirect":null,"search":"../assets/javascripts/workers/search.c47bb847.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"provider":"mike"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.10ee5ab6.min.js"></script>
+      <script src="../assets/javascripts/bundle.77dd0ce9.min.js"></script>
       
     
   </body>
