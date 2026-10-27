@@ -1,0 +1,202 @@
+# The geospatial benchmark cases (benchmarks/geospatial) on every ADBC
+# database, against real ARCO-ERA5 and WeatherBench 2 data. Each case
+# checks its SQL answer against an xarray reference, so a cell passes
+# only if the database computed the right numbers.
+#
+# One job per database, in parallel; each starts only its own server.
+# Runs daily and by hand; results land in the job summary.
+name: geospatial on ADBC databases
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  pull_request:
+    paths:
+      - ".github/workflows/geospatial-adbc.yml"
+      - "benchmarks/geospatial/_engines.py"
+      - "tests/_adbc.py"
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: Comma-separated cases
+        default: 02_climatology,03_zonal_mean,04_anomaly,05_forecast_skill,06_zonal_vector
+
+# A newer push to the same pull request supersedes a running check.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  geospatial:
+    name: ${{ matrix.engine }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - engine: adbc-sqlite
+          - engine: adbc-duckdb
+          - engine: adbc-chdb
+          - engine: adbc-datafusion
+          - engine: adbc-postgresql
+            image: postgres:18
+            port: 5432
+            uri: postgresql://postgres:xql@localhost:5432/postgres
+          - engine: adbc-mysql
+            image: mysql:8.4
+            port: 3306
+            uri: mysql://root:xql@127.0.0.1:3306/xql
+          - engine: adbc-mariadb
+            image: mariadb:11.4
+            port: 3306
+            uri: mysql://root:xql@127.0.0.1:3306/xql
+          - engine: adbc-clickhouse
+            image: clickhouse/clickhouse-server:26.8
+            port: 8123
+            uri: http://localhost:8123/?user=default&password=xql
+          # Started by a step below, to mount a catalog with a larger
+          # memory limit (a service container cannot mount the checkout).
+          # Trino's driver ingests batch by batch (about 10k rows/s), so
+          # the global-day cases (03, 06: 25M rows each) cannot finish in
+          # a job; it runs the regional ones.
+          - engine: adbc-trino
+            uri: http://ci@localhost:8080?catalog=memory&schema=default
+            cases: 02_climatology,04_anomaly,05_forecast_skill
+          - engine: adbc-mssql
+            # Floating tags pinned to the digests of the last green run.
+            image: mcr.microsoft.com/mssql/server:2022-latest@sha256:4402d880dd4c34bfa7d8705e56a86cd6c88da80a1f6bbbe741f999e76264a090
+            port: 1433
+            uri: sqlserver://sa:XqlPassw0rd@localhost:1433?database=master
+          - engine: adbc-flightsql
+            image: gizmodata/gizmosql:latest@sha256:7d42a760fe9ba0bf6afb3580a7d962125eb68a3082d19768e13508a4db7c8a96
+            port: 31337
+            uri: grpc://localhost:31337
+    services:
+      # An empty image (the in-process databases) starts no container.
+      # Each image reads only its own variables below.
+      db:
+        image: ${{ matrix.image }}
+        ports:
+          - ${{ matrix.port || 1 }}:${{ matrix.port || 1 }}
+        env:
+          POSTGRES_PASSWORD: xql
+          MYSQL_ROOT_PASSWORD: xql
+          MYSQL_DATABASE: xql
+          MARIADB_ROOT_PASSWORD: xql
+          MARIADB_DATABASE: xql
+          CLICKHOUSE_PASSWORD: xql
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: XqlPassw0rd
+          TLS_ENABLED: "0"
+          GIZMOSQL_USERNAME: xql
+          GIZMOSQL_PASSWORD: xql
+    env:
+      VIRTUAL_ENV: ${{ github.workspace }}/.venv
+      XARRAY_SQL_TEST_FLIGHTSQL_USERNAME: xql
+      XARRAY_SQL_TEST_FLIGHTSQL_PASSWORD: xql
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Configure sccache
+        run: |
+          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install xarray_sql
+        run: uv sync --dev --no-install-package xarray-sql
+      - name: build rust
+        run: uv run --no-project maturin develop --uv
+
+      - name: Install ADBC drivers
+        run: |
+          # Pinned, as in the adbc databases workflow.
+          uv pip install dbc adbc-driver-postgresql==1.12.0 \
+            adbc-driver-flightsql==1.12.0 psutil
+          for driver in chdb=26.7.0 datafusion=0.27.0 mysql=0.6.1 \
+              clickhouse=0.1.1 trino=0.5.3 mssql=1.6.2; do
+            uv run --no-project dbc install "$driver"
+          done
+
+      - name: Start Trino
+        if: matrix.engine == 'adbc-trino'
+        run: >-
+          docker run -d --name trino -p 8080:8080
+          -v "$PWD/.github/trino/catalog:/etc/trino/catalog:ro"
+          -e JAVA_TOOL_OPTIONS=-Xmx10G
+          trinodb/trino:483
+
+      - name: Point the tests' backend table at the server
+        if: matrix.uri
+        run: |
+          name="${{ matrix.engine }}"
+          name="${name#adbc-}"
+          echo "XARRAY_SQL_TEST_${name^^}_URI=${{ matrix.uri }}" >> "$GITHUB_ENV"
+
+      - name: Wait for the server
+        if: matrix.uri
+        run: |
+          uv run --no-project python - <<'EOF'
+          import os, sys, time
+          sys.path.insert(0, os.getcwd())
+          from tests._adbc import BACKENDS
+          name = "${{ matrix.engine }}".removeprefix("adbc-")
+          backend = next(b for b in BACKENDS if b.name == name)
+          for attempt in range(80):
+              try:
+                  con = backend.connect()
+                  cur = con.cursor()
+                  cur.execute("SELECT 1")
+                  cur.fetchall()
+                  print(f"{name} is up")
+                  break
+              except Exception as exc:
+                  print(f"waiting for {name}: {str(exc)[:120]}")
+                  time.sleep(3)
+          else:
+              sys.exit(f"{name} did not start")
+          EOF
+
+      - name: Run the geospatial cases
+        run: |
+          mkdir -p results
+          uv run --no-project python benchmarks/geospatial/engine_suite.py \
+            --local --reps 1 \
+            --cases "${{ inputs.cases || matrix.cases || '02_climatology,03_zonal_mean,04_anomaly,05_forecast_skill,06_zonal_vector' }}" \
+            --engines "${{ matrix.engine }}" \
+            --cell-timeout 2700 \
+            --out "results/${{ matrix.engine }}.json" \
+            --jsonl "results/${{ matrix.engine }}.jsonl"
+
+      - name: Diagnose Trino
+        if: always() && matrix.engine == 'adbc-trino'
+        run: |
+          docker inspect trino --format \
+            'status={{.State.Status}} oom_killed={{.State.OOMKilled}} exit={{.State.ExitCode}} restarts={{.RestartCount}}' || true
+          docker exec trino java -XX:+PrintFlagsFinal -version 2>/dev/null \
+            | grep -E ' MaxHeapSize ' || true
+          docker logs trino 2>&1 | grep -iE 'error|exception|outofmemory|killed|server started' | tail -40 || true
+          sudo dmesg | grep -iE 'out of memory|oom|killed process' | tail -20 || true
+          free -g
+
+      - name: Summarize
+        if: always()
+        run: |
+          echo "## ${{ matrix.engine }}" >> "$GITHUB_STEP_SUMMARY"
+          cat "results/${{ matrix.engine }}.md" >> "$GITHUB_STEP_SUMMARY" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: geospatial-${{ matrix.engine }}
+          path: results/
