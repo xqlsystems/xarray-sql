@@ -6,7 +6,7 @@ import xarray as xr
 
 pytest.importorskip("ddxdb")
 
-from ddxdb import DdxError
+from ddxdb import UnsupportedExpression
 
 from xarray_sql import Context, ad
 
@@ -80,6 +80,30 @@ def test_sql_all_shares_one_loss(problem):
     np.testing.assert_allclose(step.to_dataset()["w"].values, w - 0.01 * grad)
 
 
+def test_vjp_matches_closed_form(problem):
+    # Pulled back along the targets, pred = x @ w gives x.T @ y.
+    ctx, x, _, y = problem
+    got = ctx.sql(
+        f"WITH {LOSS}, cotangent AS (SELECT sample, y AS p FROM targets) "
+        "SELECT feature, vjp(pred, w, cotangent) AS w FROM weights "
+        "ORDER BY feature"
+    ).to_dataset()
+    np.testing.assert_allclose(got["w"].values, x.T @ y)
+
+
+def test_jvp_matches_closed_form(problem):
+    # Pushed forward along t, pred = x @ w gives x @ t.
+    ctx, x, _, _ = problem
+    got = ctx.sql(
+        "WITH tangent AS ("
+        "  SELECT feature, CAST(feature AS DOUBLE) AS w FROM weights) "
+        "SELECT x.sample, jvp(SUM(x.x * weights.w), weights.w, tangent) AS p "
+        "FROM data x JOIN weights ON x.feature = weights.feature "
+        "GROUP BY x.sample ORDER BY sample"
+    ).to_dataset()
+    np.testing.assert_allclose(got["p"].values, x @ np.arange(3))
+
+
 def test_stop_gradient_blocks_the_derivative(problem):
     ctx, _, w, _ = problem
     got = ctx.sql(
@@ -91,9 +115,13 @@ def test_stop_gradient_blocks_the_derivative(problem):
 
 
 def test_unsupported_expression_raises(problem):
+    # The loss groups by a value of w, and then reads it.
     ctx, *_ = problem
-    with pytest.raises(DdxError):
+    with pytest.raises(UnsupportedExpression, match="GROUP BY key"):
         ctx.sql(
-            "WITH loss AS (SELECT SUM(w) AS l FROM weights) "
-            "SELECT feature, grad(loss, feature) AS g FROM weights"
+            "WITH buckets AS ("
+            "  SELECT ROUND(w) AS k, SUM(w * w) AS s FROM weights"
+            "  GROUP BY ROUND(w)), "
+            "loss AS (SELECT SUM(k * s) AS l FROM buckets) "
+            "SELECT feature, grad(loss, w) AS g FROM weights"
         ).collect()

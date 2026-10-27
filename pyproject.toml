@@ -136,6 +136,10 @@ dev = [
     "py-spy>=0.4.0",
     "ruff>=0.15.10",
     "maturin>=1.9.1",
+    # The ML demos: ddx's DuckDB backend, at the DuckDB it declares, and
+    # JAX, which the demos check their results against.
+    "ddxdb[duckdb]>=0.4.2,<0.5; sys_platform != 'emscripten'",
+    "jax",
 ]
 
 [tool.uv]

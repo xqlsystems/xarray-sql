@@ -63,8 +63,10 @@ host's physical plan.
 
 To run against a ddx checkout rather than the release, build ddxdb into
 this checkout's `.venv` (`maturin develop --release` in ddx's
-`python/ddxdb`) and run the scripts with `uv run --no-sync`, or the
-venv's `python`: a plain `uv run` or `uv sync` reinstalls the release.
+`python/ddxdb`) and run the scripts with the venv's `python`, as in
+`.venv/bin/python benchmarks/ml/01_attention.py`. `uv run` runs a script
+with inline metadata in an environment of its own, with ddxdb from PyPI,
+and `--no-sync` doesn't change that.
 
 ## The `ml` extra
 
@@ -100,12 +102,14 @@ in its plan.
 | Host | Forward pass | Gradients |
 |---|---|---|
 | `datafusion` | `xarray_sql.Context` | ddx |
-| `duckdb` | DuckDB, through `xql.register` | ddx, with the `duckdb` extra of ddxdb |
+| `duckdb` | DuckDB, through `xql.register` | ddx, with the `duckdb` extra of ddxdb, which pins the DuckDB it supports |
 
 A host that cannot differentiate still runs every forward query, and its
 gradient rows say `no ddx backend`. A gradient that ddx, or the engine
 it plans with, refuses is reported as `refused:` with the error, and a
-refused training step ends that host's training run. To add a host, such as DataFusion with
+refused training step ends that host's training run. Each demo lists the
+refusals it expects, by host and error. Any other refusal fails the run,
+so a refusal that's new is noticed. To add a host, such as DataFusion with
 einfold's optimizer or DuckDB with a GPU extension, write one class in
 `_hosts.py` and add it to `HOSTS`.
 
@@ -138,8 +142,10 @@ read more than once a single time.
 |---|---:|---:|---:|---:|
 | GPT loss, 1 layer, batch 4 | 13,756 | 126 | 3.0 s | 0.063 s |
 
-Setting up each lazy read of a Dataset takes xarray-sql about 1.5 ms, so
-the GPT's 2,989 reads in one forward pass took 6.7 s of its 9.4 s. A small
+Setting up a lazy read of a Dataset takes xarray-sql about 1.5 ms on its
+own (1.7 ms for a `SELECT *` of 1,040 rows, against 0.26 ms for an
+in-memory table). In the GPT's forward pass, which reads its Datasets
+2,989 times, the lazy reads cost 6.7 s of its 9.2 s, about 2.2 ms each. A small
 in-memory Dataset is now an in-memory table, which takes a quarter of a
 millisecond per read. A GPT training step, forward and backward through
 ddx, takes 0.65 s on DataFusion with SGD and 0.74 s with AdamW, a quarter
@@ -169,9 +175,10 @@ of 0.66 s.
 **JAX is the target.** JAX, compiled with `jax.jit` on the same CPU,
 computes the GPT's loss in 0.15 ms and an SGD step in 0.37 ms, and
 attention at 512 tokens in 0.92 ms forward and 2.4 ms with its
-gradients: 300 to 400 times faster than either engine on attention,
-whose time is in running its joins, and thousands of times on the GPT,
-whose time is in planning.
+gradients: 300 to 400 times faster than DataFusion on attention, and up
+to 1,000 times faster than DuckDB on its gradients, whose time is in
+running their joins; and thousands of times faster on the GPT, whose time
+is in planning.
 
 **Attention stores every score.** Causal attention's forward pass at 512
 tokens takes 0.27 s on DataFusion in the window spelling and 0.39 s in the

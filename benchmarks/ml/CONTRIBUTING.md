@@ -33,7 +33,10 @@ is one script, `NN_name.py`, numbered after the last one, with:
 
 1. **Inline script metadata**, copied from the other demos, so that
    `uv run benchmarks/ml/NN_name.py` runs it against this checkout. Add
-   any dependency the demo needs beyond `xarray-sql[ml,duckdb]` and `jax`.
+   any dependency the demo needs beyond `xarray-sql[ml,duckdb]`,
+   `ddxdb[duckdb]` and `jax`, both there and in the `dev` dependency
+   group in [`pyproject.toml`](../../pyproject.toml). CI runs the demos
+   in the project's environment, which reads no script's metadata.
 2. **A module docstring** that says:
    - what the model is, and links its reference implementation or paper;
    - how each piece of the model maps to SQL (`02_nanogpt.py` has a
@@ -54,7 +57,8 @@ is one script, `NN_name.py`, numbered after the last one, with:
      `--sizes`, `--reps`, `--csv`), plus the demo's own options;
    - loads the tables on each host;
    - times each step with `Report.time`, or `Report.attempt` for a
-     gradient that a host may refuse;
+     gradient that a host may refuse, naming the refusals it expects
+     (`known=`);
    - checks each result with `assert_close` and `Report.check`;
    - ends with `Report.finish`.
 
@@ -98,12 +102,18 @@ uv run benchmarks/ml/NN_name.py --sizes 16 --hosts datafusion
 uv run pytest tests/test_ml_demos.py   # every demo, small
 ```
 
+`uv run pytest` syncs the project's environment, with the `dev` group,
+which holds JAX and ddx's DuckDB backend.
+
 Against a ddx checkout rather than the release:
 
 1. Build ddxdb into this checkout's `.venv`, with `maturin develop
    --release` in ddx's `python/ddxdb`.
-2. Run the demos with `uv run --no-sync`, or the venv's `python`. A plain
-   `uv run` or `uv sync` reinstalls the release.
+2. Run the demos with the venv's `python`:
+   `.venv/bin/python benchmarks/ml/NN_name.py`. `uv run` runs a script
+   with inline metadata in an environment of its own, with ddxdb from
+   PyPI, and `--no-sync` doesn't change that. A `uv sync` reinstalls the
+   release in `.venv` too.
 
 ## When ddx or an engine can't run your model
 
@@ -115,12 +125,15 @@ That's a useful result. Each of these is a finding, not a failure:
 - an engine may compute the wrong number.
 
 `Report.attempt` records a refusal in the results table as `refused:`
-with the error. Then:
+with the error. Unless the demo passes it in `known=`, the run then
+fails, so that CI notices a refusal that's new. Then:
 
 1. Cut the query down to a minimal repro.
 2. File it on [ddx](https://github.com/xqlsystems/ddx/issues), or on
    xarray-sql if it's about how a table is read.
 3. List the limit in the README's findings.
+4. Pass it in `known=`, the host and the start of its error, with a
+   `TODO(xqlsystems/ddx#NN)` to drop it once the issue is fixed.
 
 A demo may land with a refused step.
 

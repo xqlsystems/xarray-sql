@@ -20,7 +20,7 @@ import csv
 import statistics
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -79,6 +79,8 @@ class Report:
     size_name: str
     reps: int = 1
     rows: list[dict] = field(default_factory=list)
+    # The refusals :meth:`attempt` wasn't told to expect.
+    unexpected: list[str] = field(default_factory=list)
 
     def time(self, step: str, host: Host, size: int, run: Callable, *args):
         """Run ``run(*args)`` ``reps`` times, record the median, and return
@@ -105,13 +107,29 @@ class Report:
         )
         return result
 
-    def attempt(self, step: str, host: Host, size: int, run: Callable, *args):
+    def attempt(
+        self,
+        step: str,
+        host: Host,
+        size: int,
+        run: Callable,
+        *args,
+        known: Mapping[str, str] | None = None,
+    ):
         """As :meth:`time`, but a step the host refuses (one of its
-        ``refusals``) is recorded with the reason, and returns None."""
+        ``refusals``) is recorded with the reason, and returns None.
+
+        ``known`` maps the name of each host expected to refuse the step to
+        the start of its error. Any other refusal is recorded too, and
+        :meth:`finish` then fails the run, so that a new refusal is noticed
+        rather than leaving the step unchecked."""
         try:
             return self.time(step, host, size, run, *args)
         except host.refusals as e:
             reason = str(e).splitlines()[0]
+            expected = (known or {}).get(host.name)
+            if expected is None or not reason.startswith(expected):
+                self.unexpected.append(f"{step} on {host.name}: {reason}")
             print(f"  {step:<28} {host.name:<11} refused: {reason}", flush=True)
             self.skip(step, host, size, f"refused: {reason}")
             return None
@@ -139,7 +157,8 @@ class Report:
         self.rows[-1][key] = value
 
     def finish(self, csv_path: str | None = None) -> None:
-        """Print the table, and write it as CSV if asked."""
+        """Print the table, and write it as CSV if asked. Exits with an
+        error if a host refused a step it wasn't expected to."""
         columns = list(dict.fromkeys(k for row in self.rows for k in row))
         print(f"\n| {' | '.join(columns)} |")
         print(f"|{'|'.join('---' for _ in columns)}|")
@@ -152,6 +171,11 @@ class Report:
                 writer.writeheader()
                 writer.writerows(self.rows)
             print(f"\nwrote {csv_path}", file=sys.stderr)
+        if self.unexpected:
+            sys.exit(
+                "refused unexpectedly:\n"
+                + "\n".join(f"  {r}" for r in self.unexpected)
+            )
 
 
 def _cell(value) -> str:

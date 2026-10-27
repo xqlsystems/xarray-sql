@@ -2,6 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #   "xarray-sql[ml,duckdb]",
+#   "ddxdb[duckdb]",
 #   "jax",
 # ]
 #
@@ -201,7 +202,14 @@ def main():
                 if not host.differentiates:
                     report.skip(step, host, n, "no ddx backend")
                     continue
-                rows = report.attempt(step, host, n, host.query, GRADIENT)
+                known = {}
+                if spelling == "window":
+                    # TODO(xqlsystems/ddx#204): drop once ddx differentiates
+                    # a view whose CTE computes a window on DuckDB.
+                    known = {"duckdb": "Not implemented Error: CTE"}
+                rows = report.attempt(
+                    step, host, n, host.query, GRADIENT, known=known
+                )
                 if rows is None:
                     continue
                 errors = [
