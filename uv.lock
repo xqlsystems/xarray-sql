@@ -522,15 +522,15 @@ wheels = [
 
 [[package]]
 name = "ddxdb"
-version = "0.4.2"
+version = "0.4.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/bf/49/58d710ea5363481e7bdd27567eb3944d0215459f4970eeb9fa8c7cee0266/ddxdb-0.4.2.tar.gz", hash = "sha256:169867a6a9bf7f9c9fd7093b079e26258a89b1614b147c7895a6b36fc3d8ee5c", size = 338983, upload-time = "2026-10-25T20:06:47.298Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8a/97/3fef5de4a2d403583f47c08759aa479976edb29b26b499fc0d47131e5043/ddxdb-0.4.3.tar.gz", hash = "sha256:7a8879081e47dbcacaf7970db3761377442a56076b5bf5160cbcc92f96ab6510", size = 340887, upload-time = "2026-10-26T10:29:50.101Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e9/3b/599e254908a3b36867309841e1cb5a53f4a0c9b0cafb98ab4dedc5a609a9/ddxdb-0.4.2-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:7e3eaea2ed3b21c834626ef793b66ed927d2d2ff1d4fd077e15277ab2f4d4c61", size = 6828615, upload-time = "2026-10-25T20:06:37.132Z" },
-    { url = "https://files.pythonhosted.org/packages/2e/47/6d205060124dec023b6ee8f343275ca9a0365c36502f1695db590ea6991f/ddxdb-0.4.2-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:9c2129ebc9e6e1113c23fdecc2d168c940fe9240fd57b01a82d1468c31e132e1", size = 6706126, upload-time = "2026-10-25T20:06:39.012Z" },
-    { url = "https://files.pythonhosted.org/packages/d7/4d/c060c21b3e3b31bc29d3e773ffc3ec89f84762d1f644cc40a81e1441701b/ddxdb-0.4.2-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:9301f571a3ffb8b546db9b6c0c1b820d68ab911f6477a7f5b03a1d75ef3f28e0", size = 6799863, upload-time = "2026-10-25T20:06:41.11Z" },
-    { url = "https://files.pythonhosted.org/packages/3d/43/13004abb0b3ea778c5aab57150a4d09f7990995814764a002efeb81c1643/ddxdb-0.4.2-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:c6dcff7743858582f63a6da2474889cc6b633bb4fd272a7a9f505e87c4f4a867", size = 7297851, upload-time = "2026-10-25T20:06:43.219Z" },
-    { url = "https://files.pythonhosted.org/packages/e0/a4/bf14d45ce82aa23725d384145106926f191390ca39f3fb9cb4631fefddfe/ddxdb-0.4.2-cp310-abi3-win_amd64.whl", hash = "sha256:937aee96a2fbc61a12361d5c9ceee52205e02d214de605bbb16efd5790565ba1", size = 7253013, upload-time = "2026-10-25T20:06:45.579Z" },
+    { url = "https://files.pythonhosted.org/packages/76/c4/afd34495beec33034b911b2783e1ec504308a38ed01fcafd49d8de016a51/ddxdb-0.4.3-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:35450f0a12c1a862a58b031150d940f33e8af40a5c5332200b7bc24d0058bcf3", size = 6829040, upload-time = "2026-10-26T10:29:41.228Z" },
+    { url = "https://files.pythonhosted.org/packages/a6/b8/cd1d22aff5ffef2052ad126be75fc133248e8ce00cdbf9ce2357301aa488/ddxdb-0.4.3-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:7b77f4d517e6db51c38bc25b7bfd953e8a395a7d155f59472b3860207619c612", size = 6707421, upload-time = "2026-10-26T10:29:43.16Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/2a/96f487ee0796cd769e344bedf3919d3cbc3cf634ed5553e723dcd1d6bc67/ddxdb-0.4.3-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:8ada0bbddae06073f20e473cadb22f459d59dc18b72297e772e9c8855548fea2", size = 6813347, upload-time = "2026-10-26T10:29:44.889Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/d1/f25ac98e10971b03848e0e667651ef5b44d61b5e43e8ca403108692bbfee/ddxdb-0.4.3-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:2d5b82b407b3e187ee92d6b4b804ee288f3c335335466e70f3e8b2103cb65add", size = 7319669, upload-time = "2026-10-26T10:29:46.559Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/94/9e5c603663c212995a971bde3156985fb8649de54d3c4e77eadf2f385db5/ddxdb-0.4.3-cp310-abi3-win_amd64.whl", hash = "sha256:c9fb1fb2210458113d1635c64be304983b04721e40514b53cd16d31bf726e189", size = 7250727, upload-time = "2026-10-26T10:29:48.326Z" },
 ]
 
 [package.optional-dependencies]
@@ -3155,7 +3155,7 @@ requires-dist = [
     { name = "cftime", marker = "extra == 'test'" },
     { name = "dask", marker = "extra == 'dask'", specifier = ">=2024.8.0" },
     { name = "datafusion", marker = "sys_platform != 'emscripten'", specifier = "==55.0.0" },
-    { name = "ddxdb", marker = "sys_platform != 'emscripten' and extra == 'ml'", specifier = ">=0.4.2,<0.5" },
+    { name = "ddxdb", marker = "sys_platform != 'emscripten' and extra == 'ml'", specifier = ">=0.4.3,<0.5" },
     { name = "duckdb", marker = "extra == 'duckdb'", specifier = ">=1.4.0" },
     { name = "gcsfs", marker = "extra == 'test'" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'" },
@@ -3176,7 +3176,7 @@ provides-extras = ["adbc", "dask", "dev", "docs", "duckdb", "geo", "ml", "polars
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "ddxdb", extras = ["duckdb"], marker = "sys_platform != 'emscripten'", specifier = ">=0.4.2,<0.5" },
+    { name = "ddxdb", extras = ["duckdb"], marker = "sys_platform != 'emscripten'", specifier = ">=0.4.3,<0.5" },
     { name = "jax" },
     { name = "maturin", specifier = ">=1.9.1" },
     { name = "py-spy", specifier = ">=0.4.0" },
@@ -3342,14 +3342,9 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4b/9c/8b681daa024abca9763017bec09ecee8008e110cae1254217c8dd22cc339/zensical-0.0.29-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:20ae0709ea14fce25ab33d0a82acdaf454a7a2e232a9ee20c019942205174476", size = 12311399, upload-time = "2026-03-24T13:36:53.809Z" },
     { url = "https://files.pythonhosted.org/packages/81/ae/4ebb4d8bb2ef0164d473698b92f11caf431fc436e1625524acd5641102ca/zensical-0.0.29-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:599af3ba66fcd0146d7019f3493ed3c316051fae6c4d5599bc59f3a8f4b8a6f0", size = 12191845, upload-time = "2026-03-24T13:36:56.909Z" },
     { url = "https://files.pythonhosted.org/packages/d5/35/67f89db06571a52283b3ecbe3bcf32fd3115ca50436b3ae177a948b83ea7/zensical-0.0.29-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:eea7e48a00a71c0586e875079b5f83a070c33a147e52ad4383e4b63ab524332b", size = 12554105, upload-time = "2026-03-24T13:36:59.945Z" },
-    { url = "https://files.pythonhosted.org/packages/7c/f6/ac79e5d9c18b28557c9ff1c7c23d695fbdd82645d69bfe02292f46d935e7/zensical-0.0.29-cp310-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:59a57db35542e98d2896b833de07d199320f8ada3b4e7ddccb7fe892292d8b74", size = 12498643, upload-time = "2026-03-24T13:37:02.376Z" },
-    { url = "https://files.pythonhosted.org/packages/b1/70/5c22a96a69e0e91e569c26236918bb9bab1170f59b29ad04105ead64f199/zensical-0.0.29-cp310-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:d42c2b2a96a80cf64c98ba7242f59ef95109914bd4c9499d7ebc12544663852c", size = 12854531, upload-time = "2026-03-24T13:37:04.962Z" },
     { url = "https://files.pythonhosted.org/packages/79/25/e32237a8fcb0ceae1ef8e192e7f8db53b38f1e48f1c7cdbacd0a7b713892/zensical-0.0.29-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6b2fca39c5f6b1782c77cf6591cf346357cabee85ebdb956c5ddc0fd5169f3d9", size = 12596828, upload-time = "2026-03-24T13:37:07.817Z" },
     { url = "https://files.pythonhosted.org/packages/ff/74/89ac909cbb258903ea53802c184e4986c17ce0ba79b1c7f77b7e78a2dce3/zensical-0.0.29-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:dfc23a74ef672aa51088c080286319da1dc0b989cd5051e9e5e6d7d4abbc2fc1", size = 12732059, upload-time = "2026-03-24T13:37:11.651Z" },
-    { url = "https://files.pythonhosted.org/packages/8c/31/2429de6a9328eed4acc7e9a3789f160294a15115be15f9870a0d02649302/zensical-0.0.29-cp310-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:c9336d4e4b232e3c9a70e30258e916dd7e60c0a2a08c8690065e60350c302028", size = 12768542, upload-time = "2026-03-24T13:37:14.39Z" },
-    { url = "https://files.pythonhosted.org/packages/10/8a/55588b2a1dcbe86dad0404506c9ba367a06c663b1ff47147c84d26f7510e/zensical-0.0.29-cp310-abi3-musllinux_1_2_i686.whl", hash = "sha256:30661148f0681199f3b598cbeb1d54f5cba773e54ae840bac639250d85907b84", size = 12917991, upload-time = "2026-03-24T13:37:16.795Z" },
     { url = "https://files.pythonhosted.org/packages/ec/5d/653901f0d3a3ca72daebc62746a148797f4e422cc3a2b66a4e6718e4398f/zensical-0.0.29-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:6a566ac1fd4bfac5d711a7bd1ae06666712127c2718daa5083c7bf3f107e8578", size = 12868392, upload-time = "2026-03-24T13:37:19.42Z" },
-    { url = "https://files.pythonhosted.org/packages/29/58/d7449bc88a174b98daa3f2fbdfbdac3493768a557d8987e88bdaa6c78b1a/zensical-0.0.29-cp310-abi3-win32.whl", hash = "sha256:a231a3a02a3851741dc4d2de8910b5c39fe81e55bf026d8edf4d803e91a922fb", size = 11905486, upload-time = "2026-03-24T13:37:22.154Z" },
     { url = "https://files.pythonhosted.org/packages/f5/09/3fd082d016497c4d26ff20f42a8be2cc91e27191c0c5f3cd6507827f666f/zensical-0.0.29-cp310-abi3-win_amd64.whl", hash = "sha256:7145c5504380a344b8cd4586da815cdde77ef4a42319fa4f35e78250f01985af", size = 12101510, upload-time = "2026-03-24T13:37:24.77Z" },
 ]
 

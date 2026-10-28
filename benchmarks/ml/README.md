@@ -121,7 +121,8 @@ The GPT and attention demos were timed again on 2026-10-21 with
 DataFusion 55.0.0 and ddxdb 0.4.0, after xarray-sql began registering
 small in-memory Datasets as DataFusion in-memory tables. Both demos were
 timed again on 2026-10-25 with DataFusion 55.0.0, DuckDB 1.5.5 and
-ddxdb 0.4.2; where those runs give new numbers, they are given here.
+ddxdb 0.4.2, and on DuckDB on 2026-10-27 with DuckDB 1.5.6 and ddxdb
+0.4.3; where those runs give new numbers, they are given here.
 
 **ddx's gradients agree with JAX.** The gradients of attention with
 respect to Q, K and V, in both spellings, match `jax.grad` to 3e-15 of the
@@ -200,21 +201,27 @@ against 0.20 s for one step), but copying Q, K and V into native tables
 only brings the gradient to 1.7 s, and slows the forward pass (measured
 on 2026-10-24, with ddx's development branch and DuckDB 1.5.6).
 
-**What ddx cannot differentiate yet.** Each of these raised a typed
-error naming the construct, never a wrong number:
+**The GPT trains on DuckDB.** Measured on 2026-10-27 with ddxdb 0.4.3,
+the first to differentiate a view whose CTE computes a window on DuckDB,
+as the softmax's weights are in the GPT and in attention's window
+spelling. After each of four SGD steps and three AdamW steps, the GPT's
+weights match JAX's to 2e-15 on DuckDB, and attention's window spelling
+matches `jax.grad` to 2e-15, taking 0.68 s and 1.9 s at 256 and 512
+tokens. DuckDB computes the GPT's loss in 0.062 s, against 2.7 s on
+DataFusion in the same run, but an SGD step takes 0.87 s, against 0.41
+s (1.15 to 1.3 s with AdamW). ddx runs its program's 77 steps on DuckDB
+as `CREATE TEMP TABLE … AS` statements, which take 0.56 s of the 0.87 s:
+DuckDB plans each one afresh, which takes about 0.3 s (an `EXPLAIN` of
+each takes 0.31 s in all), and xarray-sql's adapter reads the parameter
+Datasets in Python for about 0.19 s of the running. Most of the rest is ddx
+planning on DuckDB, against an empty copy of the connection's catalog
+that it keeps current.
 
-- A `GROUP BY` key that depends on a differentiated column. einfold's
-  window spelling groups by the normalizer `z`; the demos divide inside
-  the sum instead, `SUM(w / z * v)`, which einfold also lists.
-- On DuckDB, a view whose CTE computes a window and is read more than
-  once, as the softmax's weights are in attention's window spelling and
-  in the GPT, so neither trains on DuckDB yet. ddx reads DuckDB's plans
-  as [Substrait](https://substrait.io/), a portable format for query
-  plans, and DuckDB's Substrait producer has no plan for a CTE it
-  computes once for several reads. ddxdb 0.4.2 writes such a view's SQL
-  into the query instead, except when the CTE computes a window
-  ([ddx#204](https://github.com/xqlsystems/ddx/issues/204)). These rows
-  say `refused: Not implemented Error: CTE`.
+**What ddx cannot differentiate yet.** A `GROUP BY` key that depends on
+a differentiated column raises a typed error naming the construct, never
+a wrong number. einfold's window spelling groups by the normalizer `z`;
+the demos divide inside the sum instead, `SUM(w / z * v)`, which einfold
+also lists.
 
 **xarray-sql reads NaN as missing.** A NaN in a Dataset becomes SQL
 `NULL`, which `SUM` skips, so Demo 1 checks masks with an infinity: a

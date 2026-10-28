@@ -603,12 +603,9 @@ def main():
                 if not host.differentiates:
                     report.skip(train, host, size, "no ddx backend")
                     continue
-                # TODO(xqlsystems/ddx#204): drop once ddx differentiates a
-                # view whose CTE computes a window on DuckDB.
-                known = {"duckdb": "Not implemented Error: CTE"}
                 if adamw:
                     updated = report.attempt(
-                        train, host, size, adamw_step, host, step, known=known
+                        train, host, size, adamw_step, host, step
                     )
                 else:
                     updated = report.attempt(
@@ -617,7 +614,6 @@ def main():
                         size,
                         host.query_all,
                         step_statements(LEARNING_RATE),
-                        known=known,
                     )
                 if updated is None:
                     # Every later step starts from this one's weights.
