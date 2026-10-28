@@ -34,9 +34,12 @@ Optimizer step     ``w - lr * grad(loss, w)``, the new table; or AdamW,
                    the learning rate schedule as a table
 =================  ============================================
 
-As in nanoGPT, the model and the loss are separate. The model is the
-view ``logits``; the loss is SQL that reads it, as nanoGPT's
-``F.cross_entropy`` reads the model's logits.
+As in nanoGPT, the model and the loss are separate. The model is a list
+of CTEs that ends in ``logits``, and the loss is more CTEs that read it,
+as nanoGPT's ``F.cross_entropy`` reads the model's logits. Each statement,
+the loss's and each training step's, starts with both. The model isn't a
+view: DataFusion writes a view's CTEs out again at every read, and a
+3-layer model's view doesn't fit in 8 GB.
 
 Each training step updates every parameter table with its own
 statement; the statements share one backward pass. By default the
@@ -91,6 +94,7 @@ import jax.numpy as jnp
 import numpy as np
 import xarray as xr
 from _bench import Report, assert_close, cli, hosts
+from _hosts import with_query
 
 import xarray_sql as xql
 
@@ -143,171 +147,218 @@ PARAMS = {
 # --------------------------------------------------------------------------
 
 
-def layer_norm(x: str, out: str, gain: str, layer: int | None = None) -> str:
+def layer_norm(
+    x: str, out: str, gain: str, layer: int | None = None
+) -> list[tuple[str, str]]:
     """Normalize each position of ``x`` to zero mean and unit variance,
     then scale each channel by the table ``gain`` (of ``layer``, if set)."""
     of_layer = "" if layer is None else f" AND g.layer = {layer}"
-    return f"""
-{out}_mean AS (
-  SELECT seq, pos, AVG(val) AS mean FROM {x} GROUP BY seq, pos),
-{out}_var AS (
+    return [
+        (
+            f"{out}_mean",
+            f"SELECT seq, pos, AVG(val) AS mean FROM {x} GROUP BY seq, pos",
+        ),
+        (
+            f"{out}_var",
+            f"""
   SELECT x.seq, x.pos, AVG(power(x.val - m.mean, 2)) AS var
   FROM {x} x JOIN {out}_mean m ON x.seq = m.seq AND x.pos = m.pos
-  GROUP BY x.seq, x.pos),
-{out} AS (
+  GROUP BY x.seq, x.pos""",
+        ),
+        (
+            out,
+            f"""
   SELECT x.seq, x.pos, x.e, (x.val - m.mean) / sqrt(v.var + 1e-5) * g.w AS val
   FROM {x} x
   JOIN {out}_mean m ON x.seq = m.seq AND x.pos = m.pos
   JOIN {out}_var v ON x.seq = v.seq AND x.pos = v.pos
-  JOIN {gain} g ON x.e = g.e{of_layer}),"""
+  JOIN {gain} g ON x.e = g.e{of_layer}""",
+        ),
+    ]
 
 
 # GELU's tanh approximation: x/2 · (1 + tanh(√(2/π) · (x + 0.044715 x³))).
 GELU_SCALE = np.sqrt(2 / np.pi)
 
 
-def attention(layer: int, x: str, out: str) -> str:
+def attention(layer: int, x: str, out: str) -> list[tuple[str, str]]:
     """nanoGPT's ``CausalSelfAttention``: each position of ``x`` attends to
     itself and the positions before it, in each head, and ``out`` is the
     heads' outputs, projected back to the residual stream."""
     l = f"l{layer}"
-    projections = "".join(
-        f"""
-{l}_{name} AS (
+    projections = [
+        (
+            f"{l}_{name}",
+            f"""
   SELECT x.seq, x.pos, p.h, p.c, SUM(x.val * p.w) AS val
   FROM {x} x JOIN w{name} p ON x.e = p.e
   WHERE p.layer = {layer}
-  GROUP BY x.seq, x.pos, p.h, p.c),"""
+  GROUP BY x.seq, x.pos, p.h, p.c""",
+        )
         for name in ("q", "k", "v")
-    )
-    return f"""{projections}
-{l}_scores AS (
+    ]
+    return projections + [
+        (
+            f"{l}_scores",
+            f"""
   SELECT q.seq, q.h, q.pos AS i, k.pos AS j,
          SUM(q.val * k.val) / {np.sqrt(HEAD)} AS s
   FROM {l}_q q JOIN {l}_k k ON q.seq = k.seq AND q.h = k.h AND q.c = k.c
   WHERE q.pos >= k.pos
-  GROUP BY q.seq, q.h, q.pos, k.pos),
-{l}_weights AS (
+  GROUP BY q.seq, q.h, q.pos, k.pos""",
+        ),
+        (
+            f"{l}_weights",
+            f"""
   -- The max only keeps exp() from overflowing: it cancels out of p / z.
   SELECT seq, h, i, j,
          exp(s - MAX(s) OVER (PARTITION BY seq, h, i)) AS p
-  FROM {l}_scores),
-{l}_norm AS (
-  SELECT seq, h, i, SUM(p) AS z FROM {l}_weights GROUP BY seq, h, i),
-{l}_heads AS (
+  FROM {l}_scores""",
+        ),
+        (
+            f"{l}_norm",
+            f"SELECT seq, h, i, SUM(p) AS z FROM {l}_weights GROUP BY seq, h, i",
+        ),
+        (
+            f"{l}_heads",
+            f"""
   SELECT a.seq, a.i AS pos, a.h, v.c, SUM(a.p / n.z * v.val) AS val
   FROM {l}_weights a
   JOIN {l}_v v ON a.seq = v.seq AND a.h = v.h AND a.j = v.pos
   JOIN {l}_norm n ON a.seq = n.seq AND a.h = n.h AND a.i = n.i
-  GROUP BY a.seq, a.i, a.h, v.c),
-{out} AS (
+  GROUP BY a.seq, a.i, a.h, v.c""",
+        ),
+        (
+            out,
+            f"""
   SELECT a.seq, a.pos, p.e, SUM(a.val * p.w) AS val
   FROM {l}_heads a JOIN wo p ON a.h = p.h AND a.c = p.c
   WHERE p.layer = {layer}
-  GROUP BY a.seq, a.pos, p.e),"""
+  GROUP BY a.seq, a.pos, p.e""",
+        ),
+    ]
 
 
-def mlp(layer: int, x: str, out: str) -> str:
+def mlp(layer: int, x: str, out: str) -> list[tuple[str, str]]:
     """nanoGPT's ``MLP``: each position of ``x`` through a hidden layer
     four times as wide, and GELU, back to the residual stream as ``out``."""
     l = f"l{layer}"
-    return f"""
-{l}_fc AS (
+    return [
+        (
+            f"{l}_fc",
+            f"""
   SELECT x.seq, x.pos, p.f, SUM(x.val * p.w) AS val
   FROM {x} x JOIN w_fc p ON x.e = p.e
   WHERE p.layer = {layer}
-  GROUP BY x.seq, x.pos, p.f),
-{l}_hidden AS (
+  GROUP BY x.seq, x.pos, p.f""",
+        ),
+        (
+            f"{l}_hidden",
+            f"""
   SELECT seq, pos, f,
          0.5 * val * (1 + tanh({GELU_SCALE} * (val + 0.044715 * val * val * val)))
            AS val
-  FROM {l}_fc),
-{out} AS (
+  FROM {l}_fc""",
+        ),
+        (
+            out,
+            f"""
   SELECT x.seq, x.pos, p.e, SUM(x.val * p.w) AS val
   FROM {l}_hidden x JOIN w_proj p ON x.f = p.f
   WHERE p.layer = {layer}
-  GROUP BY x.seq, x.pos, p.e),"""
+  GROUP BY x.seq, x.pos, p.e""",
+        ),
+    ]
 
 
-def residual(x: str, y: str, out: str) -> str:
+def residual(x: str, y: str, out: str) -> list[tuple[str, str]]:
     """``out = x + y``, channel by channel: a residual connection."""
-    return f"""
-{out} AS (
+    return [
+        (
+            out,
+            f"""
   SELECT x.seq, x.pos, x.e, x.val + y.val AS val
-  FROM {x} x JOIN {y} y ON x.seq = y.seq AND x.pos = y.pos AND x.e = y.e),"""
+  FROM {x} x JOIN {y} y ON x.seq = y.seq AND x.pos = y.pos AND x.e = y.e""",
+        )
+    ]
 
 
-def block(layer: int, x: str, out: str) -> str:
+def block(layer: int, x: str, out: str) -> list[tuple[str, str]]:
     """nanoGPT's ``Block``: ``mid = x + attention(ln_1(x))``, then
     ``out = mid + mlp(ln_2(mid))``."""
     l = f"l{layer}"
-    return "".join(
-        [
-            layer_norm(x, f"{l}_ln1", "ln_1", layer),
-            attention(layer, f"{l}_ln1", f"{l}_attn"),
-            residual(x, f"{l}_attn", f"{l}_mid"),
-            layer_norm(f"{l}_mid", f"{l}_ln2", "ln_2", layer),
-            mlp(layer, f"{l}_ln2", f"{l}_mlp"),
-            residual(f"{l}_mid", f"{l}_mlp", out),
-        ]
-    )
+    return [
+        *layer_norm(x, f"{l}_ln1", "ln_1", layer),
+        *attention(layer, f"{l}_ln1", f"{l}_attn"),
+        *residual(x, f"{l}_attn", f"{l}_mid"),
+        *layer_norm(f"{l}_mid", f"{l}_ln2", "ln_2", layer),
+        *mlp(layer, f"{l}_ln2", f"{l}_mlp"),
+        *residual(f"{l}_mid", f"{l}_mlp", out),
+    ]
 
 
-def model() -> str:
-    """The model, as the view ``logits``: for each position of each
+def model() -> list[tuple[str, str]]:
+    """The model, as CTEs ending in ``logits``: for each position of each
     sequence in ``batch``, a score for every character that could come
-    next. A DataFusion view reads the tables that existed when it was
-    created (DuckDB's looks them up by name), so it is recreated whenever
-    the batch or the parameters are."""
-    blocks = "".join(
-        block(layer, f"x{layer}", f"x{layer + 1}") for layer in range(LAYERS)
-    )
-    return f"""
-CREATE OR REPLACE VIEW logits AS
-WITH x0 AS (
+    next."""
+    embed = """
   SELECT b.seq, b.pos, te.e, te.w + pe.w AS val
   FROM batch b
   JOIN wte te ON b.tok = te.tok
-  JOIN wpe pe ON b.pos = pe.pos AND te.e = pe.e),
-{blocks}
-{layer_norm(f"x{LAYERS}", "final", "ln_f").rstrip(",")}
-SELECT x.seq, x.pos, te.tok, SUM(x.val * te.w) AS val
-FROM final x JOIN wte te ON x.e = te.e
-GROUP BY x.seq, x.pos, te.tok
-"""
+  JOIN wpe pe ON b.pos = pe.pos AND te.e = pe.e"""
+    unembed = """
+  SELECT x.seq, x.pos, te.tok, SUM(x.val * te.w) AS val
+  FROM final x JOIN wte te ON x.e = te.e
+  GROUP BY x.seq, x.pos, te.tok"""
+    return [
+        ("x0", embed),
+        *(
+            cte
+            for layer in range(LAYERS)
+            for cte in block(layer, f"x{layer}", f"x{layer + 1}")
+        ),
+        *layer_norm(f"x{LAYERS}", "final", "ln_f"),
+        ("logits", unembed),
+    ]
 
 
 # The loss, separate from the model, as in nanoGPT: the mean cross-entropy
 # of the model's logits against each next character of the batch.
 # Subtracting each row's max only keeps exp() from overflowing: it cancels
 # out of the log-sum-exp.
-#
-# The loss reads the model's view once, into the CTE ``predicted``, and
-# uses that twice: a host expands a view at every read, but DuckDB
-# computes a CTE that is read twice only once.
-LOSS = """
-predicted AS (
-  SELECT seq, pos, tok, val FROM logits),
-shifted AS (
+LOSS = [
+    (
+        "shifted",
+        """
   SELECT seq, pos, tok, val,
          MAX(val) OVER (PARTITION BY seq, pos) AS m
-  FROM predicted),
-log_sum_exp AS (
+  FROM logits""",
+    ),
+    (
+        "log_sum_exp",
+        """
   SELECT seq, pos, MAX(m) + ln(SUM(exp(val - m))) AS lse
-  FROM shifted GROUP BY seq, pos),
-loss AS (
+  FROM shifted GROUP BY seq, pos""",
+    ),
+    (
+        "loss",
+        """
   SELECT AVG(s.lse - l.val) AS l
   FROM log_sum_exp s
   JOIN batch b ON s.seq = b.seq AND s.pos = b.pos
-  JOIN predicted l ON l.seq = b.seq AND l.pos = b.pos AND l.tok = b.next)"""
+  JOIN logits l ON l.seq = b.seq AND l.pos = b.pos AND l.tok = b.next""",
+    ),
+]
 
 
 def step_statements(lr: float) -> list[str]:
     """One SGD step: each parameter table's next version, as a statement."""
     return [
-        f"WITH {LOSS} SELECT {', '.join(dims)}, "
-        f"w - {lr} * grad(loss, w) AS w FROM {table} "
-        f"ORDER BY {', '.join(dims)}"
+        with_query(
+            model() + LOSS,
+            f"SELECT {', '.join(dims)}, w - {lr} * grad(loss, w) AS w "
+            f"FROM {table} ORDER BY {', '.join(dims)}",
+        )
         for table, dims in PARAMS.items()
     ]
 
@@ -317,8 +368,11 @@ def gradient_statements() -> list[str]:
     the table ``{name}_grad``'s rows. The statements share one backward
     pass."""
     return [
-        f"WITH {LOSS} SELECT {', '.join(dims)}, grad(loss, w) AS g "
-        f"FROM {table} ORDER BY {', '.join(dims)}"
+        with_query(
+            model() + LOSS,
+            f"SELECT {', '.join(dims)}, grad(loss, w) AS g "
+            f"FROM {table} ORDER BY {', '.join(dims)}",
+        )
         for table, dims in PARAMS.items()
     ]
 
@@ -360,7 +414,7 @@ ORDER BY {keys}
 
 
 def loss_statement() -> str:
-    return f"WITH {LOSS} SELECT l FROM loss"
+    return with_query(model() + LOSS, "SELECT l FROM loss")
 
 
 # --------------------------------------------------------------------------
@@ -553,7 +607,7 @@ def main():
     report = Report("nanogpt", "batch", args.reps)
     text = shakespeare()
     vocab = len(set(text))
-    lines = len(model().splitlines()) + len(loss_statement().splitlines())
+    lines = len(loss_statement().splitlines())
     count = sum(
         v.size for v in init_params(vocab, np.random.default_rng(0)).values()
     )
@@ -582,22 +636,25 @@ def main():
 
             for step, batch in data:
                 host.load("batch", batch)
-                host.execute(model())
                 tok, nxt = batch["tok"].values, batch["next"].values
 
                 rows = report.time(
                     f"loss, step {step}",
                     host,
                     size,
-                    host.query,
-                    loss_statement(),
+                    host.query_with,
+                    model() + LOSS,
+                    "SELECT l FROM loss",
                 )
                 want = jax_loss(reference, tok, nxt)
                 report.check(
                     assert_close("loss", rows["l"][0].as_py(), want, rtol=1e-9)
                 )
                 report.note("loss", round(float(want), 6))
-                report.note("operators", host.operators(loss_statement()))
+                report.note(
+                    "operators",
+                    host.operators_with(model() + LOSS, "SELECT l FROM loss"),
+                )
 
                 train = f"train ({args.optimizer}), step {step}"
                 if not host.differentiates:

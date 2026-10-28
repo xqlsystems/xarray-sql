@@ -45,9 +45,15 @@ is one script, `NN_name.py`, numbered after the last one, with:
 3. **The model as SQL**, built by small Python functions that each return
    one piece of SQL, named after the pieces of the reference. In
    `02_nanogpt.py`, `block()` is `layer_norm()`, `attention()`, `mlp()`
-   and `residual()`, as nanoGPT's `Block` is. Write the model as a view
-   (`CREATE OR REPLACE VIEW … AS`), and the loss as a separate query
-   that reads it, as a Python loss calls its model.
+   and `residual()`, as nanoGPT's `Block` is. Write a model with more
+   than a few CTEs as a list of `(name, sql)` CTEs, and the loss as more
+   CTEs that read its output, as a Python loss calls its model; run them
+   with the host's `query_with`, and join them with `with_query` for a
+   statement that takes `grad`. DataFusion writes a view's or a query's
+   CTEs out again at every read, so a deep model's plan grows
+   exponentially, and `query_with` runs each CTE on its own there. A
+   small model can be a view (`CREATE OR REPLACE VIEW … AS`), as in
+   `01_attention.py`.
 4. **The same model in JAX**, from the same inputs and parameters, as the
    reference. Turn on 64-bit floats
    (`jax.config.update("jax_enable_x64", True)`) so the two agree to
