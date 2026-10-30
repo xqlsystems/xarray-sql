@@ -42,17 +42,18 @@ is one script, `NN_name.py`, numbered after the last one, with:
    - how each piece of the model maps to SQL (`02_nanogpt.py` has a
      table for this);
    - every way the demo differs from the reference, and why.
-3. **The model as SQL**, built by small Python functions that each return
-   one piece of SQL, named after the pieces of the reference. In
-   `02_nanogpt.py`, `block()` is `layer_norm()`, `attention()`, `mlp()`
-   and `residual()`, as nanoGPT's `Block` is. Write a model with more
-   than a few CTEs as a list of `(name, sql)` CTEs, and the loss as more
-   CTEs that read its output, as a Python loss calls its model; run them
-   with the host's `query_with`, and join them with `with_query` for a
-   statement that takes `grad`. DataFusion writes a view's or a query's
-   CTEs out again at every read, so a deep model's plan grows
-   exponentially, and `query_with` runs each CTE on its own there. A
-   small model can be a view (`CREATE OR REPLACE VIEW … AS`), as in
+3. **The model as SQL**, built by small Python functions named after the
+   pieces of the reference. Each takes relations and returns one: a
+   SELECT, made with `rel` from `_relation.py`, that reads its inputs by
+   name, as `f"SELECT ... FROM {x} x"`. In `02_nanogpt.py`, `block()` is
+   `layer_norm()`, `attention()`, `mlp()` and `residual()`, as nanoGPT's
+   `Block` is. The loss is a function of the model's output, as a Python
+   loss calls its model. `ctes(loss)` lists every relation the loss reads,
+   as the CTEs of one query: run it with the host's `query_with`, or join
+   it with `with_query` for a statement that takes `grad`. (DataFusion
+   writes a query's CTEs out again at every read, so a deep model's plan
+   grows exponentially, and `query_with` runs each CTE on its own there.)
+   A small model can be a view (`CREATE OR REPLACE VIEW … AS`), as in
    `01_attention.py`.
 4. **The same model in JAX**, from the same inputs and parameters, as the
    reference. Turn on 64-bit floats
