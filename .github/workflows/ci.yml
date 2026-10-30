@@ -114,7 +114,7 @@ jobs:
           enable-cache: true
 
       - name: Install xarray_sql
-        run: uv sync --dev --no-install-package xarray-sql
+        run: uv sync --dev --extra test --no-install-package xarray-sql
       - name: build rust
         run: uv run --no-project maturin develop --uv
       - name: Run the demos

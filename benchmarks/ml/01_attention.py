@@ -3,7 +3,7 @@
 # dependencies = [
 #   "xarray-sql[ml,duckdb]",
 #   "ddxdb[duckdb]",
-#   "einfold[datafusion]>=0.1.0rc1",
+#   "einfold[datafusion]>=0.1.0rc2",
 #   "jax",
 # ]
 #

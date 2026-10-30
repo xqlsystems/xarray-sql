@@ -195,7 +195,7 @@ with ddxdb 0.3.2, before ddx differentiated the masked product as
 `jax.grad` does.
 
 **einfold finds FlashAttention's plan.** Measured on 2026-10-29 with
-einfold 0.1.0rc1, ddxdb 0.4.6, DataFusion 55.0.0 and DuckDB 1.5.6. Both
+einfold 0.1.0rc2, ddxdb 0.4.6, DataFusion 55.0.0 and DuckDB 1.5.6. Both
 spellings of attention, and the Nadaraya–Watson control, run as one of
 einfold's fused pipelines. It computes 64 × 64 tiles of scores one at a
 time and keeps a running softmax, and it never visits a pair of tiles the
@@ -210,7 +210,7 @@ by a rule that mentions no attention. Demo 1 checks that each runs fused.
 (Each range covers the two spellings.)
 
 - **Memory:** at 32,768 tokens the scores would take 4.3 GB. The forward
-  pass takes 1.8 s, and the process's peak memory grows by 0.52 GB.
+  pass takes 1.8 s, and the process's peak memory grows by 0.42 GB.
 - **Determinism:** its results are the same bits on 1 and on 12 threads.
 - **The gradient isn't fused yet.** einfold runs ddx's backward
   contractions as array algorithms, which about halves their time, but the

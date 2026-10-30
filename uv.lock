@@ -622,14 +622,14 @@ wheels = [
 
 [[package]]
 name = "einfold"
-version = "0.1.0rc1"
+version = "0.1.0rc2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ad/58/754c37f28ccf6e675270c1bfba3be30ad450837d8539e764594eb90299d8/einfold-0.1.0rc1.tar.gz", hash = "sha256:f64c1ba7d3e471b992a566666e62851c3daf8c018e6af5d67d9d51c892c081e7", size = 222862, upload-time = "2026-10-30T00:18:40.54Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/76/e9/b534c6660e42ae62f3bd430611b299f406833cd82757e39f74d0161290e6/einfold-0.1.0rc2.tar.gz", hash = "sha256:82df6a9e2e1954cc3ba90982b61a1236b0451e84a5f80ab4e7707c0e46f7950e", size = 224290, upload-time = "2026-10-30T02:08:18.251Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/99/d8/faec56a69c2227b5c404dbcc574daf67d55da114902b5b5214ed39eb2d41/einfold-0.1.0rc1-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:adc6faf17e30fcce901aa7aa5d4cc24102983678f556cac1b28d2f445d328f0f", size = 43807600, upload-time = "2026-10-30T00:18:27.951Z" },
-    { url = "https://files.pythonhosted.org/packages/06/cd/24f823c534fe19c8ef5dd6c1ec8afb204a90c7d7315a40f66a26081cd103/einfold-0.1.0rc1-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:92d710754b5e57d92574ebe36105180b0f7d516751938e05d4a62442a1d385d2", size = 42186165, upload-time = "2026-10-30T00:18:31.838Z" },
-    { url = "https://files.pythonhosted.org/packages/9c/a2/641c16189b3578116939d4f8945787e1ba27ae6af2b1d126b89bb956af4e/einfold-0.1.0rc1-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:c473f1dd3775aa1614ee51cad9537c305785037519a78e9e08c026c3f7c828cc", size = 48594184, upload-time = "2026-10-30T00:18:34.861Z" },
-    { url = "https://files.pythonhosted.org/packages/60/0a/cabe7de45cf4f5283052182dda1fad6228f7401517f9e67a2860b2cc137e/einfold-0.1.0rc1-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:b0ac6c4f8bf801a51f074bb9a6dd731844eb0a300200cd5791bea32e07eb65ad", size = 47221856, upload-time = "2026-10-30T00:18:37.744Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/19/986bd602078909cfa9bba3133d6f9cf5372c0e9f49de891aeeb657334187/einfold-0.1.0rc2-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:907bd43840bd3f0006436705a1f9a62939c2e8410e10911753c72975ce8edba0", size = 43853038, upload-time = "2026-10-30T02:07:57.966Z" },
+    { url = "https://files.pythonhosted.org/packages/46/56/3045c7efff5a649f8f209d95175785d7ddb7a279925f2033627a62df0645/einfold-0.1.0rc2-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:1041aebdd7293dac48b680addfebb6bd90870e220a56263fe7fb43da4f3b1217", size = 42234075, upload-time = "2026-10-30T02:08:00.816Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/bf/9d73c11836034eceea3057e246e89beadc0b090b11c4bb88865e357102af/einfold-0.1.0rc2-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:55d10e500ef934322e1108fa24b85da37ce21b152a9b3dd0364bf604e93fb0e0", size = 48676482, upload-time = "2026-10-30T02:08:03.849Z" },
+    { url = "https://files.pythonhosted.org/packages/86/63/8dc06cb2ffc0e8bc982b83d1ffd60b9bba30f7a5990c0f11254f9faa5825/einfold-0.1.0rc2-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:98cc8014c4e1f26101ecd492e9881ff3bafdddcf130692fa97a600a3f8047d6d", size = 47269964, upload-time = "2026-10-30T02:08:06.821Z" },
 ]
 
 [package.optional-dependencies]
@@ -3195,7 +3195,7 @@ provides-extras = ["adbc", "dask", "dev", "docs", "duckdb", "geo", "ml", "polars
 [package.metadata.requires-dev]
 dev = [
     { name = "ddxdb", extras = ["duckdb"], marker = "sys_platform != 'emscripten'", specifier = ">=0.4.6,<0.5" },
-    { name = "einfold", extras = ["datafusion"], marker = "sys_platform != 'emscripten' and sys_platform != 'win32'", specifier = ">=0.1.0rc1,<0.2" },
+    { name = "einfold", extras = ["datafusion"], marker = "sys_platform != 'emscripten' and sys_platform != 'win32'", specifier = ">=0.1.0rc2,<0.2" },
     { name = "jax", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "maturin", specifier = ">=1.9.1" },
     { name = "py-spy", specifier = ">=0.4.0" },
