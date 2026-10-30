@@ -9,7 +9,7 @@ same SQL on several engines. Two related projects shape them:
 - [einfold](https://github.com/xqlsystems/einfold) is a query optimizer
   that rewrites SQL plans into array algorithms. Two of these models
   are its [target demos](https://github.com/xqlsystems/einfold/blob/main/docs/demos.md),
-  and this SQL is the baseline its plans must beat.
+  and the demos run on DataFusion with einfold as one of their engines.
 
 Each script checks its results against the same model in
 [JAX](https://github.com/jax-ml/jax), Google's library for differentiable
@@ -17,7 +17,7 @@ array programs.
 
 | # | Script | Model | What it measures |
 |---|---|---|---|
-| 01 | [`01_attention.py`](01_attention.py) | causal softmax attention, the core of a transformer, as a view (the model) in einfold's window and `GROUP BY` spellings, and a loss that reads it | the naive plan, which stores every score, for [FlashAttention](https://arxiv.org/abs/2205.14135)'s tiled plan to beat; gradients with respect to Q, K and V; masked pairs as absent rows; a control that isn't attention, the Nadaraya–Watson kernel average |
+| 01 | [`01_attention.py`](01_attention.py) | causal softmax attention, the core of a transformer, as a view (the model) in einfold's window and `GROUP BY` spellings, and a loss that reads it | the naive plan, which stores every score, against [FlashAttention](https://arxiv.org/abs/2205.14135)'s tiled plan, which einfold finds from the same SQL; gradients with respect to Q, K and V; masked pairs as absent rows; a control that isn't attention, the Nadaraya–Watson kernel average |
 | 02 | [`02_nanogpt.py`](02_nanogpt.py) | [nanoGPT](https://github.com/karpathy/nanoGPT)'s GPT-2 model, at 1 layer and 4,416 parameters, as CTEs, and a cross-entropy loss that reads them, on Tiny Shakespeare | the loss on each host; training steps with SGD or, as nanoGPT trains, AdamW, every parameter table checked after every step |
 
 The SQL favors legibility over speed. Each model reads like its definition,
@@ -102,6 +102,7 @@ in its plan.
 | Host | Forward pass | Gradients |
 |---|---|---|
 | `datafusion` | `xarray_sql.Context` | ddx |
+| `einfold` | `xarray_sql.Context`, with einfold as its query planner | ddx, whose steps einfold plans too |
 | `duckdb` | DuckDB, through `xql.register` | ddx, with the `duckdb` extra of ddxdb, which pins the DuckDB it supports |
 
 A host that cannot differentiate still runs every forward query, and its
@@ -109,9 +110,8 @@ gradient rows say `no ddx backend`. A gradient that ddx, or the engine
 it plans with, refuses is reported as `refused:` with the error, and a
 refused training step ends that host's training run. Each demo lists the
 refusals it expects, by host and error. Any other refusal fails the run,
-so a refusal that's new is noticed. To add a host, such as DataFusion with
-einfold's optimizer or DuckDB with a GPU extension, write one class in
-`_hosts.py` and add it to `HOSTS`.
+so a refusal that's new is noticed. To add a host, such as DuckDB with a
+GPU extension, write one class in `_hosts.py` and add it to `HOSTS`.
 
 ## Findings
 
@@ -167,8 +167,8 @@ tables). A second layer multiplies the plan by about 100, to 1.74
 million logical nodes and 313,789 table scans: the SQL planner takes 8.6
 s to build it, and planning it runs out of 8 GB. DuckDB plans the 2-layer
 loss in 211 operators and runs it in 0.12 s. So, on DataFusion, the demo
-now runs each of the loss's CTEs on its own and caches its result
-(`DataFrame.cache()`), and writes the model as CTEs in each statement
+now runs each of the loss's CTEs on its own and registers its result as
+an in-memory table, and writes the model as CTEs in each statement
 rather than as a view, whose CTEs DataFusion writes out when it creates
 it. With ddxdb 0.4.4, at batch 4, the 2-layer loss then takes 0.07 s on
 DataFusion, and a 6-layer SGD step 2.4 s, against 0.30 s and 5.5 s on
@@ -185,13 +185,41 @@ to 1,000 times faster than DuckDB on its gradients, whose time is in
 running their joins; and thousands of times faster on the GPT, whose time
 is in planning.
 
-**Attention stores every score.** Causal attention's forward pass at 512
-tokens takes 0.27 s on DataFusion in the window spelling and 0.39 s in the
-`GROUP BY` spelling; DuckDB takes 0.47 s and 0.26 s. Both grow with the
-square of the tokens. The gradients take 2.5 to 3.5 times the forward
-pass: 0.84 s and 0.95 s on DataFusion at 512 tokens, against 1.1 s and 1.3
-s with ddxdb 0.3.3 on DataFusion 54, and 2.8 s and 2.7 s with ddxdb 0.3.2,
-before ddx differentiated the masked product as `jax.grad` does.
+**DataFusion and DuckDB store every score.** Causal attention's forward
+pass at 512 tokens takes 0.27 s on DataFusion in the window spelling and
+0.39 s in the `GROUP BY` spelling; DuckDB takes 0.47 s and 0.26 s. Both
+grow with the square of the tokens. The gradients take 2.5 to 3.5 times
+the forward pass: 0.84 s and 0.95 s on DataFusion at 512 tokens, against
+1.1 s and 1.3 s with ddxdb 0.3.3 on DataFusion 54, and 2.8 s and 2.7 s
+with ddxdb 0.3.2, before ddx differentiated the masked product as
+`jax.grad` does.
+
+**einfold finds FlashAttention's plan.** Measured on 2026-10-29 with
+einfold 0.1.0rc1, ddxdb 0.4.6, DataFusion 55.0.0 and DuckDB 1.5.6. Both
+spellings of attention, and the Nadaraya–Watson control, run as one of
+einfold's fused pipelines. It computes 64 × 64 tiles of scores one at a
+time and keeps a running softmax, and it never visits a pair of tiles the
+causal mask rules out. That is FlashAttention's plan, found from this SQL
+by a rule that mentions no attention. Demo 1 checks that each runs fused.
+
+| Tokens | Forward pass, einfold | DataFusion | DuckDB | Gradients, einfold | DataFusion | DuckDB |
+|---:|---:|---:|---:|---:|---:|---:|
+| 512 | 13–15 ms | 0.28–0.41 s | 0.27–0.48 s | 0.61–0.68 s | 0.85–0.99 s | 1.7–2.2 s |
+| 1,024 | 17–19 ms | 1.9–3.0 s | 0.91–1.9 s | 1.8–2.2 s | 4.0–4.4 s | 5.3–7.1 s |
+
+(Each range covers the two spellings.)
+
+- **Memory:** at 32,768 tokens the scores would take 4.3 GB. The forward
+  pass takes 1.8 s, and the process's peak memory grows by 0.52 GB.
+- **Determinism:** its results are the same bits on 1 and on 12 threads.
+- **The gradient isn't fused yet.** einfold runs ddx's backward
+  contractions as array algorithms, which about halves their time, but the
+  backward pass still stores the scores.
+- **Fixed costs:** einfold costs a few milliseconds per query. At the
+  GPT demo's own size, a training step, dozens of small queries, takes
+  0.85 s with einfold against 0.37 s without. At nanoGPT's CPU size (1
+  layer, 4 heads, 128 channels, context 64, batch 12), its gradients
+  take 2.7 s against 9.5 s on DataFusion and 16.4 s on DuckDB.
 
 **ddx differentiates on DuckDB.** Measured with ddxdb 0.4.2. The
 gradients of attention in the `GROUP BY` spelling match `jax.grad` to

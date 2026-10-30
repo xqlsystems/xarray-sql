@@ -2,8 +2,8 @@
 
 Each demo checks its results against JAX and exits with an error on a
 mismatch, so this runs each one and checks that it succeeds. It needs the
-``ml`` extra, ddx's DuckDB backend and JAX, which the ``dev`` dependency
-group installs.
+``ml`` extra, ddx's DuckDB backend, einfold and JAX, which the ``dev``
+dependency group installs.
 
 A new demo adds a line to ``DEMOS``: its script, and for each run of
 it, the arguments that make it small enough to run in a few seconds. A
@@ -38,7 +38,7 @@ def test_every_demo_is_listed():
     ids=lambda v: " ".join(v) if isinstance(v, list) else v,
 )
 def test_the_demo_runs_and_matches_jax(script, args):
-    for module in ("ddxdb", "duckdb", "jax"):
+    for module in ("ddxdb", "duckdb", "einfold", "jax"):
         pytest.importorskip(module)
     result = subprocess.run(
         [sys.executable, str(DEMOS_DIR / script), *args],

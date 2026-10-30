@@ -62,7 +62,7 @@ geo = [
 # and breaks its API between minor versions. It reads and writes the
 # Substrait of DataFusion 55, so bump it together with that pin.
 ml = [
-  "ddxdb>=0.4.5,<0.5; sys_platform != 'emscripten'",
+  "ddxdb>=0.4.6,<0.5; sys_platform != 'emscripten'",
 ]
 test = [
   "adbc-driver-flightsql>=1.12",
@@ -136,9 +136,14 @@ dev = [
     "py-spy>=0.4.0",
     "ruff>=0.15.10",
     "maturin>=1.9.1",
-    # The ML demos: ddx's DuckDB backend, at the DuckDB it declares, and
-    # JAX, which the demos check their results against.
-    "ddxdb[duckdb]>=0.4.5,<0.5; sys_platform != 'emscripten'",
+    # The ML demos: ddx's DuckDB backend, at the DuckDB it declares;
+    # einfold, a query optimizer for DataFusion that runs tensor
+    # computations in SQL with array algorithms; and JAX, which the demos
+    # check their results against.
+    "ddxdb[duckdb]>=0.4.6,<0.5; sys_platform != 'emscripten'",
+    # TODO(xqlsystems/einfold#118): install einfold on Windows too, once
+    # it publishes a Windows wheel; until then it would build from source.
+    "einfold[datafusion]>=0.1.0rc1,<0.2; sys_platform != 'emscripten' and sys_platform != 'win32'",
     "jax",
 ]
 

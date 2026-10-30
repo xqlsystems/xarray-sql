@@ -34,8 +34,8 @@ demos report its gradient steps as not run rather than skip it silently.
 A gradient that ddx (or the engine under it) refuses to plan raises one
 of the host's ``refusals``, and the demos report that step with the reason.
 
-Adding a host (einfold's optimizer on DataFusion, or DuckDB with a GPU
-extension) is one class here and one entry in ``HOSTS``.
+Adding a host (DuckDB with a GPU extension, say) is one class here and
+one entry in ``HOSTS``.
 """
 
 from __future__ import annotations
@@ -49,6 +49,7 @@ import pyarrow as pa
 import xarray as xr
 from ddxdb import DdxError
 from ddxdb import duckdb as ddx_duckdb
+from einfold.datafusion import EinFold as EinFoldExtension
 
 import xarray_sql as xql
 
@@ -153,6 +154,26 @@ class DataFusion(Host):
                 self.ctx.deregister_table(name)
 
 
+class EinFold(DataFusion):
+    """xarray-sql's ``Context`` with einfold installed as its query
+    planner, and ddx's gradients.
+
+    Where einfold finds a computation in a plan that it has an array
+    algorithm for, such as a sum of products over a join or a
+    softmax-weighted average of one (attention), it runs that algorithm;
+    DataFusion runs the rest of the plan. ``einfold`` counts what it found:
+    ``plans_with_pipelines()`` is the number of plans in which it ran a
+    fused pipeline, such as attention tile by tile.
+    """
+
+    name = "einfold"
+
+    def __init__(self):
+        super().__init__()
+        self.einfold = EinFoldExtension()
+        self.ctx.with_extensions(self.einfold)
+
+
 class DuckDB(Host):
     """DuckDB, reading the same Datasets through xarray-sql's adapter, with
     ddx's gradients (``ddxdb[duckdb]``)."""
@@ -195,4 +216,4 @@ def _count(node: dict) -> int:
     return 1 + sum(_count(child) for child in node.get("children", []))
 
 
-HOSTS = {host.name: host for host in (DataFusion, DuckDB)}
+HOSTS = {host.name: host for host in (DataFusion, EinFold, DuckDB)}

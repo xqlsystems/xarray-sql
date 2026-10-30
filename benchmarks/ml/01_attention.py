@@ -3,6 +3,7 @@
 # dependencies = [
 #   "xarray-sql[ml,duckdb]",
 #   "ddxdb[duckdb]",
+#   "einfold[datafusion]>=0.1.0rc1",
 #   "jax",
 # ]
 #
@@ -19,20 +20,22 @@ value), registered from xarray Datasets, and attention is two sums over
 joins: the scores, a sum of ``Q`` times ``K`` over features, and the
 average of ``V`` weighted by ``exp(score)``.
 
-This SQL is the naive plan: it stores every one of the N×N scores.
-FlashAttention (Dao et al., 2022, https://arxiv.org/abs/2205.14135)
-computes the same result without storing them, by streaming blocks of
-keys past blocks of queries and keeping a running softmax. einfold
-(https://github.com/xqlsystems/einfold), a query optimizer that rewrites
-SQL plans into array algorithms like this one, aims to find that plan
+As a SQL engine runs it, this is the naive plan: it stores every one of
+the N×N scores. FlashAttention (Dao et al., 2022,
+https://arxiv.org/abs/2205.14135) computes the same result without storing
+them, by streaming blocks of keys past blocks of queries and keeping a
+running softmax. einfold (https://github.com/xqlsystems/einfold), a query
+optimizer that rewrites SQL plans into array algorithms, finds that plan
 from this SQL, in both of the spellings below, with no rule written for
-attention. It is the first of einfold's three target demos
-(``docs/demos.md`` in its repository). This script is the baseline that
-plan must match and then beat:
+attention: its rule fuses any softmax-weighted average whose scores are
+computed from a join, and the same rule fuses the control below, which is
+not attention. This is the first of einfold's three target demos
+(``docs/demos.md`` in its repository). The script checks:
 
-* **forward**: each spelling of the model on each *host* (einfold's word for an engine
-  that runs a plan; here DataFusion and DuckDB), checked against the same
-  attention in JAX, Google's library for differentiable array programs;
+* **forward**: each spelling of the model on each *host* (einfold's word
+  for an engine that runs a plan; here DataFusion, DataFusion with
+  einfold, and DuckDB), checked against the same attention in JAX,
+  Google's library for differentiable array programs;
 * **gradient**: a loss that reads the model, and its gradient with
   respect to every value of Q, K and V, as one SQL statement. ddx (https://github.com/xqlsystems/ddx),
   which differentiates SQL queries, computes it, and ``jax.grad`` checks
@@ -41,7 +44,9 @@ plan must match and then beat:
   allowed to see it, as SQL's semantics require of any faster plan;
 * **a control that is not attention**: the Nadaraya–Watson estimator, a
   Gaussian-kernel weighted average used in regridding. Any rule that
-  speeds up attention must speed up this query too.
+  speeds up attention must speed up this query too;
+* **einfold finds the fused plan**: each spelling, and the control, runs
+  as one of einfold's fused pipelines.
 
 Run ``uv run benchmarks/ml/01_attention.py --help`` for the options.
 """
@@ -53,6 +58,7 @@ import jax.numpy as jnp
 import numpy as np
 import xarray as xr
 from _bench import Report, assert_close, cli, hosts
+from _hosts import EinFold
 
 import xarray_sql as xql
 
@@ -213,6 +219,7 @@ def main():
 
     check_masks_are_absent_rows(args.hosts)
     check_nadaraya_watson(args.hosts, report)
+    check_einfold_fuses(args.hosts)
     report.finish(args.csv)
 
 
@@ -267,6 +274,48 @@ def check_nadaraya_watson(host_names, report):
         )
         got = xql.to_dataset(rows, dims=["p"])["v"].values
         report.check(assert_close("nadaraya-watson", got, want))
+
+
+def check_einfold_fuses(host_names):
+    """einfold runs each spelling of attention, and the control, as one
+    fused pipeline, computed tile by tile with a running softmax, rather
+    than as the joins and aggregates the SQL describes."""
+    if EinFold.name not in host_names:
+        return
+    print("\n  einfold's plans")
+    host = EinFold()
+    rng = np.random.default_rng(3)
+    for name in "qkv":
+        host.load(name, table(rng.normal(size=(128, D))))
+    for spelling, model in SPELLINGS.items():
+        host.execute(model)
+        before = host.einfold.plans_with_pipelines()
+        host.query(FORWARD)
+        assert host.einfold.plans_with_pipelines() > before, spelling
+        print(f"  {spelling:<16} fused")
+    targets, sources = rng.uniform(size=(16, 2)), rng.uniform(size=(64, 2))
+    host.load(
+        "target",
+        xr.Dataset(
+            {"x": ("p", targets[:, 0]), "y": ("p", targets[:, 1])},
+            coords={"p": np.arange(len(targets))},
+        ),
+    )
+    host.load(
+        "source",
+        xr.Dataset(
+            {
+                "x": ("q", sources[:, 0]),
+                "y": ("q", sources[:, 1]),
+                "v": ("q", sources.sum(axis=1)),
+            },
+            coords={"q": np.arange(len(sources))},
+        ),
+    )
+    before = host.einfold.plans_with_pipelines()
+    host.query(NADARAYA_WATSON)
+    assert host.einfold.plans_with_pipelines() > before, "nadaraya-watson"
+    print(f"  {'nadaraya-watson':<16} fused")
 
 
 if __name__ == "__main__":
