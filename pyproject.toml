@@ -58,11 +58,17 @@ polars = [
 geo = [
   "pyproj",
 ]
+# Gradients in SQL: grad(), vjp() and jvp() from ddx. ddxdb is pre-1.0
+# and breaks its API between minor versions. It reads and writes the
+# Substrait of DataFusion 55, so bump it together with that pin.
+ml = [
+  "ddxdb>=0.4.6,<0.5; sys_platform != 'emscripten'",
+]
 test = [
   "adbc-driver-flightsql>=1.12",
   "adbc-driver-sqlite>=1.12",
   "cftime",
-  "xarray-sql[adbc,dask,duckdb,polars,geo]",
+  "xarray-sql[adbc,dask,duckdb,polars,geo,ml]",
   "pytest",
   "xarray[io]",
   "gcsfs",
@@ -130,6 +136,16 @@ dev = [
     "py-spy>=0.4.0",
     "ruff>=0.15.10",
     "maturin>=1.9.1",
+    # The ML demos: ddx's DuckDB backend, at the DuckDB it declares;
+    # einfold, a query optimizer for DataFusion that runs tensor
+    # computations in SQL with array algorithms; and JAX, which the demos
+    # check their results against.
+    "ddxdb[duckdb]>=0.4.6,<0.5; sys_platform != 'emscripten'",
+    # TODO(xqlsystems/einfold#118): install einfold on Windows too, once
+    # it publishes a Windows wheel; until then it would build from source.
+    "einfold[datafusion]>=0.1.0rc2,<0.2; sys_platform != 'emscripten' and sys_platform != 'win32'",
+    # jaxlib publishes no wheels for Intel macOS, so the demos skip there.
+    "jax; sys_platform != 'darwin' or platform_machine != 'x86_64'",
 ]
 
 [tool.uv]
