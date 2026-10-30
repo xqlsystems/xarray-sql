@@ -42,19 +42,14 @@ is one script, `NN_name.py`, numbered after the last one, with:
    - how each piece of the model maps to SQL (`02_nanogpt.py` has a
      table for this);
    - every way the demo differs from the reference, and why.
-3. **The model as SQL**, built by small Python functions named after the
-   pieces of the reference. Each takes relations and returns one: a
-   SELECT, made with `rel` from `_relation.py`, that reads its inputs by
-   name, as `f"SELECT ... FROM {x} x"`. In `02_nanogpt.py`, `block()` is
-   `layer_norm()`, `attention()`, `mlp()` and `residual()`, as nanoGPT's
-   `Block` is. The loss is a function of the model's output, as a Python
-   loss calls its model. `ctes(loss)` lists every relation the loss reads,
-   as the CTEs of one query: run it with the host's `query_with`, or join
-   it with `with_query` for a statement that takes `grad`. (DataFusion
-   writes a query's CTEs out again at every read, so a deep model's plan
-   grows exponentially, and `query_with` runs each CTE on its own there.)
-   A small model can be a view (`CREATE OR REPLACE VIEW … AS`), as in
-   `01_attention.py`.
+3. **The model as SQL**, built by small Python functions that each return
+   one piece of SQL, named after the pieces of the reference. In
+   `02_nanogpt.py`, `block()` is `layer_norm()`, `attention()`, `mlp()`
+   and `residual()`, as nanoGPT's `Block` is. Write the model as a view
+   (`CREATE OR REPLACE VIEW … AS`), and the loss as a separate query
+   that reads it, as a Python loss calls its model. Write the SQL a reader
+   would write, even where an engine runs it slowly: making it fast is
+   the engines' work, and the demos measure it.
 4. **The same model in JAX**, from the same inputs and parameters, as the
    reference. Turn on 64-bit floats
    (`jax.config.update("jax_enable_x64", True)`) so the two agree to

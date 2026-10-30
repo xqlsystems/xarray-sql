@@ -18,7 +18,7 @@ array programs.
 | # | Script | Model | What it measures |
 |---|---|---|---|
 | 01 | [`01_attention.py`](01_attention.py) | causal softmax attention, the core of a transformer, as a view (the model) in einfold's window and `GROUP BY` spellings, and a loss that reads it | the naive plan, which stores every score, against [FlashAttention](https://arxiv.org/abs/2205.14135)'s tiled plan, which einfold finds from the same SQL; gradients with respect to Q, K and V; masked pairs as absent rows; a control that isn't attention: the [Nadaraya–Watson estimator](https://en.wikipedia.org/wiki/Kernel_regression#Nadaraya%E2%80%93Watson_kernel_regression), an average of nearby points weighted by a Gaussian kernel, which einfold must fuse with the same rules |
-| 02 | [`02_nanogpt.py`](02_nanogpt.py) | [nanoGPT](https://github.com/karpathy/nanoGPT)'s GPT-2 model, at 1 layer and 4,416 parameters, as CTEs, and a cross-entropy loss that reads them, on Tiny Shakespeare | the loss on each host; training steps with SGD or, as nanoGPT trains, AdamW, every parameter table checked after every step |
+| 02 | [`02_nanogpt.py`](02_nanogpt.py) | [nanoGPT](https://github.com/karpathy/nanoGPT)'s GPT-2 model, at 1 layer and 4,416 parameters, as a view, and a cross-entropy loss that reads it, on Tiny Shakespeare | the loss on each host; training steps with SGD or, as nanoGPT trains, AdamW, every parameter table checked after every step |
 
 The SQL favors legibility over speed. Each model reads like its definition,
 and the slow parts are left slow on purpose: they are what ddx, xarray-sql
@@ -166,13 +166,17 @@ built once and run again, takes 1.8 ms (with one partition, and the same
 tables). A second layer multiplies the plan by about 100, to 1.74
 million logical nodes and 313,789 table scans: the SQL planner takes 8.6
 s to build it, and planning it runs out of 8 GB. DuckDB plans the 2-layer
-loss in 211 operators and runs it in 0.12 s. So, on DataFusion, the demo
-now runs each of the loss's CTEs on its own and registers its result as
-an in-memory table, and writes the model as CTEs in each statement
-rather than as a view, whose CTEs DataFusion writes out when it creates
-it. With ddxdb 0.4.4, at batch 4, the 2-layer loss then takes 0.07 s on
-DataFusion, and a 6-layer SGD step 2.4 s, against 0.30 s and 5.5 s on
-DuckDB. A ddx training step runs 76 small queries, of
+loss in 211 operators and runs it in 0.12 s, and trains the 6-layer
+model at 5.5 s per SGD step (ddxdb 0.4.4, batch 4). So on DataFusion the
+GPT doesn't grow past one layer yet. The demo keeps the SQL as a reader
+would write it, and the fix belongs in DataFusion, which plans a CTE again
+at every read
+([apache/datafusion#8777](https://github.com/apache/datafusion/issues/8777);
+[apache/datafusion#26237](https://github.com/apache/datafusion/issues/26237)
+asks it to decide when to compute a CTE once). Run separately, one
+in-memory table per CTE, the same SQL takes 0.07 s for the 2-layer loss
+and 2.4 s for a 6-layer SGD step on DataFusion, so that is what the fix
+is worth. A ddx training step runs 76 small queries, of
 5.4 ms each, and about 4 ms of each is planning; with one partition
 instead of twelve, and one optimizer pass, a step takes 0.40 s instead
 of 0.66 s.
@@ -217,9 +221,9 @@ by a rule that mentions no attention. Demo 1 checks that each runs fused.
   backward pass still stores the scores.
 - **Fixed costs:** einfold costs a few milliseconds per query. At the
   GPT demo's own size, a training step, dozens of small queries, takes
-  0.85 s with einfold against 0.37 s without. At nanoGPT's CPU size (1
+  0.92 s with einfold against 0.41 s without. At nanoGPT's CPU size (1
   layer, 4 heads, 128 channels, context 64, batch 12), its gradients
-  take 2.7 s against 9.5 s on DataFusion and 16.4 s on DuckDB.
+  take 3.3 s against 9.6 s on DataFusion and 16.4 s on DuckDB.
 
 **ddx differentiates on DuckDB.** Measured with ddxdb 0.4.2. The
 gradients of attention in the `GROUP BY` spelling match `jax.grad` to

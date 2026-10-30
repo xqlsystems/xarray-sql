@@ -16,15 +16,8 @@ queries. A host does these things:
 * ``query_all(sqls)`` runs several statements, and, on a host that
   differentiates, shares the backward pass between those that take
   ``grad`` of the same loss;
-* ``query_with(ctes, select)`` runs ``select`` after the CTEs ``ctes``,
-  a list of ``(name, sql)``: the query ``with_query(ctes, select)``;
 * ``operators(sql)`` counts the operators in the physical plan it would
-  run, which shows, for one, whether a CTE read twice is computed twice,
-  and ``operators_with(ctes, select)`` those of ``query_with``.
-
-A host may run ``query_with`` in steps, as long as its answer is the
-query's. DataFusion does, because it computes a CTE once for every place
-that reads it.
+  run, which shows, for one, whether a CTE read twice is computed twice.
 
 Forward queries run everywhere. Gradients (``grad``, ``vjp``, ``jvp``)
 need ddx (https://github.com/xqlsystems/ddx), which differentiates SQL
@@ -41,8 +34,7 @@ one entry in ``HOSTS``.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator, Sequence
-from contextlib import contextmanager
+from collections.abc import Sequence
 
 import duckdb
 import pyarrow as pa
@@ -52,13 +44,6 @@ from ddxdb import duckdb as ddx_duckdb
 from einfold.datafusion import EinFold as EinFoldExtension
 
 import xarray_sql as xql
-
-
-def with_query(ctes: Sequence[tuple[str, str]], select: str) -> str:
-    """``select`` after the CTEs ``ctes``, a list of ``(name, sql)``, as
-    one query."""
-    defs = ",\n".join(f"{name} AS ({sql})" for name, sql in ctes)
-    return f"WITH\n{defs}\n{select}"
 
 
 class Host:
@@ -80,18 +65,8 @@ class Host:
     def query_all(self, sqls: Sequence[str]) -> list[pa.Table]:
         return [self.query(sql) for sql in sqls]
 
-    def query_with(
-        self, ctes: Sequence[tuple[str, str]], select: str
-    ) -> pa.Table:
-        return self.query(with_query(ctes, select))
-
     def operators(self, sql: str) -> int:
         raise NotImplementedError
-
-    def operators_with(
-        self, ctes: Sequence[tuple[str, str]], select: str
-    ) -> int:
-        return self.operators(with_query(ctes, select))
 
 
 class DataFusion(Host):
@@ -120,38 +95,6 @@ class DataFusion(Host):
     def operators(self, sql):
         plan = self.ctx.sql(sql).execution_plan().display_indent()
         return len(plan.splitlines())
-
-    # TODO(apache/datafusion#26237): run query_with as one query, as the
-    # other hosts do, once DataFusion computes a CTE that is read more than
-    # once a single time.
-    #
-    # DataFusion plans a CTE again at every read, and a model's CTEs read
-    # each other more than once (a layer norm reads its input three times),
-    # so the plan of one query grows exponentially with the model's depth.
-    # Instead, each CTE runs on its own, and its result, as an in-memory
-    # table, is what later CTEs read, as DuckDB computes it.
-    def query_with(self, ctes, select):
-        with self._cached(ctes):
-            return self.query(select)
-
-    def operators_with(self, ctes, select):
-        with self._cached(ctes):
-            return sum(self.operators(sql) for _, sql in ctes) + self.operators(
-                select
-            )
-
-    @contextmanager
-    def _cached(self, ctes: Sequence[tuple[str, str]]) -> Iterator[None]:
-        """Register each CTE, in order, as an in-memory table of its
-        result, until the block ends."""
-        try:
-            for name, sql in ctes:
-                result = self.ctx.sql(sql).collect_partitioned()
-                self.ctx.register_record_batches(name, result)
-            yield
-        finally:
-            for name, _ in ctes:
-                self.ctx.deregister_table(name)
 
 
 class EinFold(DataFusion):
