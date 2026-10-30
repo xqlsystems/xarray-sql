@@ -63,6 +63,9 @@ STOP_GRADIENT = _ddx.STOP_GRADIENT
 """The SQL name of the stop-gradient function, ``ddx_stop_gradient``."""
 
 _AD_CALL = re.compile(r"\b(grad|vjp|jvp)\s*\(", re.IGNORECASE)
+# String literals (with '' for a quote) and comments, which may mention a
+# call without making one.
+_NOT_CODE = re.compile(r"'(?:[^']|'')*'|--[^\n]*|/\*.*?\*/", re.DOTALL)
 
 
 def register(ctx: SessionContext) -> None:
@@ -83,10 +86,11 @@ def calls_ad(statement: str) -> bool:
     """Whether ``statement`` may call ``grad``, ``vjp`` or ``jvp``.
 
     A cheap textual check, so statements without a call never reach
-    ddx's parser. A false positive (the word inside a string literal,
-    say) is harmless: ddx plans a statement with no call as it is.
+    ddx's parser. It ignores string literals and comments. A false
+    positive that remains (a column named ``grad`` in double quotes, say)
+    is harmless: ddx plans a statement with no call as it is.
     """
-    return _AD_CALL.search(statement) is not None
+    return _AD_CALL.search(_NOT_CODE.sub(" ", statement)) is not None
 
 
 def sql(ctx: SessionContext, statement: str):

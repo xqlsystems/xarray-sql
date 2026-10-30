@@ -624,9 +624,12 @@ wheels = [
 name = "einfold"
 version = "0.1.0rc1"
 source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ad/58/754c37f28ccf6e675270c1bfba3be30ad450837d8539e764594eb90299d8/einfold-0.1.0rc1.tar.gz", hash = "sha256:f64c1ba7d3e471b992a566666e62851c3daf8c018e6af5d67d9d51c892c081e7", size = 222862, upload-time = "2026-10-30T00:18:40.54Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/99/d8/faec56a69c2227b5c404dbcc574daf67d55da114902b5b5214ed39eb2d41/einfold-0.1.0rc1-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:adc6faf17e30fcce901aa7aa5d4cc24102983678f556cac1b28d2f445d328f0f", size = 43807600, upload-time = "2026-10-30T00:18:27.951Z" },
     { url = "https://files.pythonhosted.org/packages/06/cd/24f823c534fe19c8ef5dd6c1ec8afb204a90c7d7315a40f66a26081cd103/einfold-0.1.0rc1-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:92d710754b5e57d92574ebe36105180b0f7d516751938e05d4a62442a1d385d2", size = 42186165, upload-time = "2026-10-30T00:18:31.838Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/a2/641c16189b3578116939d4f8945787e1ba27ae6af2b1d126b89bb956af4e/einfold-0.1.0rc1-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:c473f1dd3775aa1614ee51cad9537c305785037519a78e9e08c026c3f7c828cc", size = 48594184, upload-time = "2026-10-30T00:18:34.861Z" },
+    { url = "https://files.pythonhosted.org/packages/60/0a/cabe7de45cf4f5283052182dda1fad6228f7401517f9e67a2860b2cc137e/einfold-0.1.0rc1-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:b0ac6c4f8bf801a51f074bb9a6dd731844eb0a300200cd5791bea32e07eb65ad", size = 47221856, upload-time = "2026-10-30T00:18:37.744Z" },
 ]
 
 [package.optional-dependencies]
@@ -3153,9 +3156,9 @@ test = [
 dev = [
     { name = "ddxdb", extra = ["duckdb"], marker = "sys_platform != 'emscripten'" },
     { name = "einfold", extra = ["datafusion"], marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "jax", version = "0.6.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "jax", version = "0.10.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
-    { name = "jax", version = "0.12.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "jax", version = "0.6.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and platform_machine != 'x86_64') or (python_full_version < '3.11' and sys_platform != 'darwin')" },
+    { name = "jax", version = "0.10.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version == '3.11.*' and platform_machine != 'x86_64') or (python_full_version == '3.11.*' and sys_platform != 'darwin')" },
+    { name = "jax", version = "0.12.0.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.12' and platform_machine != 'x86_64') or (python_full_version >= '3.12' and sys_platform != 'darwin')" },
     { name = "maturin" },
     { name = "py-spy" },
     { name = "ruff" },
@@ -3193,7 +3196,7 @@ provides-extras = ["adbc", "dask", "dev", "docs", "duckdb", "geo", "ml", "polars
 dev = [
     { name = "ddxdb", extras = ["duckdb"], marker = "sys_platform != 'emscripten'", specifier = ">=0.4.6,<0.5" },
     { name = "einfold", extras = ["datafusion"], marker = "sys_platform != 'emscripten' and sys_platform != 'win32'", specifier = ">=0.1.0rc1,<0.2" },
-    { name = "jax" },
+    { name = "jax", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
     { name = "maturin", specifier = ">=1.9.1" },
     { name = "py-spy", specifier = ">=0.4.0" },
     { name = "ruff", specifier = ">=0.15.10" },
