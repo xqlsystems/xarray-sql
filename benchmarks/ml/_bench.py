@@ -50,13 +50,19 @@ def cli(description: str, sizes: Sequence[int], size_name: str = "n"):
         default=1,
         help="timed repetitions per step; the median is reported",
     )
+    parser.add_argument(
+        "--memory",
+        type=float,
+        default=6,
+        help="each host's memory limit, in GB, past which it spills to disk",
+    )
     parser.add_argument("--csv", help="also write the results table here")
     return parser
 
 
-def hosts(names: Sequence[str]) -> list[Host]:
-    """A fresh instance of each named host."""
-    return [HOSTS[name]() for name in names]
+def hosts(names: Sequence[str], memory: float = 6) -> list[Host]:
+    """A fresh instance of each named host, limited to ``memory`` GB."""
+    return [HOSTS[name](int(memory * 2**30)) for name in names]
 
 
 def assert_close(name: str, got, want, *, rtol=1e-9, atol=1e-9) -> float:

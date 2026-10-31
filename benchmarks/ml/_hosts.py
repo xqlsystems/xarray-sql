@@ -27,6 +27,10 @@ demos report its gradient steps as not run rather than skip it silently.
 A gradient that ddx (or the engine under it) refuses to plan raises one
 of the host's ``refusals``, and the demos report that step with the reason.
 
+Every host gets the same memory limit, in bytes, and spills to
+``~/.cache/xarray-sql/spill`` past it, so a stage too large for memory
+slows down rather than taking the machine down.
+
 Adding a host (DuckDB with a GPU extension, say) is one class here and
 one entry in ``HOSTS``.
 """
@@ -34,16 +38,20 @@ one entry in ``HOSTS``.
 from __future__ import annotations
 
 import json
+import pathlib
 from collections.abc import Sequence
 
 import duckdb
 import pyarrow as pa
 import xarray as xr
+from datafusion import RuntimeEnvBuilder
 from ddxdb import DdxError
 from ddxdb import duckdb as ddx_duckdb
 from einfold.datafusion import EinFold as EinFoldExtension
 
 import xarray_sql as xql
+
+SPILL = pathlib.Path.home() / ".cache" / "xarray-sql" / "spill"
 
 
 class Host:
@@ -52,6 +60,9 @@ class Host:
     name = ""
     differentiates = False
     refusals: tuple[type[Exception], ...] = ()
+
+    def __init__(self, memory: int):
+        SPILL.mkdir(parents=True, exist_ok=True)
 
     def load(self, name: str, data: xr.Dataset, **options) -> None:
         raise NotImplementedError
@@ -76,8 +87,14 @@ class DataFusion(Host):
     differentiates = True
     refusals = (DdxError,)
 
-    def __init__(self):
-        self.ctx = xql.Context()
+    def __init__(self, memory):
+        super().__init__(memory)
+        runtime = (
+            RuntimeEnvBuilder()
+            .with_disk_manager_specified(str(SPILL))
+            .with_fair_spill_pool(memory)
+        )
+        self.ctx = xql.Context(runtime=runtime)
 
     def load(self, name, data, **options):
         self.ctx.deregister_table(name)
@@ -111,8 +128,8 @@ class EinFold(DataFusion):
 
     name = "einfold"
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, memory):
+        super().__init__(memory)
         self.einfold = EinFoldExtension()
         self.ctx.with_extensions(self.einfold)
 
@@ -128,8 +145,14 @@ class DuckDB(Host):
     # plan it can't write.
     refusals = (DdxError, duckdb.NotImplementedException)
 
-    def __init__(self):
-        self.con = duckdb.connect()
+    def __init__(self, memory):
+        super().__init__(memory)
+        self.con = duckdb.connect(
+            config={
+                "memory_limit": f"{memory // 2**20}MB",
+                "temp_directory": str(SPILL),
+            }
+        )
 
     def load(self, name, data, **options):
         xql.register(self.con, name, data, **options)
