@@ -30,6 +30,14 @@ try:  # pyproj is an optional dependency (`pip install xarray-sql[geo]`).
 except ImportError:  # pragma: no cover - depends on the environment
     _proj = None
 
+_ad: ModuleType | None
+try:  # ddxdb is an optional dependency (`pip install xarray-sql[ml]`).
+    from . import ad
+
+    _ad = ad
+except ImportError:  # pragma: no cover - depends on the environment
+    _ad = None
+
 
 class Context(SessionContext):
     """A datafusion `SessionContext` that also supports `xarray.Dataset`s.
@@ -74,6 +82,10 @@ class Context(SessionContext):
         # reproject(x, y, src_crs, dst_crs), à la PostGIS ST_Transform.
         if _proj is not None:
             _proj.register(self)
+        # With ddxdb installed, .sql() also takes gradients: grad(), vjp()
+        # and jvp() in a select list, and ddx_stop_gradient().
+        if _ad is not None:
+            _ad.register(self)
 
     def from_dataset(
         self,
@@ -240,6 +252,10 @@ class Context(SessionContext):
         ``.to_dataset(dimension_columns=[...])`` for round-tripping the
         result back to an ``xr.Dataset``.
 
+        With the ml extension installed (``pip install xarray-sql[ml]``),
+        the query may also call ``grad``, ``vjp`` and ``jvp`` (see
+        [xarray_sql.ad][]).
+
         Args:
             query: A SQL query string.
             *args: Forwarded to ``SessionContext.sql``.
@@ -252,7 +268,15 @@ class Context(SessionContext):
         # plans it, without deregistering the table.
         replaced = _table_replaced(query)
         existed = replaced is not None and self.table_exist(replaced)
-        df = super().sql(query, *args, **kwargs)
+        if _ad is not None and _ad.calls_ad(query):
+            if args or kwargs:
+                raise TypeError(
+                    "a query that calls grad, vjp or jvp takes no other "
+                    "arguments"
+                )
+            df = _ad.sql(self, query)
+        else:
+            df = super().sql(query, *args, **kwargs)
         if replaced is not None and existed:
             # DataFusion keeps a quoted name's case, and lowers an unquoted
             # one.
@@ -299,7 +323,17 @@ class Context(SessionContext):
         Returns:
             A [PreparedQuery][xarray_sql.PreparedQuery]; call it to run
             the query.
+
+        Raises:
+            NotImplementedError: If the query calls ``grad``, ``vjp`` or
+                ``jvp``, which only ``sql()`` computes for now.
         """
+        if _ad is not None and _ad.calls_ad(query):
+            # TODO(#294): prepare the query's programs with ddx.
+            raise NotImplementedError(
+                "prepare() doesn't compute grad, vjp or jvp yet; run the "
+                "query with sql(), or several with xarray_sql.ad.sql_all()"
+            )
         return PreparedQuery(self, query)
 
     def _write(self, writes: dict[str, xr.Dataset]) -> None:
