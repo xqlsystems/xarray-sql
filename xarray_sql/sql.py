@@ -264,18 +264,19 @@ class Context(SessionContext):
         Returns:
             An [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame] wrapping the DataFusion DataFrame.
         """
+        # DataFusion runs a statement that replaces or drops a table as it
+        # plans it, without deregistering the table.
+        replaced = _table_replaced(query)
+        existed = replaced is not None and self.table_exist(replaced)
         if _ad is not None and _ad.calls_ad(query):
             if args or kwargs:
                 raise TypeError(
                     "a query that calls grad, vjp or jvp takes no other "
                     "arguments"
                 )
-            return self._wrap(_ad.sql(self, query))
-        # DataFusion runs a statement that replaces or drops a table as it
-        # plans it, without deregistering the table.
-        replaced = _table_replaced(query)
-        existed = replaced is not None and self.table_exist(replaced)
-        df = super().sql(query, *args, **kwargs)
+            df = _ad.sql(self, query)
+        else:
+            df = super().sql(query, *args, **kwargs)
         if replaced is not None and existed:
             # DataFusion keeps a quoted name's case, and lowers an unquoted
             # one.
@@ -322,7 +323,17 @@ class Context(SessionContext):
         Returns:
             A [PreparedQuery][xarray_sql.PreparedQuery]; call it to run
             the query.
+
+        Raises:
+            NotImplementedError: If the query calls ``grad``, ``vjp`` or
+                ``jvp``, which only ``sql()`` computes for now.
         """
+        if _ad is not None and _ad.calls_ad(query):
+            # TODO(#294): prepare the query's programs with ddx.
+            raise NotImplementedError(
+                "prepare() doesn't compute grad, vjp or jvp yet; run the "
+                "query with sql(), or several with xarray_sql.ad.sql_all()"
+            )
         return PreparedQuery(self, query)
 
     def _write(self, writes: dict[str, xr.Dataset]) -> None:

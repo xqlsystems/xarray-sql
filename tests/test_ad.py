@@ -130,6 +130,15 @@ def test_unsupported_expression_raises(problem):
 def test_a_mention_in_a_literal_is_not_a_call():
     ctx = Context()
     rows = ctx.sql(
-        "SELECT 'grad(x)' AS s, $v AS v -- vjp(y)", param_values={"v": 1}
+        """SELECT 'grad(x)' AS s, $v AS "jvp(v)" -- vjp(y)""",
+        param_values={"v": 1},
     ).to_pylist()
-    assert rows == [{"s": "grad(x)", "v": 1}]
+    assert rows == [{"s": "grad(x)", "jvp(v)": 1}]
+
+
+def test_prepare_refuses_a_gradient(problem):
+    ctx, *_ = problem
+    with pytest.raises(NotImplementedError, match="grad"):
+        ctx.prepare(
+            f"WITH {LOSS} SELECT feature, grad(loss, w) AS g FROM weights"
+        )

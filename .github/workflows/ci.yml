@@ -65,7 +65,7 @@ jobs:
         # Use the --no-install-package to only install the dependencies
         # but do not yet build the rust library
       - name: Install xarray_sql
-        run: uv sync --dev --no-install-package xarray-sql
+        run: uv sync --locked --dev --no-install-package xarray-sql
       - name: build rust
         run: uv run --no-project maturin develop --uv
       - name: Install in-process ADBC drivers
@@ -114,7 +114,7 @@ jobs:
           enable-cache: true
 
       - name: Install xarray_sql
-        run: uv sync --dev --extra test --no-install-package xarray-sql
+        run: uv sync --locked --dev --extra test --no-install-package xarray-sql
       - name: build rust
         run: uv run --no-project maturin develop --uv
       - name: Run the demos

@@ -53,9 +53,12 @@ Run ``uv run benchmarks/ml/01_attention.py --help`` for the options.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pyarrow as pa
 import xarray as xr
 from _bench import Report, assert_close, cli, hosts
 from _hosts import EinFold
@@ -64,7 +67,7 @@ import xarray_sql as xql
 
 jax.config.update("jax_enable_x64", True)
 
-D = 64  # features per head; the scores are scaled by 1/√64 = 1/8.
+HEAD_DIM = 64  # features per head; the scores are scaled by 1/√64 = 1/8.
 
 # The model and its loss are separate, as in a neural network written in
 # Python (compare attention() and loss() below). The model is a view, a
@@ -79,15 +82,20 @@ D = 64  # features per head; the scores are scaled by 1/√64 = 1/8.
 ATTENTION_WINDOW = """
 CREATE OR REPLACE VIEW attention AS
 WITH scores AS (
+  -- Q·Kᵀ/√64: the dot product of query i and key j over the features d,
+  -- for each causal pair, a key j at or before the query i.
   SELECT q.t AS i, k.t AS j, SUM(q.x * k.x) / 8.0 AS s
   FROM q JOIN k ON q.d = k.d
   WHERE q.t >= k.t
   GROUP BY q.t, k.t),
 weights AS (
+  -- The softmax's numerators, exp(s), shifted by the row's max.
   SELECT i, j, exp(s - MAX(s) OVER (PARTITION BY i)) AS w
   FROM scores),
 norm AS (
+  -- The softmax's denominator: each query's sum of its weights.
   SELECT i, SUM(w) AS z FROM weights GROUP BY i)
+-- For each query, the average of the values, weighted by the softmax w / z.
 SELECT w.i AS t, v.d, SUM(w.w / n.z * v.x) AS x
 FROM weights w
 JOIN v ON w.j = v.t
@@ -100,17 +108,22 @@ GROUP BY w.i, v.d
 ATTENTION_GROUP_BY = """
 CREATE OR REPLACE VIEW attention AS
 WITH scores AS (
+  -- Q·Kᵀ/√64, for each causal pair, as in the window spelling.
   SELECT q.t AS i, k.t AS j, SUM(q.x * k.x) / 8.0 AS s
   FROM q JOIN k ON q.d = k.d
   WHERE q.t >= k.t
   GROUP BY q.t, k.t),
 row_max AS (
+  -- Each query's largest score.
   SELECT i, MAX(s) AS m FROM scores GROUP BY i),
 weights AS (
+  -- The softmax's numerators, exp(s), shifted by the row's max.
   SELECT s.i, s.j, exp(s.s - r.m) AS w
   FROM scores s JOIN row_max r ON s.i = r.i),
 norm AS (
+  -- The softmax's denominator: each query's sum of its weights.
   SELECT i, SUM(w) AS z FROM weights GROUP BY i)
+-- For each query, the average of the values, weighted by the softmax w / z.
 SELECT w.i AS t, v.d, SUM(w.w / n.z * v.x) AS x
 FROM weights w
 JOIN v ON w.j = v.t
@@ -130,6 +143,8 @@ FORWARD = "SELECT t, d, x FROM attention ORDER BY t, d"
 GRADIENT = """
 WITH loss AS (
   SELECT SUM(x * x) / 2 AS l FROM attention)
+-- One row per token and feature: the loss's derivative with respect to
+-- that entry of Q, of K and of V.
 SELECT q.t, q.d,
        grad(loss, q.x) AS dq,
        grad(loss, k.x) AS dk,
@@ -140,13 +155,18 @@ JOIN v ON q.t = v.t AND q.d = v.d
 ORDER BY q.t, q.d
 """
 
-# Nadaraya–Watson: at each target point, the average of the sources' y
-# weighted by a Gaussian kernel of their distance (bandwidth h = 0.5).
-# Structurally attention: a weighted average with weights exp(score).
+# The Nadaraya–Watson estimator (E. A. Nadaraya, "On Estimating
+# Regression", 1964, https://doi.org/10.1137/1109020; G. S. Watson, "Smooth
+# Regression Analysis", 1964): at each target point, the average of the
+# sources' y weighted by a Gaussian kernel of their distance (bandwidth
+# h = 0.5). Structurally attention: a weighted average with weights
+# exp(score).
 NADARAYA_WATSON = """
 WITH kernel AS (
+  -- Each source's weight at each target: exp(-distance² / 2h²).
   SELECT t.p, s.q, exp(-(power(t.x - s.x, 2) + power(t.y - s.y, 2)) / 0.25) AS w
   FROM target t CROSS JOIN source s)
+-- Each target's average of the sources' values, weighted by the kernel.
 SELECT k.p, SUM(k.w * s.v) / SUM(k.w) AS v
 FROM kernel k JOIN source s ON k.q = s.q
 GROUP BY k.p
@@ -154,16 +174,26 @@ ORDER BY k.p
 """
 
 
-def attention(q, k, v):
-    """The reference: causal softmax attention, as JAX writes it."""
+def attention(q: jax.Array, k: jax.Array, v: jax.Array) -> jax.Array:
+    """The reference: causal softmax attention, as JAX writes it.
+
+    Args:
+        q: The queries, an (N, 64) matrix with one row per token.
+        k: The keys, shaped like ``q``.
+        v: The values, shaped like ``q``.
+
+    Returns:
+        Each token's average of the values, shaped like ``q``.
+    """
     n = q.shape[0]
-    scores = q @ k.T / np.sqrt(D)
+    scores = q @ k.T / np.sqrt(HEAD_DIM)
     causal = jnp.tril(jnp.ones((n, n), dtype=bool))
     weights = jax.nn.softmax(jnp.where(causal, scores, -jnp.inf), axis=-1)
     return weights @ v
 
 
-def loss(q, k, v):
+def loss(q: jax.Array, k: jax.Array, v: jax.Array) -> jax.Array:
+    """The reference loss: half the squared norm of attention's output."""
     return jnp.sum(attention(q, k, v) ** 2) / 2
 
 
@@ -176,19 +206,19 @@ def table(values: np.ndarray) -> xr.Dataset:
     )
 
 
-def matrix(rows, name: str = "x") -> np.ndarray:
+def matrix(rows: pa.Table, name: str = "x") -> np.ndarray:
     """The rows of a ``(t, d, …)`` result as a (t, d) matrix."""
     return xql.to_dataset(rows, dims=["t", "d"])[name].values
 
 
-def main():
+def main() -> None:
     parser = cli(__doc__.splitlines()[0], sizes=[64, 256], size_name="tokens")
     args = parser.parse_args()
     report = Report("attention", "tokens", args.reps)
     rng = np.random.default_rng(0)
 
     for n in args.sizes:
-        q, k, v = (rng.normal(size=(n, D)) for _ in range(3))
+        q, k, v = (rng.normal(size=(n, HEAD_DIM)) for _ in range(3))
         want = attention(q, k, v)
         want_grads = jax.grad(loss, argnums=(0, 1, 2))(q, k, v)
 
@@ -223,14 +253,14 @@ def main():
     report.finish(args.csv)
 
 
-def check_masks_are_absent_rows(host_names):
+def check_masks_are_absent_rows(host_names: Sequence[str]) -> None:
     """An infinity in V at token j reaches the queries at or after j, and
     no others: a masked pair is skipped, not multiplied by a zero weight,
     which would turn 0·∞ into NaN. (xarray-sql reads NaN as missing data,
     a NULL that SUM skips, so an infinity is the value that tells.)"""
     n, j = 16, 9
     rng = np.random.default_rng(1)
-    q, k, v = (rng.normal(size=(n, D)) for _ in range(3))
+    q, k, v = (rng.normal(size=(n, HEAD_DIM)) for _ in range(3))
     v[j, 0] = np.inf
     print(f"\n  masks: +inf in V at token {j}, feature 0")
     for host in hosts(host_names):
@@ -245,7 +275,7 @@ def check_masks_are_absent_rows(host_names):
             print(f"  {spelling:<9} {host.name:<11} ok")
 
 
-def check_nadaraya_watson(host_names, report):
+def check_nadaraya_watson(host_names: Sequence[str], report: Report) -> None:
     """The control: a kernel-weighted average that is not attention."""
     rng = np.random.default_rng(2)
     targets, sources = rng.uniform(size=(64, 2)), rng.uniform(size=(256, 2))
@@ -276,7 +306,7 @@ def check_nadaraya_watson(host_names, report):
         report.check(assert_close("nadaraya-watson", got, want))
 
 
-def check_einfold_fuses(host_names):
+def check_einfold_fuses(host_names: Sequence[str]) -> None:
     """einfold runs each spelling of attention, and the control, as one
     fused pipeline, computed tile by tile with a running softmax, rather
     than as the joins and aggregates the SQL describes."""
@@ -286,7 +316,7 @@ def check_einfold_fuses(host_names):
     host = EinFold()
     rng = np.random.default_rng(3)
     for name in "qkv":
-        host.load(name, table(rng.normal(size=(128, D))))
+        host.load(name, table(rng.normal(size=(128, HEAD_DIM))))
     for spelling, model in SPELLINGS.items():
         host.execute(model)
         before = host.einfold.plans_with_pipelines()
