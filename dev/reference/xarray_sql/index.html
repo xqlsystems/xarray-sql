@@ -26,7 +26,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.0.73">
+      <meta name="generator" content="zensical-0.0.74">
     
     
       
@@ -1038,6 +1038,78 @@
       </span>
     </span>
   </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ad" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        ad
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ad">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ad.STOP_GRADIENT" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        STOP_GRADIENT
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ad.calls_ad" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        calls_ad
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ad.register" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        register
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ad.sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        sql
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ad.sql_all" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        sql_all
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
         
@@ -3863,6 +3935,78 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#xarray_sql.ad" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        ad
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ad">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ad.STOP_GRADIENT" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        STOP_GRADIENT
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ad.calls_ad" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        calls_ad
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ad.register" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        register
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ad.sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        sql
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.ad.sql_all" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        sql_all
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#xarray_sql.backends" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -6673,6 +6817,30 @@ can write.</p>
     </table>
 
 
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="NotImplementedError">NotImplementedError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If the query calls <code>grad</code>, <code>vjp</code> or
+<code>jvp</code>, which only <code>sql()</code> computes for now.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
     </div>
 
 </div>
@@ -6695,6 +6863,9 @@ object wraps the DataFusion DataFrame. The wrapper exposes
 method via <code>__getattr__</code>, and adds
 <code>.to_dataset(dimension_columns=[...])</code> for round-tripping the
 result back to an <code>xr.Dataset</code>.</p>
+<p>With the ml extension installed (<code>pip install xarray-sql[ml]</code>),
+the query may also call <code>grad</code>, <code>vjp</code> and <code>jvp</code> (see
+<a class="autorefs autorefs-internal" title="&lt;code&gt;ad&lt;/code&gt;" href="./#xarray_sql.ad">xarray_sql.ad</a>).</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -9024,6 +9195,356 @@ re-executed.</p>
 
 </div>
 
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="xarray_sql.ad" class="doc doc-heading">
+            <code>ad</code>
+
+
+<a href="#xarray_sql.ad" class="headerlink" title="Permanent link">&para;</a></h3>
+
+    <div class="doc doc-contents ">
+
+        <p>Gradients of SQL queries: the optional ml extension, built on ddx.</p>
+<p><a href="https://github.com/xqlsystems/ddx">ddx</a> differentiates a whole SQL query
+the way <a href="https://github.com/jax-ml/jax">JAX</a>, Google's library for
+differentiable array programs, differentiates a function. With it installed
+(<code>pip install xarray-sql[ml]</code>), <a class="autorefs autorefs-internal" title="&lt;code&gt;Context&lt;/code&gt;" href="./#xarray_sql.Context">xarray_sql.Context</a>'s <code>.sql()</code>
+understands three calls in a select list:</p>
+<ul>
+<li><code>grad(loss, column)</code>: at each row, the derivative of the one number
+  the CTE <code>loss</code> computes with respect to that row's <code>column</code>
+  (<code>table.column</code> when the <code>SELECT</code> reads several tables).</li>
+<li><code>vjp(f, column, cotangent)</code>: the same for any CTE <code>f</code>, pulled back
+  along <code>cotangent</code>, a table or CTE shaped like <code>f</code>'s output.</li>
+<li><code>jvp(e, table.column, tangent)</code>: the tangent of the expression <code>e</code>
+  along <code>tangent</code>, pushed forward.</li>
+</ul>
+<p>A gradient-descent step on a parameter table is then one statement::</p>
+<div class="language-text highlight"><pre><span></span><code>WITH pred AS (
+  SELECT x.sample, SUM(x.value * w.val) AS y
+  FROM x JOIN w ON x.feature = w.feature GROUP BY x.sample),
+loss AS (
+  SELECT AVG(power(pred.y - t.value, 2)) AS l
+  FROM pred JOIN t ON pred.sample = t.sample)
+SELECT feature, val - 0.1 * grad(loss, val) AS val FROM w
+</code></pre></div>
+<p>The query being differentiated is ordinary SQL, over tables registered
+with <code>from_dataset</code> or any other way. ddx plans the backward pass in
+<a href="https://substrait.io">Substrait</a>, a portable format for query plans;
+DataFusion runs it, and the statement reads what it computed.</p>
+<p>The one function ddx gives a meaning to is <code>ddx_stop_gradient(x)</code>, the
+identity whose derivative is zero (JAX's <code>lax.stop_gradient</code>). It is
+registered on every <code>Context</code>. Its typical use is the stable softmax,
+whose shift by the row maximum cancels and so carries no gradient::</p>
+<div class="language-text highlight"><pre><span></span><code>exp(s - ddx_stop_gradient(MAX(s) OVER (PARTITION BY i)))
+</code></pre></div>
+<p>A statement that calls none of <code>grad</code>, <code>vjp</code> or <code>jvp</code> is planned
+exactly as it would be without ddx. An expression ddx cannot
+differentiate raises a <code>ddxdb.DdxError</code> subclass naming it, never a
+wrong number.</p>
+<p><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;sql_all&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ctx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;statements&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;/code&gt;" href="./#xarray_sql.ad.sql_all">sql_all</a> runs several statements that take
+<code>grad</code> of the same loss for the price of one backward pass, which is
+how a training step updates each of a model's parameter tables. For the
+programs underneath (<code>grad</code>, <code>vjp</code>, <code>jvp</code> and <code>run</code>, to build a
+backward pass once and run it every step), use <code>ddxdb.ad</code> directly;
+they take a <code>Context</code> like any other <code>SessionContext</code>.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="xarray_sql.ad.STOP_GRADIENT" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">STOP_GRADIENT</span> <span class="o">=</span> <span class="n">_ddx</span><span class="o">.</span><span class="n">STOP_GRADIENT</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#xarray_sql.ad.STOP_GRADIENT" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>The SQL name of the stop-gradient function, <code>ddx_stop_gradient</code>.</p>
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.ad.calls_ad" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">calls_ad</span><span class="p">(</span><span class="n">statement</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.ad.calls_ad" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Whether <code>statement</code> may call <code>grad</code>, <code>vjp</code> or <code>jvp</code>.</p>
+<p>A cheap textual check, so statements without a call never reach
+ddx's parser. It ignores string literals, quoted identifiers and
+comments, so what it finds is a call to a function named <code>grad</code>,
+<code>vjp</code> or <code>jvp</code>. ddx computes those calls, so a session function
+of the same name can't be called through <code>Context.sql</code>.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.ad.register" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">register</span><span class="p">(</span><span class="n">ctx</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.ad.register" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Register <code>ddx_stop_gradient</code> on <code>ctx</code>.</p>
+<p>Works on any DataFusion <code>SessionContext</code> (<code>Context</code> registers it
+automatically when ddxdb is installed). <code>grad</code>, <code>vjp</code> and <code>jvp</code>
+are not UDFs: <a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;sql&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ctx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;statement&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;/code&gt;" href="./#xarray_sql.ad.sql">sql</a> rewrites them before DataFusion
+plans the statement.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>ctx</code>
+            </td>
+            <td>
+                  <code><span title="datafusion.SessionContext">SessionContext</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The DataFusion session context to register the UDF on.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.ad.sql" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">sql</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">statement</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.ad.sql" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Run <code>statement</code>, computing its <code>grad</code>, <code>vjp</code> and <code>jvp</code> calls.</p>
+<p>Returns a DataFusion DataFrame; <code>Context.sql</code> wraps it as an
+<a class="autorefs autorefs-internal" href="./#xarray_sql.ds.XarrayDataFrame">XarrayDataFrame</a>.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>ctx</code>
+            </td>
+            <td>
+                  <code><span title="datafusion.SessionContext">SessionContext</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Any DataFusion <code>SessionContext</code>.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>statement</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A SQL statement.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.ad.sql_all" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">sql_all</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">statements</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.ad.sql_all" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Run several statements, sharing the programs their calls need.</p>
+<p>Statements that take <code>grad</code> of the same loss share one backward
+pass, so a training step can update each parameter table with its
+own statement and pay for the gradient once::</p>
+<div class="language-text highlight"><pre><span></span><code>steps = xql.ad.sql_all(ctx, [
+    f"WITH loss AS ({LOSS}) "
+    "SELECT i, val - 0.1 * grad(loss, val) AS val FROM w1",
+    f"WITH loss AS ({LOSS}) "
+    "SELECT j, val - 0.1 * grad(loss, val) AS val FROM w2",
+])
+</code></pre></div>
+<p>On a <a class="autorefs autorefs-internal" href="./#xarray_sql.Context">Context</a>, each result is an
+<a class="autorefs autorefs-internal" href="./#xarray_sql.ds.XarrayDataFrame">XarrayDataFrame</a>.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>ctx</code>
+            </td>
+            <td>
+                  <code><span title="datafusion.SessionContext">SessionContext</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Any DataFusion <code>SessionContext</code>.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>statements</code>
+            </td>
+            <td>
+                  <code><span title="collections.abc.Sequence">Sequence</span>[<span title="str">str</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>SQL statements.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="list">list</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>One DataFrame per statement, in order.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
 
 <div class="doc doc-object doc-module">
 
@@ -18252,6 +18773,30 @@ can write.</p>
     </table>
 
 
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="NotImplementedError">NotImplementedError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If the query calls <code>grad</code>, <code>vjp</code> or
+<code>jvp</code>, which only <code>sql()</code> computes for now.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
     </div>
 
 </div>
@@ -18274,6 +18819,9 @@ object wraps the DataFusion DataFrame. The wrapper exposes
 method via <code>__getattr__</code>, and adds
 <code>.to_dataset(dimension_columns=[...])</code> for round-tripping the
 result back to an <code>xr.Dataset</code>.</p>
+<p>With the ml extension installed (<code>pip install xarray-sql[ml]</code>),
+the query may also call <code>grad</code>, <code>vjp</code> and <code>jvp</code> (see
+<a class="autorefs autorefs-internal" title="&lt;code&gt;ad&lt;/code&gt;" href="./#xarray_sql.ad">xarray_sql.ad</a>).</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -18575,10 +19123,10 @@ are evaluated once, when the query is prepared.</p>
       
         
         
-      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.action.view","content.code.annotate","content.code.copy","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.sections","navigation.top","navigation.tracking","search.highlight","search.share","search.suggest","toc.follow"],"redirect":null,"search":"../../assets/javascripts/workers/search.c47bb847.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"provider":"mike"}}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.action.view","content.code.annotate","content.code.copy","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.sections","navigation.top","navigation.tracking","search.highlight","search.share","search.suggest","toc.follow"],"redirect":null,"search":"../../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"provider":"mike"}}</script>
     
     
-      <script src="../../assets/javascripts/bundle.77dd0ce9.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d31f0ffa.min.js"></script>
       
     
   </body>
