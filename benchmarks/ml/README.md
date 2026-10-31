@@ -1,14 +1,14 @@
 # Machine learning in SQL
 
-These scripts write machine-learning models as SQL over tables that
+These scripts write three machine-learning models as SQL over tables that
 [xarray-sql](../../README.md) registers from xarray Datasets, and time the
 same SQL on several engines. Two related projects shape them:
 
 - [ddx](https://github.com/xqlsystems/ddx) differentiates SQL queries: it
   turns the gradient of a query into more SQL, which trains the models.
 - [einfold](https://github.com/xqlsystems/einfold) is a query optimizer
-  that rewrites SQL plans into array algorithms. Two of these models
-  are its [target demos](https://github.com/xqlsystems/einfold/blob/main/docs/demos.md),
+  that rewrites SQL plans into array algorithms. These models are its
+  three [target demos](https://github.com/xqlsystems/einfold/blob/main/docs/demos.md),
   and the demos run on DataFusion with einfold as one of their engines.
 
 Each script checks its results against the same model in
@@ -19,6 +19,7 @@ array programs.
 |---|---|---|---|
 | 01 | [`01_attention.py`](01_attention.py) | causal softmax attention, the core of a transformer, as a view (the model) in einfold's window and `GROUP BY` spellings, and a loss that reads it | the naive plan, which stores every score, against [FlashAttention](https://arxiv.org/abs/2205.14135)'s tiled plan, which einfold finds from the same SQL; gradients with respect to Q, K and V; masked pairs as absent rows; a control that isn't attention: the [Nadaraya–Watson estimator](https://en.wikipedia.org/wiki/Kernel_regression#Nadaraya%E2%80%93Watson_kernel_regression), an average of nearby points weighted by a Gaussian kernel, which einfold must fuse with the same rules |
 | 02 | [`02_nanogpt.py`](02_nanogpt.py) | [nanoGPT](https://github.com/karpathy/nanoGPT)'s GPT-2 model, at 1 layer and 4,416 parameters, as a view, and a cross-entropy loss that reads it, on Tiny Shakespeare | the loss on each host; training steps with SGD or, as nanoGPT trains, AdamW, every parameter table checked after every step |
+| 03 | [`03_graphcast.py`](03_graphcast.py) | [GraphCast](https://arxiv.org/abs/2212.12794)_small, DeepMind's graph neural network for weather forecasting, with DeepMind's published weights (36 million), as one view per stage, on DeepMind's example inputs from [ERA5](https://www.ecmwf.int/en/forecasts/dataset/ecmwf-reanalysis-v5), ECMWF's reanalysis of the atmosphere | each stage against DeepMind's own model in JAX, a processor round at a time; a 6-hour forecast at 16 rounds |
 
 The SQL favors legibility over speed. Each model reads like its definition,
 and the slow parts are left slow on purpose: they are what ddx, xarray-sql
@@ -38,6 +39,7 @@ mismatch fails the run.
 ```shell
 uv run benchmarks/ml/01_attention.py
 uv run benchmarks/ml/02_nanogpt.py --steps 5
+uv run benchmarks/ml/03_graphcast.py --hosts einfold --sizes 1
 ```
 
 Each script carries [inline `uv` metadata](https://docs.astral.sh/uv/guides/scripts/)
@@ -46,8 +48,9 @@ options are the same in each:
 
 ```shell
 --hosts datafusion duckdb   # the engines to run on (default: all)
---sizes 64 256              # problem sizes: tokens, or batch size
+--sizes 64 256              # problem sizes: tokens, batch size, or rounds
 --reps 3                    # timed repetitions; the median is reported
+--memory 6                  # each host's memory limit in GB, past which it spills
 --csv results.csv           # also write the results table
 ```
 
@@ -55,7 +58,10 @@ Demo 2 adds `--steps`, the number of training steps, and `--optimizer`:
 `sgd` (the default), or `adamw` to train as nanoGPT does, and the
 model's size: `--layers`, `--embed`, `--heads` and `--context`, nanoGPT's
 `n_layer`, `n_embd`, `n_head` and `block_size` (1, 16, 2 and 16 by
-default; nanoGPT's Shakespeare model is 6, 384, 6 and 256).
+default; nanoGPT's Shakespeare model is 6, 384, 6 and 256). In demo 3,
+`--sizes` is the number of processor rounds; at 16, the forecast is
+complete. Its first run downloads DeepMind's checkpoint, example and
+statistics (about 0.5 GB) into `~/.cache/xarray-sql/graphcast`.
 
 The output ends with one table: a row per step, host and size, with its
 median time, its error against JAX, and the number of operators in the
