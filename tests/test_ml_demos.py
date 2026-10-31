@@ -24,6 +24,10 @@ DEMOS = {
         ["--steps", "1"],
         ["--steps", "1", "--optimizer", "adamw"],
     ],
+    # GraphCast has no run small enough for CI: its smallest, the encoder
+    # and one processor round over the full grid, downloads DeepMind's
+    # checkpoint (about 0.5 GB) and takes minutes and over 10 GB.
+    "03_graphcast.py": [],
 }
 
 
