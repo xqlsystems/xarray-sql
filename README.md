@@ -289,6 +289,26 @@ I want to give a special thanks to the following folks and institutions:
   opinion.
 
 
+## Apple silicon tensor acceleration
+
+The optional [Apple silicon integration](accelerators/einfold_mlx/README.md)
+connects [EinFold](https://github.com/xqlsystems/einfold), a tensor optimizer
+for SQL, to [MLX](https://github.com/ml-explore/mlx), Apple's array framework.
+It keeps SQL planning and gradients from
+[ddx](https://github.com/xqlsystems/ddx), which differentiates SQL queries.
+Float64 CPU execution is the default;
+float32 GPU execution requires explicit opt-in. See the
+[local M5 Ultra measurements](benchmarks/apple/README.md) for end-to-end
+results, numerical errors, dispatch thresholds and limitations.
+The [shared-CTE nanoGPT comparison](benchmarks/apple/nanogpt-shared.md)
+combines cached shared SQL stages with the same CPU/GPU kernels and checks
+larger models against JAX.
+The experimental [compact execution path](benchmarks/apple/dense-execution.md)
+retains arrays across forward and backward stages, reuses plans, and
+executes supported operators through MLX. Its report includes checked
+five-step GPT-2-size training, memory bounds and remaining native-framework
+performance gaps.
+
 ## License
 
 ```
