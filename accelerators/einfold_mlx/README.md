@@ -284,16 +284,16 @@ MLX_ENABLE_TF32=0 PYTHONPATH="$PWD" .venv/bin/python -m pytest -m 'not integrati
 MLX_ENABLE_TF32=0 .venv/bin/python -m pytest tests/test_mlx.py
 ```
 
-The native patch also passes EinFold's kernel and randomized invariant
+The native contribution also passes EinFold's kernel and randomized invariant
 suite, except for the existing plain-DataFusion `nan_compares_by_its_sign`
 assumption on this ARM Mac. That test expects `inf - inf` to produce a
 negative NaN. Here plain DataFusion produces a positive NaN, without any
-extension installed. The test remains unchanged in the patch and was
+extension installed. The test remains unchanged in the contribution and was
 documented in the measured report; it is not silently removed.
 
 ## Shared CTE execution
 
-The `0.2.0+xqlmlx.3` patch adds safe prepared-plan resets and multi-key
+The historical `0.2.0+xqlmlx.3` build added safe prepared-plan resets and multi-key
 attention detection. Batch and head keys must match in the scores, values,
 softmax partition and normalizer. The kernel validates complete positional
 domains before treating those groups as independent attention problems.
