@@ -45,7 +45,13 @@ of its PyTorch module, named after it:
 
 Each block is a view of the views before it, and the forecast is one query
 of the last. Each host (an engine that runs the SQL; see ``_hosts.py``)
-plans it as a whole.
+plans it as a whole. The demo also runs the network *eagerly*, as PyTorch
+does by default: the same SQL, but each layer stored as a table before the
+next reads it, so that each is computed once. A view read twice (a block's
+input feeds both its convolutions and its skip connection) is planned and
+computed twice, so the eager run is the fairer comparison with PyTorch,
+whose time the demo reports too. The views are the one a gradient can be
+taken through.
 
 The check is Samudra's own model: its ``UNetBackbone``, ``ConvNeXtBlock``
 and ``Samudra`` modules, built as Samudra 2's configuration builds them,
@@ -62,12 +68,14 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from itertools import pairwise
 
 import numpy as np
 import pyarrow as pa
 import torch
 import xarray as xr
 from _bench import Report, assert_close, cli, hosts
+from _hosts import Host
 from samudra.models import Samudra
 from samudra.models.modules import (
     AvgPool,
@@ -231,7 +239,7 @@ def program(levels: int, grid: Grid) -> Iterator[tuple[str, str]]:
     widths, dilations = WIDTHS[:levels], DILATIONS[:levels]
     channels = [IN_CHANNELS, *widths]
     layer, x, skips = 0, "state", []
-    for i, (a, b) in enumerate(zip(channels, channels[1:])):
+    for i, (a, b) in enumerate(pairwise(channels)):
         yield (
             f"down_{i}",
             convnext_block(x, f"unet.layers.{layer}", a, b, dilations[i], grid),
@@ -387,6 +395,25 @@ def matrix(rows: pa.Table, shape: tuple[int, ...]) -> np.ndarray:
     return out
 
 
+QUERY = "SELECT c, lat, lon, v FROM forecast ORDER BY c, lat, lon"
+# Samudra runs in float32; the SQL, in float64.
+TOLERANCE = {"rtol": 1e-5, "atol": 1e-5}
+
+
+def eager(host: Host, levels: int, grid: Grid) -> pa.Table:
+    """The forecast with each layer stored as a table before the next
+    reads it, as PyTorch keeps each layer's output."""
+    for name, sql in program(levels, grid):
+        host.execute(f"CREATE OR REPLACE TABLE {name} AS {sql}")
+    return host.query(QUERY)
+
+
+class _PyTorch:
+    """Samudra's own model, as a row of the results."""
+
+    name = "pytorch"
+
+
 def main() -> None:
     parser = cli(__doc__.splitlines()[0], sizes=[10], size_name="lat")
     parser.add_argument(
@@ -414,20 +441,49 @@ def main() -> None:
             "wet": xr.Dataset({"wet": (("c", "lat", "lon"), wet)}),
             **parameters(model),
         }
+        report.time(
+            f"forecast ({args.levels} levels)",
+            _PyTorch(),
+            n,
+            forecast,
+            model,
+            state,
+            wet,
+        )
         for host in hosts(args.hosts):
             for name, ds in data.items():
                 host.load(name, ds)
             for view, sql in program(args.levels, grid):
                 host.execute(f"CREATE OR REPLACE VIEW {view} AS {sql}")
-            query = "SELECT c, lat, lon, v FROM forecast ORDER BY c, lat, lon"
             rows = report.time(
-                f"forecast ({args.levels} levels)", host, n, host.query, query
+                f"forecast ({args.levels} levels)", host, n, host.query, QUERY
             )
-            got = matrix(rows, want.shape)
             report.check(
-                assert_close("forecast", got, want, rtol=1e-5, atol=1e-5)
+                assert_close(
+                    "forecast", matrix(rows, want.shape), want, **TOLERANCE
+                )
             )
-            report.note("operators", host.operators(query))
+            report.note("operators", host.operators(QUERY))
+        for host in hosts(args.hosts):
+            for name, ds in data.items():
+                host.load(name, ds)
+            rows = report.time(
+                f"forecast, eager ({args.levels} levels)",
+                host,
+                n,
+                eager,
+                host,
+                args.levels,
+                grid,
+            )
+            report.check(
+                assert_close(
+                    "eager forecast",
+                    matrix(rows, want.shape),
+                    want,
+                    **TOLERANCE,
+                )
+            )
     report.finish(args.csv)
 
 
