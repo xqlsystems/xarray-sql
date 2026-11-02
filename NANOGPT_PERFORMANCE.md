@@ -218,13 +218,14 @@ invalidation, numerical precision, state ownership, failed-step atomicity,
 changing compiled token/LR inputs, snapshots and checkpoint/resume.
 
 This was repeated against wheels rebuilt from the persistent ddx/EinFold
-checkouts: [publication test log](benchmarks/apple/resident-publication-correctness.log).
+checkouts, then again after integrating upstream's newer EinFold runtime:
+[final publication test log](benchmarks/apple/resident-final-merged-correctness.log).
 ddx passed its Rust workspace suite (535 passed, 10 ignored). EinFold's
 Rust suite had 72 passes, 4 ignored and one NaN-sign behavior assertion
 failure, reproduced unchanged on its clean pinned base on this macOS host.
 Both passed Clippy, formatting and warning-free Rust docs; EinFold also
-passed REUSE license checks. The combined Python binding suite passed
-126 tests with 6 optional skips.
+passed REUSE license checks. The [final combined Python binding suite](benchmarks/apple/publication-upstream-python.log)
+passed 128 tests with 6 optional skips.
 
 The five-step resident recipe checked every loss, raw gradient, weight and
 both optimizer moments against original nanoGPT `model.py` and PyTorch
