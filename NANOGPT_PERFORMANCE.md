@@ -269,3 +269,25 @@ The pinned local integration builds used ddxdb `0.4.6+xqlmath.3`, EinFold
 PyArrow 26.0.0, Python 3.12.14 and PyTorch 2.15.0. Upstream contributions
 retain normal package versions; local suffixes identify benchmark builds.
 The ddx and EinFold repositories contain their own `OPTIMIZATION.md` reports.
+
+## Review and dependency order
+
+| Repository / change | PR | Depends on |
+|---|---|---|
+| ddx: exact error-function derivatives | [256](https://github.com/xqlsystems/ddx/pull/256) | Independent |
+| ddx: prepared primal-output metadata | [257](https://github.com/xqlsystems/ddx/pull/257) | ddx 256 |
+| EinFold: session-local numerical backends | [156](https://github.com/xqlsystems/einfold/pull/156) | Independent |
+| EinFold: compact logical-plan arrays | [157](https://github.com/xqlsystems/einfold/pull/157) | EinFold 156 |
+| xarray-sql: setup and plan reuse | [301](https://github.com/xqlsystems/xarray-sql/pull/301) | Independent |
+| xarray-sql: shared stages and numerical kernels | [302](https://github.com/xqlsystems/xarray-sql/pull/302) | xarray-sql 301, EinFold 156 |
+| xarray-sql: compact array integration | [303](https://github.com/xqlsystems/xarray-sql/pull/303) | xarray-sql 302, EinFold 157 |
+| xarray-sql: resident SQL training | [305](https://github.com/xqlsystems/xarray-sql/pull/305) | xarray-sql 303, ddx 257 |
+| xarray-sql: reports, harnesses and evidence | [304](https://github.com/xqlsystems/xarray-sql/pull/304) | Independent documentation branch; describes the complete stack |
+
+Branches are published through the `cromwellian` forks because that account
+cannot push upstream branches. GitHub requires those PRs to target an
+upstream branch, so dependent PR default diffs include their predecessors
+until those merge. Each description links the incremental comparison for
+its own change. No PR is merged by this work. The reports retain benchmark
+provenance separately from later upstream runtime integration and packaging
+changes; see [publication sources](benchmarks/apple/publication-sources.json).
