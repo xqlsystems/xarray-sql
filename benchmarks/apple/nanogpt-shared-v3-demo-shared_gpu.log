@@ -1,0 +1,27 @@
+  1-layer GPT, vocab 65, 213,504 parameters: the loss is 123 lines of SQL
+  steps=5, optimizer=sgd, context=64, heads=4, embed=128, forward_only=False
+  loss, step 0                 shared_gpu  batch=1         0.074s
+  train (sgd), step 0          shared_gpu  batch=1         0.760s
+  loss, step 1                 shared_gpu  batch=1         0.027s
+  train (sgd), step 1          shared_gpu  batch=1         0.435s
+  loss, step 2                 shared_gpu  batch=1         0.026s
+  train (sgd), step 2          shared_gpu  batch=1         0.429s
+  loss, step 3                 shared_gpu  batch=1         0.024s
+  train (sgd), step 3          shared_gpu  batch=1         0.449s
+  loss, step 4                 shared_gpu  batch=1         0.026s
+  train (sgd), step 4          shared_gpu  batch=1         0.513s
+
+| demo | step | host | batch | seconds | check | loss | operators | rtol | atol | layers | embed | heads | context | vocab | parameters | optimizer | sgd_learning_rate | forward_only | table_registers | query_preparations | cpu_matmul | gpu_matmul | gpu_attention | declined | physical_plans | plan_executions | stage_buffer_allocations | key_cache_hits | key_copy_bytes_avoided | forward_stages | planning_seconds | execution_seconds | stage_storage_seconds | key_cache_bytes | load_seconds | model_seconds | gradient_preparations | inplace_updates | stage_buffer_writes | stage_replacements_keys_or_nulls |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| nanogpt | loss, step 0 | shared_gpu | 1 | 0.074 | ok (3e-09) | 4.186 | n/a | 3e-05 | 3e-05 | 1 | 128 | 4 | 64 | 65 | 213504 | sgd | 0.010 | False | 13 | 1 | 0 | 7 | 1 | 0 | 10 | 10 | 9 | 16 | 691712 | 10 | 0.035 | 0.033 | 0.001 | 297472 | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 0 | shared_gpu | 1 | 0.760 | ok (7e-09) | n/a | n/a | n/a | n/a | 1 | 128 | 4 | 64 | 65 | 213504 | sgd | 0.010 | False | 13 | 1 | 0 | 32 | 1 | 0 | 86 | 86 | 63 | 208 | 13300224 | 10 | 0.344 | 0.350 | 0.026 | 5620224 | 0.006 | 0.001 | 1 | 11 | n/a | n/a |
+| nanogpt | loss, step 1 | shared_gpu | 1 | 0.027 | ok (3e-10) | 4.111 | n/a | 3e-05 | 3e-05 | 1 | 128 | 4 | 64 | 65 | 213504 | sgd | 0.010 | False | 13 | 1 | 0 | 39 | 2 | 0 | 86 | 96 | 63 | 208 | 13300224 | 10 | 0.344 | 0.375 | 0.026 | 5620224 | n/a | n/a | 1 | 12 | 9 | n/a |
+| nanogpt | train (sgd), step 1 | shared_gpu | 1 | 0.435 | ok (1e-08) | n/a | n/a | n/a | n/a | 1 | 128 | 4 | 64 | 65 | 213504 | sgd | 0.010 | False | 13 | 1 | 0 | 64 | 2 | 0 | 99 | 172 | 73 | 307 | 19788288 | 10 | 0.422 | 0.692 | 0.049 | 5816832 | 0.008 | 0.001 | 1 | 23 | 53 | 10 |
+| nanogpt | loss, step 2 | shared_gpu | 1 | 0.026 | ok (3e-09) | 4.147 | n/a | 3e-05 | 3e-05 | 1 | 128 | 4 | 64 | 65 | 213504 | sgd | 0.010 | False | 13 | 1 | 0 | 71 | 3 | 0 | 99 | 182 | 73 | 307 | 19788288 | 10 | 0.422 | 0.716 | 0.050 | 5816832 | n/a | n/a | 1 | 24 | 62 | 10 |
+| nanogpt | train (sgd), step 2 | shared_gpu | 1 | 0.429 | ok (1e-08) | n/a | n/a | n/a | n/a | 1 | 128 | 4 | 64 | 65 | 213504 | sgd | 0.010 | False | 13 | 1 | 0 | 96 | 3 | 0 | 112 | 258 | 83 | 406 | 26276352 | 10 | 0.497 | 1.029 | 0.072 | 6013440 | 0.010 | 0.001 | 1 | 35 | 106 | 20 |
+| nanogpt | loss, step 3 | shared_gpu | 1 | 0.024 | ok (2e-09) | 4.065 | n/a | 3e-05 | 3e-05 | 1 | 128 | 4 | 64 | 65 | 213504 | sgd | 0.010 | False | 13 | 1 | 0 | 103 | 4 | 0 | 112 | 268 | 83 | 406 | 26276352 | 10 | 0.497 | 1.051 | 0.073 | 6013440 | n/a | n/a | 1 | 36 | 115 | 20 |
+| nanogpt | train (sgd), step 3 | shared_gpu | 1 | 0.449 | ok (1e-08) | n/a | n/a | n/a | n/a | 1 | 128 | 4 | 64 | 65 | 213504 | sgd | 0.010 | False | 13 | 1 | 0 | 128 | 4 | 0 | 125 | 344 | 93 | 505 | 32764416 | 10 | 0.579 | 1.374 | 0.097 | 6210048 | 0.012 | 0.001 | 1 | 47 | 159 | 30 |
+| nanogpt | loss, step 4 | shared_gpu | 1 | 0.026 | ok (2e-09) | 4.031 | n/a | 3e-05 | 3e-05 | 1 | 128 | 4 | 64 | 65 | 213504 | sgd | 0.010 | False | 13 | 1 | 0 | 135 | 5 | 0 | 125 | 354 | 93 | 505 | 32764416 | 10 | 0.579 | 1.399 | 0.098 | 6210048 | n/a | n/a | 1 | 48 | 168 | 30 |
+| nanogpt | train (sgd), step 4 | shared_gpu | 1 | 0.513 | ok (2e-08) | n/a | n/a | n/a | n/a | 1 | 128 | 4 | 64 | 65 | 213504 | sgd | 0.010 | False | 13 | 1 | 0 | 160 | 5 | 0 | 138 | 430 | 103 | 604 | 39252480 | 10 | 0.669 | 1.773 | 0.124 | 6406656 | 0.014 | 0.001 | 1 | 59 | 212 | 40 |
+
+wrote /Users/cromwellian/xql/xarray-sql/benchmarks/apple/nanogpt-shared-v3-demo-shared_gpu.csv

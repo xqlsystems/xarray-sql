@@ -1,0 +1,127 @@
+{
+  "backend": "torch_mps",
+  "date": "2026-11-01",
+  "python": "3.12.14",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "torch_version": "2.15.0",
+  "steps": 5,
+  "parameters": 10745088,
+  "batch_tokens": 3072,
+  "config": {
+    "out_dir": "/Users/cromwellian/xql/xarray-sql/benchmarks/apple/shakespeare-torch-mps-out",
+    "eval_interval": 200,
+    "log_interval": 1,
+    "eval_iters": 20,
+    "eval_only": false,
+    "always_save_checkpoint": false,
+    "init_from": "scratch",
+    "wandb_log": false,
+    "wandb_project": "shakespeare-char",
+    "wandb_run_name": "mini-gpt",
+    "dataset": "shakespeare_char",
+    "gradient_accumulation_steps": 1,
+    "batch_size": 12,
+    "block_size": 256,
+    "n_layer": 6,
+    "n_head": 6,
+    "n_embd": 384,
+    "dropout": 0.2,
+    "bias": false,
+    "learning_rate": 0.001,
+    "max_iters": 4,
+    "weight_decay": 0.1,
+    "beta1": 0.9,
+    "beta2": 0.99,
+    "grad_clip": 1.0,
+    "decay_lr": true,
+    "warmup_iters": 100,
+    "lr_decay_iters": 2000,
+    "min_lr": 0.0001,
+    "backend": "nccl",
+    "device": "mps",
+    "dtype": "float32",
+    "compile": false
+  },
+  "nanogpt_revision": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291",
+  "source_sha256": {
+    "train.py": "413bd97b40bb400a2a0d01230e2946f056c263ebac1b7281c2367d964a123085",
+    "model.py": "7c01703240dbec5d554527dc666e35b3df8391d0b117fddc07afcf325a21d11c",
+    "config/train_shakespeare_char.py": "9b41cdfb2c917259d796a8184d835221a349c23cd18a0a63b46da431d95d9c05"
+  },
+  "instrumentation_sha256": "85cfe28aeaf7d105149a4bee073825bb80c61262aa82c0a7999f95146c265df1",
+  "native_argv": [
+    "train.py",
+    "config/train_shakespeare_char.py",
+    "--device=mps",
+    "--dtype=float32",
+    "--compile=False",
+    "--batch_size=12",
+    "--block_size=256",
+    "--n_layer=6",
+    "--n_head=6",
+    "--n_embd=384",
+    "--gradient_accumulation_steps=1",
+    "--max_iters=4",
+    "--lr_decay_iters=2000",
+    "--warmup_iters=100",
+    "--eval_interval=200",
+    "--eval_iters=20",
+    "--log_interval=1",
+    "--wandb_log=False",
+    "--out_dir=/Users/cromwellian/xql/xarray-sql/benchmarks/apple/shakespeare-torch-mps-out"
+  ],
+  "rows": [
+    {
+      "iteration": 0,
+      "lr": 9.900990099009901e-06,
+      "loss": 4.258163928985596,
+      "seconds": 0.5524522500345483,
+      "tokens_per_second": 5560.661577191311
+    },
+    {
+      "iteration": 1,
+      "lr": 1.9801980198019803e-05,
+      "loss": 4.132935047149658,
+      "seconds": 0.03179487492889166,
+      "tokens_per_second": 96619.34531494278
+    },
+    {
+      "iteration": 2,
+      "lr": 2.9702970297029702e-05,
+      "loss": 3.9018430709838867,
+      "seconds": 0.029624666087329388,
+      "tokens_per_second": 103697.37133725565
+    },
+    {
+      "iteration": 3,
+      "lr": 3.9603960396039605e-05,
+      "loss": 3.6646385192871094,
+      "seconds": 0.0316031250404194,
+      "tokens_per_second": 97205.57685580173
+    },
+    {
+      "iteration": 4,
+      "lr": 4.950495049504951e-05,
+      "loss": 3.5102603435516357,
+      "seconds": 0.02439495804719627,
+      "tokens_per_second": 125927.66070991736
+    }
+  ],
+  "warm_mean_seconds": 0.02935440602595918,
+  "warm_tokens_per_second": 104652.09199884057,
+  "attention": "original model.py scaled_dot_product_attention selection",
+  "scope": "Synchronized native forward, backward, gradient clipping, AdamW, zero_grad and next-batch prefetch. Evaluation, initialization, logging and checkpoint I/O excluded. Weights and optimizer state remain on MPS.",
+  "matching": "Same model, data split, optimizer, dropout and LR schedule as the SQL recipe; stock PyTorch RNGs, rather than SQL NumPy RNGs. max_iters=steps-1 stops native's inclusive loop after exactly steps updates. compile=False.",
+  "sql_comparison": [
+    {
+      "backend": "dense_gpu",
+      "seconds": 2.02414754149504,
+      "sql_over_torch_ratio": 68.9554930767467
+    },
+    {
+      "backend": "dense_cpu",
+      "seconds": 9.746508520736825,
+      "sql_over_torch_ratio": 332.02881067045365
+    }
+  ]
+}

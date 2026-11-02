@@ -1,0 +1,130 @@
+{
+  "backend": "jax_jit",
+  "context": 1024,
+  "parameters": 124337664,
+  "parameter_shapes": {
+    "wte": [
+      50257,
+      768
+    ],
+    "wpe": [
+      1024,
+      768
+    ],
+    "ln_1": [
+      12,
+      768
+    ],
+    "wq": [
+      12,
+      768,
+      12,
+      64
+    ],
+    "wk": [
+      12,
+      768,
+      12,
+      64
+    ],
+    "wv": [
+      12,
+      768,
+      12,
+      64
+    ],
+    "wo": [
+      12,
+      12,
+      64,
+      768
+    ],
+    "ln_2": [
+      12,
+      768
+    ],
+    "w_fc": [
+      12,
+      768,
+      3072
+    ],
+    "w_proj": [
+      12,
+      3072,
+      768
+    ],
+    "ln_f": [
+      768
+    ]
+  },
+  "parameter_counts": {
+    "wte": 38597376,
+    "wpe": 786432,
+    "ln_1": 9216,
+    "wq": 7077888,
+    "wk": 7077888,
+    "wv": 7077888,
+    "wo": 7077888,
+    "ln_2": 9216,
+    "w_fc": 28311552,
+    "w_proj": 28311552,
+    "ln_f": 768
+  },
+  "steps": 5,
+  "batch": 1,
+  "learning_rate": 0.01,
+  "optimizer": "sgd",
+  "gelu": "tanh",
+  "forward_only": false,
+  "rtol": 1e-09,
+  "atol": 1e-09,
+  "python": "3.12.14",
+  "jax_version": "0.12.0.1",
+  "reference_sha256": "80a5a55b39161f7e45fa717ec2d60aabaeee3edf90d19ef8ad736afa3c678841",
+  "rows": [
+    {
+      "step": 0,
+      "seconds": 2.7095948749920353,
+      "loss": 10.783063169305695,
+      "check": "ok",
+      "max_scaled_error": 1.5821289497231385e-16
+    },
+    {
+      "step": 1,
+      "seconds": 2.4120942499721423,
+      "loss": 8.782007900424375,
+      "check": "ok",
+      "max_scaled_error": 2.2200777105558492e-16
+    },
+    {
+      "step": 2,
+      "seconds": 2.4132071669446304,
+      "loss": 7.639927209727933,
+      "check": "ok",
+      "max_scaled_error": 2.2200913907570052e-16
+    },
+    {
+      "step": 3,
+      "seconds": 2.5045561250299215,
+      "loss": 6.953781219773996,
+      "check": "ok",
+      "max_scaled_error": 2.220100087616973e-16
+    },
+    {
+      "step": 4,
+      "seconds": 2.4481768329860643,
+      "loss": 6.847608614444603,
+      "check": "ok",
+      "max_scaled_error": 2.2588187400865964e-16
+    }
+  ],
+  "compile_seconds": 2.769668708089739,
+  "scope": "One loss forward and, for training, its backward and SGD update; synchronization included; validation and input/state setup excluded.",
+  "devices": [
+    "cpu:0"
+  ],
+  "setup_seconds_including_compile": 2.8493559170747176,
+  "warm_seconds": 2.4445085937331896,
+  "five_step_seconds": 12.487629249924794,
+  "five_steps_with_setup_compile_seconds": 15.336985166999511
+}

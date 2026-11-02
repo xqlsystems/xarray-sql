@@ -1,0 +1,792 @@
+{
+  "backend": "torch_mps",
+  "date": "2026-11-01",
+  "python": "3.12.14",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "torch_version": "2.15.0",
+  "steps": 100,
+  "parameters": 10745088,
+  "batch_tokens": 3072,
+  "config": {
+    "out_dir": "/Users/cromwellian/xql/xarray-sql/benchmarks/apple/shakespeare-resident-torch-mps-100-out",
+    "eval_interval": 200,
+    "log_interval": 1,
+    "eval_iters": 20,
+    "eval_only": false,
+    "always_save_checkpoint": false,
+    "init_from": "scratch",
+    "wandb_log": false,
+    "wandb_project": "shakespeare-char",
+    "wandb_run_name": "mini-gpt",
+    "dataset": "shakespeare_char",
+    "gradient_accumulation_steps": 1,
+    "batch_size": 12,
+    "block_size": 256,
+    "n_layer": 6,
+    "n_head": 6,
+    "n_embd": 384,
+    "dropout": 0.2,
+    "bias": false,
+    "learning_rate": 0.001,
+    "max_iters": 99,
+    "weight_decay": 0.1,
+    "beta1": 0.9,
+    "beta2": 0.99,
+    "grad_clip": 1.0,
+    "decay_lr": true,
+    "warmup_iters": 100,
+    "lr_decay_iters": 2000,
+    "min_lr": 0.0001,
+    "backend": "nccl",
+    "device": "mps",
+    "dtype": "float32",
+    "compile": false
+  },
+  "nanogpt_revision": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291",
+  "source_sha256": {
+    "train.py": "413bd97b40bb400a2a0d01230e2946f056c263ebac1b7281c2367d964a123085",
+    "model.py": "7c01703240dbec5d554527dc666e35b3df8391d0b117fddc07afcf325a21d11c",
+    "config/train_shakespeare_char.py": "9b41cdfb2c917259d796a8184d835221a349c23cd18a0a63b46da431d95d9c05"
+  },
+  "instrumentation_sha256": "85cfe28aeaf7d105149a4bee073825bb80c61262aa82c0a7999f95146c265df1",
+  "native_argv": [
+    "train.py",
+    "config/train_shakespeare_char.py",
+    "--device=mps",
+    "--dtype=float32",
+    "--compile=False",
+    "--batch_size=12",
+    "--block_size=256",
+    "--n_layer=6",
+    "--n_head=6",
+    "--n_embd=384",
+    "--gradient_accumulation_steps=1",
+    "--max_iters=99",
+    "--lr_decay_iters=2000",
+    "--warmup_iters=100",
+    "--eval_interval=200",
+    "--eval_iters=20",
+    "--log_interval=1",
+    "--wandb_log=False",
+    "--out_dir=/Users/cromwellian/xql/xarray-sql/benchmarks/apple/shakespeare-resident-torch-mps-100-out"
+  ],
+  "rows": [
+    {
+      "iteration": 0,
+      "lr": 9.900990099009901e-06,
+      "loss": 4.258163928985596,
+      "seconds": 0.085335582960397,
+      "tokens_per_second": 35999.05096360179
+    },
+    {
+      "iteration": 1,
+      "lr": 1.9801980198019803e-05,
+      "loss": 4.1329345703125,
+      "seconds": 0.029339374974370003,
+      "tokens_per_second": 104705.70701262746
+    },
+    {
+      "iteration": 2,
+      "lr": 2.9702970297029702e-05,
+      "loss": 3.9018430709838867,
+      "seconds": 0.024168374948203564,
+      "tokens_per_second": 127108.25641292617
+    },
+    {
+      "iteration": 3,
+      "lr": 3.9603960396039605e-05,
+      "loss": 3.6646385192871094,
+      "seconds": 0.02443512505851686,
+      "tokens_per_second": 125720.65797262023
+    },
+    {
+      "iteration": 4,
+      "lr": 4.950495049504951e-05,
+      "loss": 3.5102603435516357,
+      "seconds": 0.025529541075229645,
+      "tokens_per_second": 120331.18773845278
+    },
+    {
+      "iteration": 5,
+      "lr": 5.9405940594059404e-05,
+      "loss": 3.4128153324127197,
+      "seconds": 0.023800749913789332,
+      "tokens_per_second": 129071.56333843873
+    },
+    {
+      "iteration": 6,
+      "lr": 6.930693069306931e-05,
+      "loss": 3.349642753601074,
+      "seconds": 0.02932554204016924,
+      "tokens_per_second": 104755.09696605326
+    },
+    {
+      "iteration": 7,
+      "lr": 7.920792079207921e-05,
+      "loss": 3.3626480102539062,
+      "seconds": 0.02830391691531986,
+      "tokens_per_second": 108536.21458792653
+    },
+    {
+      "iteration": 8,
+      "lr": 8.910891089108912e-05,
+      "loss": 3.362469434738159,
+      "seconds": 0.023630207986570895,
+      "tokens_per_second": 130003.08764721094
+    },
+    {
+      "iteration": 9,
+      "lr": 9.900990099009902e-05,
+      "loss": 3.227586030960083,
+      "seconds": 0.025374541990458965,
+      "tokens_per_second": 121066.22461028448
+    },
+    {
+      "iteration": 10,
+      "lr": 0.0001089108910891089,
+      "loss": 3.189467668533325,
+      "seconds": 0.023909708950668573,
+      "tokens_per_second": 128483.37076533503
+    },
+    {
+      "iteration": 11,
+      "lr": 0.00011881188118811881,
+      "loss": 3.0526139736175537,
+      "seconds": 0.023747375002130866,
+      "tokens_per_second": 129361.66627782429
+    },
+    {
+      "iteration": 12,
+      "lr": 0.00012871287128712872,
+      "loss": 3.132127523422241,
+      "seconds": 0.024750292068347335,
+      "tokens_per_second": 124119.74741618184
+    },
+    {
+      "iteration": 13,
+      "lr": 0.00013861386138613863,
+      "loss": 2.9958336353302,
+      "seconds": 0.026189875090494752,
+      "tokens_per_second": 117297.23755402482
+    },
+    {
+      "iteration": 14,
+      "lr": 0.0001485148514851485,
+      "loss": 3.0269088745117188,
+      "seconds": 0.023989250068552792,
+      "tokens_per_second": 128057.35865945416
+    },
+    {
+      "iteration": 15,
+      "lr": 0.00015841584158415842,
+      "loss": 2.9712722301483154,
+      "seconds": 0.02486316696740687,
+      "tokens_per_second": 123556.2631271827
+    },
+    {
+      "iteration": 16,
+      "lr": 0.00016831683168316833,
+      "loss": 2.8759543895721436,
+      "seconds": 0.02432841609697789,
+      "tokens_per_second": 126272.09218037044
+    },
+    {
+      "iteration": 17,
+      "lr": 0.00017821782178217824,
+      "loss": 2.8801815509796143,
+      "seconds": 0.025599832995794713,
+      "tokens_per_second": 120000.7828373192
+    },
+    {
+      "iteration": 18,
+      "lr": 0.00018811881188118812,
+      "loss": 2.85270619392395,
+      "seconds": 0.024541541002690792,
+      "tokens_per_second": 125175.51361844713
+    },
+    {
+      "iteration": 19,
+      "lr": 0.00019801980198019803,
+      "loss": 2.8255856037139893,
+      "seconds": 0.029676083009690046,
+      "tokens_per_second": 103517.70477919572
+    },
+    {
+      "iteration": 20,
+      "lr": 0.00020792079207920794,
+      "loss": 2.802380323410034,
+      "seconds": 0.03061033389531076,
+      "tokens_per_second": 100358.26497373177
+    },
+    {
+      "iteration": 21,
+      "lr": 0.0002178217821782178,
+      "loss": 2.7515790462493896,
+      "seconds": 0.03349004208575934,
+      "tokens_per_second": 91728.7590183793
+    },
+    {
+      "iteration": 22,
+      "lr": 0.0002277227722772277,
+      "loss": 2.8213050365448,
+      "seconds": 0.029485124978236854,
+      "tokens_per_second": 104188.12883674265
+    },
+    {
+      "iteration": 23,
+      "lr": 0.00023762376237623762,
+      "loss": 2.795553207397461,
+      "seconds": 0.028092917054891586,
+      "tokens_per_second": 109351.40676197947
+    },
+    {
+      "iteration": 24,
+      "lr": 0.00024752475247524753,
+      "loss": 2.736558198928833,
+      "seconds": 0.03997095790691674,
+      "tokens_per_second": 76855.80133340784
+    },
+    {
+      "iteration": 25,
+      "lr": 0.00025742574257425744,
+      "loss": 2.737056016921997,
+      "seconds": 0.04282162501476705,
+      "tokens_per_second": 71739.45404782327
+    },
+    {
+      "iteration": 26,
+      "lr": 0.00026732673267326735,
+      "loss": 2.721369504928589,
+      "seconds": 0.050365042057819664,
+      "tokens_per_second": 60994.68747535856
+    },
+    {
+      "iteration": 27,
+      "lr": 0.00027722772277227726,
+      "loss": 2.666743040084839,
+      "seconds": 0.042536415974609554,
+      "tokens_per_second": 72220.47108608563
+    },
+    {
+      "iteration": 28,
+      "lr": 0.00028712871287128717,
+      "loss": 2.650385618209839,
+      "seconds": 0.03761962498538196,
+      "tokens_per_second": 81659.50620703162
+    },
+    {
+      "iteration": 29,
+      "lr": 0.000297029702970297,
+      "loss": 2.7341578006744385,
+      "seconds": 0.03282724996097386,
+      "tokens_per_second": 93580.790460733
+    },
+    {
+      "iteration": 30,
+      "lr": 0.00030693069306930693,
+      "loss": 2.6708500385284424,
+      "seconds": 0.03186145890504122,
+      "tokens_per_second": 96417.43051238431
+    },
+    {
+      "iteration": 31,
+      "lr": 0.00031683168316831684,
+      "loss": 2.629115343093872,
+      "seconds": 0.0295188749441877,
+      "tokens_per_second": 104069.00689163562
+    },
+    {
+      "iteration": 32,
+      "lr": 0.00032673267326732675,
+      "loss": 2.6278908252716064,
+      "seconds": 0.029290499980561435,
+      "tokens_per_second": 104880.42204942643
+    },
+    {
+      "iteration": 33,
+      "lr": 0.00033663366336633666,
+      "loss": 2.656036376953125,
+      "seconds": 0.028508458053693175,
+      "tokens_per_second": 107757.49408172684
+    },
+    {
+      "iteration": 34,
+      "lr": 0.00034653465346534657,
+      "loss": 2.6278536319732666,
+      "seconds": 0.02703737502451986,
+      "tokens_per_second": 113620.49744895876
+    },
+    {
+      "iteration": 35,
+      "lr": 0.0003564356435643565,
+      "loss": 2.720553398132324,
+      "seconds": 0.030423750053159893,
+      "tokens_per_second": 100973.74566357686
+    },
+    {
+      "iteration": 36,
+      "lr": 0.00036633663366336634,
+      "loss": 2.6574971675872803,
+      "seconds": 0.026332083041779697,
+      "tokens_per_second": 116663.76697680252
+    },
+    {
+      "iteration": 37,
+      "lr": 0.00037623762376237625,
+      "loss": 2.641315460205078,
+      "seconds": 0.026108750025741756,
+      "tokens_per_second": 117661.70333590008
+    },
+    {
+      "iteration": 38,
+      "lr": 0.00038613861386138616,
+      "loss": 2.589958429336548,
+      "seconds": 0.024314124952070415,
+      "tokens_per_second": 126346.31129253989
+    },
+    {
+      "iteration": 39,
+      "lr": 0.00039603960396039607,
+      "loss": 2.6001198291778564,
+      "seconds": 0.025928208022378385,
+      "tokens_per_second": 118480.99943307253
+    },
+    {
+      "iteration": 40,
+      "lr": 0.000405940594059406,
+      "loss": 2.6292078495025635,
+      "seconds": 0.02398479206021875,
+      "tokens_per_second": 128081.1604406289
+    },
+    {
+      "iteration": 41,
+      "lr": 0.0004158415841584159,
+      "loss": 2.581244468688965,
+      "seconds": 0.025166834006085992,
+      "tokens_per_second": 122065.41352230126
+    },
+    {
+      "iteration": 42,
+      "lr": 0.0004257425742574258,
+      "loss": 2.619795799255371,
+      "seconds": 0.024953874992206693,
+      "tokens_per_second": 123107.13269820466
+    },
+    {
+      "iteration": 43,
+      "lr": 0.0004356435643564356,
+      "loss": 2.6092331409454346,
+      "seconds": 0.024929958977736533,
+      "tokens_per_second": 123225.2328511018
+    },
+    {
+      "iteration": 44,
+      "lr": 0.0004455445544554455,
+      "loss": 2.5824902057647705,
+      "seconds": 0.025409167050383985,
+      "tokens_per_second": 120901.24772325331
+    },
+    {
+      "iteration": 45,
+      "lr": 0.0004554455445544554,
+      "loss": 2.5890729427337646,
+      "seconds": 0.025858583045192063,
+      "tokens_per_second": 118800.01292534794
+    },
+    {
+      "iteration": 46,
+      "lr": 0.0004653465346534653,
+      "loss": 2.6262547969818115,
+      "seconds": 0.02563291694968939,
+      "tokens_per_second": 119845.89994301158
+    },
+    {
+      "iteration": 47,
+      "lr": 0.00047524752475247524,
+      "loss": 2.5728628635406494,
+      "seconds": 0.024451375007629395,
+      "tokens_per_second": 125637.10625850142
+    },
+    {
+      "iteration": 48,
+      "lr": 0.00048514851485148515,
+      "loss": 2.5873005390167236,
+      "seconds": 0.025666375062428415,
+      "tokens_per_second": 119689.67150709688
+    },
+    {
+      "iteration": 49,
+      "lr": 0.0004950495049504951,
+      "loss": 2.591423988342285,
+      "seconds": 0.024755166028626263,
+      "tokens_per_second": 124095.3099020873
+    },
+    {
+      "iteration": 50,
+      "lr": 0.000504950495049505,
+      "loss": 2.574220895767212,
+      "seconds": 0.025892333942465484,
+      "tokens_per_second": 118645.1560074187
+    },
+    {
+      "iteration": 51,
+      "lr": 0.0005148514851485149,
+      "loss": 2.581940174102783,
+      "seconds": 0.024616874987259507,
+      "tokens_per_second": 124792.4442720661
+    },
+    {
+      "iteration": 52,
+      "lr": 0.0005247524752475248,
+      "loss": 2.588782548904419,
+      "seconds": 0.024097625049762428,
+      "tokens_per_second": 127481.44241003892
+    },
+    {
+      "iteration": 53,
+      "lr": 0.0005346534653465347,
+      "loss": 2.602567434310913,
+      "seconds": 0.02369095792528242,
+      "tokens_per_second": 129669.72503554344
+    },
+    {
+      "iteration": 54,
+      "lr": 0.0005445544554455446,
+      "loss": 2.5464887619018555,
+      "seconds": 0.024918792070820928,
+      "tokens_per_second": 123280.45401515305
+    },
+    {
+      "iteration": 55,
+      "lr": 0.0005544554455445545,
+      "loss": 2.552751302719116,
+      "seconds": 0.024100791895762086,
+      "tokens_per_second": 127464.69133822048
+    },
+    {
+      "iteration": 56,
+      "lr": 0.0005643564356435644,
+      "loss": 2.5507423877716064,
+      "seconds": 0.024907833081670105,
+      "tokens_per_second": 123334.69515100901
+    },
+    {
+      "iteration": 57,
+      "lr": 0.0005742574257425743,
+      "loss": 2.5519697666168213,
+      "seconds": 0.024275499978102744,
+      "tokens_per_second": 126547.34208444892
+    },
+    {
+      "iteration": 58,
+      "lr": 0.0005841584158415842,
+      "loss": 2.6325881481170654,
+      "seconds": 0.024804166983813047,
+      "tokens_per_second": 123850.15799985368
+    },
+    {
+      "iteration": 59,
+      "lr": 0.000594059405940594,
+      "loss": 2.573974370956421,
+      "seconds": 0.024829584057442844,
+      "tokens_per_second": 123723.37743930698
+    },
+    {
+      "iteration": 60,
+      "lr": 0.000603960396039604,
+      "loss": 2.5605356693267822,
+      "seconds": 0.025533707928843796,
+      "tokens_per_second": 120311.55085508588
+    },
+    {
+      "iteration": 61,
+      "lr": 0.0006138613861386139,
+      "loss": 2.5274195671081543,
+      "seconds": 0.029588250094093382,
+      "tokens_per_second": 103824.99776873438
+    },
+    {
+      "iteration": 62,
+      "lr": 0.0006237623762376238,
+      "loss": 2.5843403339385986,
+      "seconds": 0.023867083014920354,
+      "tokens_per_second": 128712.83843440603
+    },
+    {
+      "iteration": 63,
+      "lr": 0.0006336633663366337,
+      "loss": 2.551851511001587,
+      "seconds": 0.0252909999107942,
+      "tokens_per_second": 121466.13462636842
+    },
+    {
+      "iteration": 64,
+      "lr": 0.0006435643564356436,
+      "loss": 2.587202548980713,
+      "seconds": 0.024731875048018992,
+      "tokens_per_second": 124212.17534196078
+    },
+    {
+      "iteration": 65,
+      "lr": 0.0006534653465346535,
+      "loss": 2.557934522628784,
+      "seconds": 0.024531125091016293,
+      "tokens_per_second": 125228.66312091889
+    },
+    {
+      "iteration": 66,
+      "lr": 0.0006633663366336634,
+      "loss": 2.5685551166534424,
+      "seconds": 0.02445845794863999,
+      "tokens_per_second": 125600.722925822
+    },
+    {
+      "iteration": 67,
+      "lr": 0.0006732673267326733,
+      "loss": 2.548347234725952,
+      "seconds": 0.025308625074103475,
+      "tokens_per_second": 121381.54447368064
+    },
+    {
+      "iteration": 68,
+      "lr": 0.0006831683168316832,
+      "loss": 2.56166934967041,
+      "seconds": 0.025087208952754736,
+      "tokens_per_second": 122452.8406402369
+    },
+    {
+      "iteration": 69,
+      "lr": 0.0006930693069306931,
+      "loss": 2.588054895401001,
+      "seconds": 0.028669708990491927,
+      "tokens_per_second": 107151.41897738841
+    },
+    {
+      "iteration": 70,
+      "lr": 0.000702970297029703,
+      "loss": 2.5407092571258545,
+      "seconds": 0.028996167005971074,
+      "tokens_per_second": 105945.03747227674
+    },
+    {
+      "iteration": 71,
+      "lr": 0.000712871287128713,
+      "loss": 2.6150436401367188,
+      "seconds": 0.02628637501038611,
+      "tokens_per_second": 116866.62762690597
+    },
+    {
+      "iteration": 72,
+      "lr": 0.0007227722772277228,
+      "loss": 2.5520284175872803,
+      "seconds": 0.0248262919485569,
+      "tokens_per_second": 123739.7838696797
+    },
+    {
+      "iteration": 73,
+      "lr": 0.0007326732673267327,
+      "loss": 2.5438811779022217,
+      "seconds": 0.02685883396770805,
+      "tokens_per_second": 114375.77683727509
+    },
+    {
+      "iteration": 74,
+      "lr": 0.0007425742574257426,
+      "loss": 2.5333008766174316,
+      "seconds": 0.0267595408950001,
+      "tokens_per_second": 114800.1758346306
+    },
+    {
+      "iteration": 75,
+      "lr": 0.0007524752475247525,
+      "loss": 2.553542375564575,
+      "seconds": 0.027210625004954636,
+      "tokens_per_second": 112897.07602969928
+    },
+    {
+      "iteration": 76,
+      "lr": 0.0007623762376237624,
+      "loss": 2.5517117977142334,
+      "seconds": 0.025551665923558176,
+      "tokens_per_second": 120226.9945603692
+    },
+    {
+      "iteration": 77,
+      "lr": 0.0007722772277227723,
+      "loss": 2.530944585800171,
+      "seconds": 0.024524333071894944,
+      "tokens_per_second": 125263.34522509537
+    },
+    {
+      "iteration": 78,
+      "lr": 0.0007821782178217822,
+      "loss": 2.584386110305786,
+      "seconds": 0.025131833041086793,
+      "tokens_per_second": 122235.41334918702
+    },
+    {
+      "iteration": 79,
+      "lr": 0.0007920792079207921,
+      "loss": 2.581756353378296,
+      "seconds": 0.024838499957695603,
+      "tokens_per_second": 123678.96633178992
+    },
+    {
+      "iteration": 80,
+      "lr": 0.000801980198019802,
+      "loss": 2.5355255603790283,
+      "seconds": 0.025191667024046183,
+      "tokens_per_second": 121945.08593129968
+    },
+    {
+      "iteration": 81,
+      "lr": 0.000811881188118812,
+      "loss": 2.5468780994415283,
+      "seconds": 0.027794708032160997,
+      "tokens_per_second": 110524.6364324251
+    },
+    {
+      "iteration": 82,
+      "lr": 0.0008217821782178219,
+      "loss": 2.5307397842407227,
+      "seconds": 0.024225833010859787,
+      "tokens_per_second": 126806.78508032749
+    },
+    {
+      "iteration": 83,
+      "lr": 0.0008316831683168318,
+      "loss": 2.528714895248413,
+      "seconds": 0.02536545810289681,
+      "tokens_per_second": 121109.58089296911
+    },
+    {
+      "iteration": 84,
+      "lr": 0.0008415841584158417,
+      "loss": 2.5082244873046875,
+      "seconds": 0.02394929202273488,
+      "tokens_per_second": 128271.01515501058
+    },
+    {
+      "iteration": 85,
+      "lr": 0.0008514851485148516,
+      "loss": 2.5860579013824463,
+      "seconds": 0.025103791966103017,
+      "tokens_per_second": 122371.95098445844
+    },
+    {
+      "iteration": 86,
+      "lr": 0.0008613861386138615,
+      "loss": 2.5327844619750977,
+      "seconds": 0.02890670800115913,
+      "tokens_per_second": 106272.91076786799
+    },
+    {
+      "iteration": 87,
+      "lr": 0.0008712871287128712,
+      "loss": 2.5511598587036133,
+      "seconds": 0.025116708013229072,
+      "tokens_per_second": 122309.02228038663
+    },
+    {
+      "iteration": 88,
+      "lr": 0.0008811881188118811,
+      "loss": 2.556593179702759,
+      "seconds": 0.024580332916229963,
+      "tokens_per_second": 124977.96553323377
+    },
+    {
+      "iteration": 89,
+      "lr": 0.000891089108910891,
+      "loss": 2.5564515590667725,
+      "seconds": 0.025468707899563015,
+      "tokens_per_second": 120618.60429333789
+    },
+    {
+      "iteration": 90,
+      "lr": 0.0009009900990099009,
+      "loss": 2.521738052368164,
+      "seconds": 0.024684750009328127,
+      "tokens_per_second": 124449.30569842194
+    },
+    {
+      "iteration": 91,
+      "lr": 0.0009108910891089108,
+      "loss": 2.529806137084961,
+      "seconds": 0.023941874969750643,
+      "tokens_per_second": 128310.75276607691
+    },
+    {
+      "iteration": 92,
+      "lr": 0.0009207920792079207,
+      "loss": 2.5546865463256836,
+      "seconds": 0.025045207934454083,
+      "tokens_per_second": 122658.19505430915
+    },
+    {
+      "iteration": 93,
+      "lr": 0.0009306930693069307,
+      "loss": 2.4922850131988525,
+      "seconds": 0.024255166994407773,
+      "tokens_per_second": 126653.42608064809
+    },
+    {
+      "iteration": 94,
+      "lr": 0.0009405940594059406,
+      "loss": 2.5221784114837646,
+      "seconds": 0.02563604200258851,
+      "tokens_per_second": 119831.29063721363
+    },
+    {
+      "iteration": 95,
+      "lr": 0.0009504950495049505,
+      "loss": 2.5305659770965576,
+      "seconds": 0.028339667012915015,
+      "tokens_per_second": 108399.29765582713
+    },
+    {
+      "iteration": 96,
+      "lr": 0.0009603960396039604,
+      "loss": 2.5316760540008545,
+      "seconds": 0.024501917068846524,
+      "tokens_per_second": 125377.94456524216
+    },
+    {
+      "iteration": 97,
+      "lr": 0.0009702970297029703,
+      "loss": 2.528303384780884,
+      "seconds": 0.03040549997240305,
+      "tokens_per_second": 101034.35242927233
+    },
+    {
+      "iteration": 98,
+      "lr": 0.0009801980198019802,
+      "loss": 2.5204098224639893,
+      "seconds": 0.030852458090521395,
+      "tokens_per_second": 99570.67248861416
+    },
+    {
+      "iteration": 99,
+      "lr": 0.0009900990099009901,
+      "loss": 2.5874476432800293,
+      "seconds": 0.028243625070899725,
+      "tokens_per_second": 108767.90752916402
+    }
+  ],
+  "warm_mean_seconds": 0.026962120810316667,
+  "warm_tokens_per_second": 113937.62462575064,
+  "attention": "original model.py scaled_dot_product_attention selection",
+  "scope": "Synchronized native forward, backward, gradient clipping, AdamW, zero_grad and next-batch prefetch. Evaluation, initialization, logging and checkpoint I/O excluded. Weights and optimizer state remain on MPS.",
+  "matching": "Same model, data split, optimizer, dropout and LR schedule as the SQL recipe; stock PyTorch RNGs, rather than SQL NumPy RNGs. max_iters=steps-1 stops native's inclusive loop after exactly steps updates. compile=False.",
+  "sql_comparison": [
+    {
+      "backend": "dense_gpu",
+      "seconds": 2.02414754149504,
+      "sql_over_torch_ratio": 75.07375090169202
+    },
+    {
+      "backend": "dense_cpu",
+      "seconds": 9.746508520736825,
+      "sql_over_torch_ratio": 361.48894181230224
+    }
+  ]
+}

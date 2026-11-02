@@ -1,0 +1,87 @@
+.............sssssssss...sssssssss...ssssssssss..ssssssssss..ssssssssss. [  7%]
+.ssssssssss..sssssssss.....ssssssssssssssssss....sssssssss...sssssssss.. [ 15%]
+...ssssssssssssssssss....sssssssss...sssssssss...sssssssss...sssssssss.. [ 23%]
+.sssssssss...sssssssss...sssssssss...sssssssss...sssssssss..ssssssssssss [ 31%]
+sssssssssssssssssssssssssssssssssssssssssssssssssssssssssss............. [ 39%]
+........................................................................ [ 47%]
+........................................................................ [ 55%]
+........................................................................ [ 63%]
+....sss.....s........................................................... [ 70%]
+........................................................................ [ 78%]
+........................................................................ [ 86%]
+........................................................................ [ 94%]
+..................................................                       [100%]
+=============================== warnings summary ===============================
+tests/test_df.py:688
+  /Users/cromwellian/xql/xarray-sql/tests/test_df.py:688: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    [np.datetime64("NaT"), np.datetime64("2000-01-01")],
+
+tests/test_adbc_backend.py: 28 warnings
+tests/test_flight_sql.py: 10 warnings
+  /Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/adbc_driver_manager/dbapi.py:371: Warning: Cannot disable autocommit; conn will not be DB-API 2.0 compliant
+    warnings.warn(
+
+tests/test_arrow_dataset.py::test_unchunked_zarr_scans_by_storage_chunks
+  /Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/zarr/api/asynchronous.py:260: ZarrUserWarning: Consolidated metadata is currently not part in the Zarr format 3 specification. It may not be supported by other zarr implementations and may change in the future.
+    warnings.warn(
+
+tests/test_coord_lookup.py::test_float16_axis_roundtrip
+  /Users/cromwellian/xql/xarray-sql/tests/test_coord_lookup.py:111: FutureWarning: `pandas.Index` does not support the `float16` dtype. Casting to `float64` for you, but in the future please manually cast to either `float32` and `float64`.
+    template = xr.Dataset(
+
+tests/test_coord_lookup.py::test_float16_axis_roundtrip
+  /Users/cromwellian/xql/xarray-sql/xarray_sql/ds.py:707: FutureWarning: `pandas.Index` does not support the `float16` dtype. Casting to `float64` for you, but in the future please manually cast to either `float32` and `float64`.
+    return xr.Dataset(data_vars=data_vars, coords=coords_arg)
+
+tests/test_df.py::test_partition_metadata_preserves_coordinate_dtype[float16-values9-expected9]
+  /Users/cromwellian/xql/xarray-sql/tests/test_df.py:639: FutureWarning: `pandas.Index` does not support the `float16` dtype. Casting to `float64` for you, but in the future please manually cast to either `float32` and `float64`.
+    ds = xr.Dataset({"v": (["x"], np.arange(len(coord)))}, coords={"x": coord})
+
+tests/test_ds.py::test_round_trip_identity[eraint_uvz]
+  /Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/xarray/conventions.py:210: SerializationWarning: variable 'z' has non-conforming '_FillValue' np.float64(nan) defined, dropping '_FillValue' entirely.
+    var = coder.decode(var, name=name)
+
+tests/test_ds.py::test_round_trip_identity[eraint_uvz]
+  /Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/xarray/conventions.py:210: SerializationWarning: variable 'u' has non-conforming '_FillValue' np.float64(nan) defined, dropping '_FillValue' entirely.
+    var = coder.decode(var, name=name)
+
+tests/test_ds.py::test_round_trip_identity[eraint_uvz]
+  /Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/xarray/conventions.py:210: SerializationWarning: variable 'v' has non-conforming '_FillValue' np.float64(nan) defined, dropping '_FillValue' entirely.
+    var = coder.decode(var, name=name)
+
+tests/test_flight_sql.py::test_shutdown_does_not_wait_forever_on_an_unread_result
+  /Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/_pytest/unraisableexception.py:63: PytestUnraisableExceptionWarning: Exception ignored in: <function Cursor.__del__ at 0x1238528e0>
+
+  Traceback (most recent call last):
+    File "/Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/adbc_driver_manager/dbapi.py", line 1053, in __del__
+      self.close()
+    File "/Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/adbc_driver_manager/dbapi.py", line 851, in close
+      self._stmt.close()
+    File "adbc_driver_manager/_lib.pyx", line 1555, in adbc_driver_manager._lib.AdbcStatement.close
+    File "adbc_driver_manager/_lib.pyx", line 1561, in adbc_driver_manager._lib.AdbcStatement.close
+    File "adbc_driver_manager/_lib.pyx", line 262, in adbc_driver_manager._lib.check_error
+  adbc_driver_manager.OperationalError: IO: [FlightSQL] connection error: desc = "transport: Error while dialing: dial tcp 127.0.0.1:59206: connect: connection refused" (Unavailable; ClosePreparedStatement). Vendor code: 14
+
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+
+tests/test_lazy_roundtrip.py: 32 warnings
+  /Users/cromwellian/xql/xarray-sql/xarray_sql/lazyscan.py:63: DeprecationWarning: `is_in` with a collection of the same datatype is ambiguous and deprecated.
+  Please use `implode` to return to previous behavior.
+
+  See https://github.com/pola-rs/polars/issues/22149 for more information.
+    return lf.collect(engine="streaming")
+
+tests/test_prepare.py::test_a_write_must_keep_nat_in_place
+tests/test_prepare.py::test_a_write_must_keep_nat_in_place
+tests/test_prepare.py::test_a_write_must_keep_nat_in_place
+  /Users/cromwellian/xql/xarray-sql/tests/test_prepare.py:169: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    [np.datetime64("NaT") if d is None else np.datetime64(d) for d in days],
+
+tests/test_reader.py::TestFilterPushdown::test_float_coordinate_types_prune_with_natural_literal[float16]
+  /Users/cromwellian/xql/xarray-sql/tests/test_reader.py:1067: FutureWarning: `pandas.Index` does not support the `float16` dtype. Casting to `float64` for you, but in the future please manually cast to either `float32` and `float64`.
+    ds = xr.Dataset({"value": (["x"], np.arange(8))}, coords={"x": coord})
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+637 passed, 277 skipped, 102 deselected, 83 warnings in 35.80s

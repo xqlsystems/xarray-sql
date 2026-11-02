@@ -1,0 +1,62 @@
+{
+  "backend": "jax_jit",
+  "context": 16,
+  "parameters": 123563520,
+  "steps": 5,
+  "batch": 1,
+  "learning_rate": 0.01,
+  "optimizer": "sgd",
+  "gelu": "tanh",
+  "forward_only": false,
+  "rtol": 1e-09,
+  "atol": 1e-09,
+  "python": "3.12.14",
+  "jax_version": "0.12.0.1",
+  "reference_sha256": "80a5a55b39161f7e45fa717ec2d60aabaeee3edf90d19ef8ad736afa3c678841",
+  "rows": [
+    {
+      "step": 0,
+      "seconds": 0.25373025005683303,
+      "loss": 11.218448458220333,
+      "check": "ok",
+      "max_scaled_error": 3.4880647602577323e-16
+    },
+    {
+      "step": 1,
+      "seconds": 0.1414729580283165,
+      "loss": 9.443567400904483,
+      "check": "ok",
+      "max_scaled_error": 3.5790513615769393e-16
+    },
+    {
+      "step": 2,
+      "seconds": 0.1349089159630239,
+      "loss": 7.050589630335465,
+      "check": "ok",
+      "max_scaled_error": 3.5737750783812467e-16
+    },
+    {
+      "step": 3,
+      "seconds": 0.1352096670307219,
+      "loss": 8.57805561725344,
+      "check": "ok",
+      "max_scaled_error": 3.571484214546241e-16
+    },
+    {
+      "step": 4,
+      "seconds": 0.13392283394932747,
+      "loss": 6.7450402840490185,
+      "check": "ok",
+      "max_scaled_error": 3.5720036936486486e-16
+    }
+  ],
+  "compile_seconds": 3.0000361249549314,
+  "scope": "One loss forward and, for training, its backward and SGD update; synchronization included; validation and input/state setup excluded.",
+  "devices": [
+    "cpu:0"
+  ],
+  "setup_seconds_including_compile": 3.084211624925956,
+  "warm_seconds": 0.13637859374284744,
+  "five_step_seconds": 0.7992446250282228,
+  "five_steps_with_setup_compile_seconds": 3.883456249954179
+}

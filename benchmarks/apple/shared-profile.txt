@@ -1,0 +1,103 @@
+Separate profiled run, after all final timing comparisons.
+MLX_ENABLE_TF32=0 PYTHONPATH=$PWD .venv/bin/python -m cProfile -o /private/tmp/xql-shared-demo.prof benchmarks/ml/02_nanogpt.py --preset demo --steps 5 --sizes 1 --learning-rate 0.01 --hosts shared_gpu --csv benchmarks/apple/shared-profile-demo.csv
+
+Sun Nov  1 03:24:50 2026    /private/tmp/xql-shared-demo.prof
+
+         5075972 function calls (4993988 primitive calls) in 6.114 seconds
+
+   Ordered by: cumulative time
+   List reduced from 9155 to 45 due to restriction <45>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+   1833/1    0.018    0.000    6.144    6.144 {built-in method builtins.exec}
+        1    0.000    0.000    6.144    6.144 02_nanogpt.py:1(<module>)
+        1    0.008    0.008    5.557    5.557 02_nanogpt.py:530(main)
+       10    0.000    0.000    2.966    0.297 _bench.py:85(time)
+        5    0.000    0.000    2.768    0.554 _bench.py:110(attempt)
+        5    0.000    0.000    2.767    0.553 _hosts.py:336(query_all)
+        5    0.002    0.000    2.767    0.553 shared.py:684(execute)
+        5    0.000    0.000    2.636    0.527 __init__.py:270(run)
+      182    0.002    0.000    2.357    0.013 __init__.py:1(<module>)
+      270    0.037    0.000    1.971    0.007 shared.py:411(materialize_compiled)
+      430    0.028    0.000    1.917    0.004 shared.py:166(run)
+        4    0.012    0.003    1.893    0.473 {method 'run' of 'ddxdb._Prepared' objects}
+  971/529    0.001    0.000    1.843    0.003 traceback_util.py:190(reraise_with_filtered_traceback)
+      200    0.001    0.000    1.590    0.008 pjit.py:1119(_pjit_call_impl_python)
+  953/753    0.002    0.000    1.522    0.002 profiler.py:585(wrapper)
+      200    0.001    0.000    1.433    0.007 pxla.py:1229(compile)
+      174    0.003    0.000    1.432    0.008 pxla.py:1706(from_hlo)
+      174    0.001    0.000    1.417    0.008 pxla.py:1519(_cached_compilation)
+      174    0.001    0.000    1.402    0.008 compiler.py:436(compile_or_get_cached)
+      174    0.001    0.000    1.376    0.008 compiler.py:771(_compile_and_write_cache)
+      174    1.374    0.008    1.374    0.008 compiler.py:341(backend_compile_and_load)
+  436/431    0.001    0.000    1.367    0.003 pjit.py:263(cache_miss)
+      436    0.001    0.000    1.311    0.003 pjit.py:133(_run_python_pjit)
+2784/1311    0.006    0.000    1.281    0.001 core.py:687(bind)
+2825/1310    0.003    0.000    1.274    0.001 core.py:736(bind_with_trace)
+        5    0.000    0.000    1.193    0.239 api.py:480(grad_f)
+        5    0.000    0.000    1.193    0.239 api.py:542(value_and_grad_f)
+1252/1162    0.002    0.000    1.159    0.001 core.py:1312(process_primitive)
+       10    0.001    0.000    1.096    0.110 02_nanogpt.py:379(jax_loss)
+     8135    0.003    0.000    0.936    0.000 record_batch.py:90(__next__)
+    17878    0.758    0.000    0.936    0.000 {built-in method builtins.next}
+  2234/14    0.003    0.000    0.900    0.064 <frozen importlib._bootstrap>:1349(_find_and_load)
+  1723/14    0.002    0.000    0.900    0.064 <frozen importlib._bootstrap>:1304(_find_and_load_unlocked)
+  1513/10    0.002    0.000    0.898    0.090 <frozen importlib._bootstrap>:911(_load_unlocked)
+  1304/10    0.001    0.000    0.898    0.090 <frozen importlib._bootstrap_external>:993(exec_module)
+  3824/24    0.021    0.000    0.897    0.037 <frozen importlib._bootstrap>:480(_call_with_frames_removed)
+     5070    0.004    0.000    0.810    0.000 context.py:2415(execute)
+     5070    0.805    0.000    0.806    0.000 {method 'execute' of 'datafusion.SessionContext' objects}
+   839/95    0.000    0.000    0.786    0.008 {built-in method builtins.__import__}
+ 3065/886    0.001    0.000    0.778    0.001 <frozen importlib._bootstrap>:1390(_handle_fromlist)
+        1    0.016    0.016    0.743    0.743 {built-in method ddxdb._ddxdb._prepare}
+      570    0.008    0.000    0.711    0.001 pjit.py:1189(_pjit_call_impl)
+      138    0.001    0.000    0.709    0.005 shared.py:140(__init__)
+      138    0.000    0.000    0.702    0.005 shared.py:154(_physical)
+      138    0.000    0.000    0.701    0.005 dataframe.py:1317(execution_plan)
+
+
+
+Sorted by self time:
+Sun Nov  1 03:24:50 2026    /private/tmp/xql-shared-demo.prof
+
+         5075972 function calls (4993988 primitive calls) in 6.114 seconds
+
+   Ordered by: internal time
+   List reduced from 9155 to 35 due to restriction <35>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      174    1.374    0.008    1.374    0.008 compiler.py:341(backend_compile_and_load)
+     5070    0.805    0.000    0.806    0.000 {method 'execute' of 'datafusion.SessionContext' objects}
+    17878    0.758    0.000    0.936    0.000 {built-in method builtins.next}
+      138    0.701    0.005    0.701    0.005 {method 'execution_plan' of 'datafusion.DataFrame' objects}
+  1115859    0.236    0.000    0.236    0.000 {method 'index' of 'list' objects}
+      139    0.193    0.001    0.193    0.001 {built-in method _imp.create_dynamic}
+  165/155    0.130    0.001    0.150    0.001 mlx.py:148(run)
+      430    0.119    0.000    0.119    0.000 {built-in method from_bytes}
+      125    0.071    0.001    0.071    0.001 compute.py:257(wrapper)
+     1304    0.062    0.000    0.062    0.000 {built-in method marshal.loads}
+        6    0.044    0.007    0.298    0.050 02_nanogpt.py:445(batches)
+       38    0.043    0.001    0.043    0.001 {method 'to_arrow_table' of 'datafusion.DataFrame' objects}
+   139/80    0.042    0.000    0.200    0.003 {built-in method _imp.exec_dynamic}
+      270    0.037    0.000    1.971    0.007 shared.py:411(materialize_compiled)
+      126    0.032    0.000    0.032    0.000 {built-in method from_substrait_plan}
+      430    0.028    0.000    1.917    0.004 shared.py:166(run)
+     1304    0.027    0.000    0.027    0.000 {built-in method _io.open_code}
+     1304    0.024    0.000    0.086    0.000 <frozen importlib._bootstrap_external>:755(_compile_bytecode)
+386824/385413    0.023    0.000    0.026    0.000 {built-in method builtins.isinstance}
+  3824/24    0.021    0.000    0.897    0.037 <frozen importlib._bootstrap>:480(_call_with_frames_removed)
+     3065    0.021    0.000    0.021    0.000 {method 'to_pyarrow' of 'datafusion.RecordBatch' objects}
+      315    0.020    0.000    0.134    0.000 shared.py:191(store)
+   1833/1    0.018    0.000    6.144    6.144 {built-in method builtins.exec}
+3671/3652    0.017    0.000    0.069    0.000 {built-in method builtins.__build_class__}
+       16    0.016    0.001    0.032    0.002 mlir.py:628(_create_ir_context)
+      412    0.016    0.000    0.016    0.000 {built-in method numpy.array}
+        1    0.016    0.016    0.743    0.743 {built-in method ddxdb._ddxdb._prepare}
+       61    0.016    0.000    0.016    0.000 {built-in method serialize_bytes}
+     6273    0.015    0.000    0.015    0.000 {built-in method posix.stat}
+ 1002/999    0.014    0.000    0.016    0.000 {method 'astype' of 'numpy.ndarray' objects}
+      300    0.013    0.000    0.097    0.000 shared.py:95(_canonical)
+244816/224578    0.013    0.000    0.016    0.000 {built-in method builtins.len}
+        4    0.012    0.003    1.893    0.473 {method 'run' of 'ddxdb._Prepared' objects}
+      125    0.010    0.000    0.010    0.000 compute.py:468(take)
+      310    0.010    0.000    0.014    0.000 algorithms.py:473(unique_with_mask)

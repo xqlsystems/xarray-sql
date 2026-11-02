@@ -1,0 +1,28 @@
+  12-layer GPT, vocab 50257, 123,563,520 parameters: the loss is 1047 lines of SQL
+  steps=5, optimizer=sgd, context=16, heads=12, embed=768, forward_only=False
+  Padded vocabulary: inputs are character IDs, without GPT-2 BPE tokenization
+  loss, step 0                 dense_cpu   batch=1         0.241s
+  train (sgd), step 0          dense_cpu   batch=1         4.952s
+  loss, step 1                 dense_cpu   batch=1         0.177s
+  train (sgd), step 1          dense_cpu   batch=1         3.937s
+  loss, step 2                 dense_cpu   batch=1         0.173s
+  train (sgd), step 2          dense_cpu   batch=1         3.842s
+  loss, step 3                 dense_cpu   batch=1         0.164s
+  train (sgd), step 3          dense_cpu   batch=1         3.858s
+  loss, step 4                 dense_cpu   batch=1         0.169s
+  train (sgd), step 4          dense_cpu   batch=1         3.829s
+
+| demo | step | host | batch | seconds | check | loss | operators | rtol | atol | layers | embed | heads | context | vocab | parameters | optimizer | sgd_learning_rate | forward_only | table_registers | query_preparations | dense_programs | dense_executions | dense_cache_evictions | dense_peak_cached_bytes | dense_lowering_seconds | dense_call_seconds | key_cache_bytes | dense_last_decline | load_seconds | model_seconds | gradient_preparations | inplace_updates |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| nanogpt | loss, step 0 | dense_cpu | 1 | 0.241 | ok (3e-16) | 11.218 | n/a | 1e-09 | 1e-09 | 12 | 768 | 12 | 16 | 50257 | 123563520 | sgd | 0.010 | False | 13 | 1 | 65 | 65 | 0 | 874613523 | 0.204 | 0.231 | 0 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 0 | dense_cpu | 1 | 4.952 | ok (2e-15) | n/a | n/a | n/a | n/a | 12 | 768 | 12 | 16 | 50257 | 123563520 | sgd | 0.010 | False | 13 | 1 | 707 | 707 | 26255 | 8589934589 | 1.102 | 5.099 | 0 | n/a | 0.106 | 0.005 | 1 | 11 |
+| nanogpt | loss, step 1 | dense_cpu | 1 | 0.177 | ok (4e-16) | 9.444 | n/a | 1e-09 | 1e-09 | 12 | 768 | 12 | 16 | 50257 | 123563520 | sgd | 0.010 | False | 13 | 1 | 707 | 772 | 26255 | 8589934589 | 1.256 | 5.254 | 0 | n/a | n/a | n/a | 1 | 12 |
+| nanogpt | train (sgd), step 1 | dense_cpu | 1 | 3.937 | ok (2e-15) | n/a | n/a | n/a | n/a | 12 | 768 | 12 | 16 | 50257 | 123563520 | sgd | 0.010 | False | 13 | 1 | 707 | 1414 | 52510 | 8589934589 | 2.131 | 9.119 | 0 | n/a | 0.150 | 0.005 | 1 | 23 |
+| nanogpt | loss, step 2 | dense_cpu | 1 | 0.173 | ok (3e-16) | 7.051 | n/a | 1e-09 | 1e-09 | 12 | 768 | 12 | 16 | 50257 | 123563520 | sgd | 0.010 | False | 13 | 1 | 707 | 1479 | 52510 | 8589934589 | 2.278 | 9.267 | 0 | n/a | n/a | n/a | 1 | 24 |
+| nanogpt | train (sgd), step 2 | dense_cpu | 1 | 3.842 | ok (2e-15) | n/a | n/a | n/a | n/a | 12 | 768 | 12 | 16 | 50257 | 123563520 | sgd | 0.010 | False | 13 | 1 | 707 | 2121 | 78765 | 8589934589 | 3.109 | 13.036 | 0 | n/a | 0.193 | 0.005 | 1 | 35 |
+| nanogpt | loss, step 3 | dense_cpu | 1 | 0.164 | ok (0e+00) | 8.578 | n/a | 1e-09 | 1e-09 | 12 | 768 | 12 | 16 | 50257 | 123563520 | sgd | 0.010 | False | 13 | 1 | 707 | 2186 | 78765 | 8589934589 | 3.252 | 13.180 | 0 | n/a | n/a | n/a | 1 | 36 |
+| nanogpt | train (sgd), step 3 | dense_cpu | 1 | 3.858 | ok (2e-15) | n/a | n/a | n/a | n/a | 12 | 768 | 12 | 16 | 50257 | 123563520 | sgd | 0.010 | False | 13 | 1 | 707 | 2828 | 105020 | 8589934589 | 4.115 | 16.966 | 0 | n/a | 0.237 | 0.005 | 1 | 47 |
+| nanogpt | loss, step 4 | dense_cpu | 1 | 0.169 | ok (3e-16) | 6.745 | n/a | 1e-09 | 1e-09 | 12 | 768 | 12 | 16 | 50257 | 123563520 | sgd | 0.010 | False | 13 | 1 | 707 | 2893 | 105020 | 8589934589 | 4.261 | 17.113 | 0 | n/a | n/a | n/a | 1 | 48 |
+| nanogpt | train (sgd), step 4 | dense_cpu | 1 | 3.829 | ok (2e-15) | n/a | n/a | n/a | n/a | 12 | 768 | 12 | 16 | 50257 | 123563520 | sgd | 0.010 | False | 13 | 1 | 707 | 3535 | 131275 | 8589934589 | 5.091 | 20.869 | 0 | n/a | 0.281 | 0.005 | 1 | 59 |
+
+wrote /Users/cromwellian/xql/xarray-sql/benchmarks/apple/dense-measured-gpt2-c16-dense_cpu.csv

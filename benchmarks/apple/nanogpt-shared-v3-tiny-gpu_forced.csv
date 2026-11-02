@@ -1,0 +1,11 @@
+demo,step,host,batch,seconds,check,loss,operators,rtol,atol,layers,embed,heads,context,vocab,parameters,optimizer,sgd_learning_rate,forward_only,table_registers,query_preparations,cpu_matmul,gpu_matmul,gpu_attention,declined,load_seconds,model_seconds,gradient_preparations,inplace_updates
+nanogpt,"loss, step 0",gpu_forced,4,1.2601481250021607,ok (5e-10),4.179251,,3e-05,3e-05,1,16,2,16,65,4416,sgd,0.5,False,13,1,0,178,40,0,,,,
+nanogpt,"train (sgd), step 0",gpu_forced,4,0.6385403330205008,ok (1e-07),,,,,1,16,2,16,65,4416,sgd,0.5,False,13,1,0,203,40,0,0.004239418660290539,0.023072166019119322,1,11
+nanogpt,"loss, step 1",gpu_forced,4,0.08971595799084753,ok (1e-09),4.104661,,3e-05,3e-05,1,16,2,16,65,4416,sgd,0.5,False,13,1,0,381,80,0,,,1,12
+nanogpt,"train (sgd), step 1",gpu_forced,4,0.27746470901183784,ok (2e-07),,,,,1,16,2,16,65,4416,sgd,0.5,False,13,1,0,406,80,0,0.005962001625448465,0.023096458055078983,1,23
+nanogpt,"loss, step 2",gpu_forced,4,0.08255058305803686,ok (7e-10),3.883857,,3e-05,3e-05,1,16,2,16,65,4416,sgd,0.5,False,13,1,0,584,120,0,,,1,24
+nanogpt,"train (sgd), step 2",gpu_forced,4,0.27421466703526676,ok (2e-07),,,,,1,16,2,16,65,4416,sgd,0.5,False,13,1,0,609,120,0,0.007719710934907198,0.02311579103115946,1,35
+nanogpt,"loss, step 3",gpu_forced,4,0.08232533291447908,ok (4e-09),3.641763,,3e-05,3e-05,1,16,2,16,65,4416,sgd,0.5,False,13,1,0,787,160,0,,,1,36
+nanogpt,"train (sgd), step 3",gpu_forced,4,0.2763963749166578,ok (2e-07),,,,,1,16,2,16,65,4416,sgd,0.5,False,13,1,0,812,160,0,0.009452790720388293,0.023135791067034006,1,47
+nanogpt,"loss, step 4",gpu_forced,4,0.08547125000040978,ok (2e-09),3.842234,,3e-05,3e-05,1,16,2,16,65,4416,sgd,0.5,False,13,1,0,990,200,0,,,1,48
+nanogpt,"train (sgd), step 4",gpu_forced,4,0.3162609590217471,ok (3e-07),,,,,1,16,2,16,65,4416,sgd,0.5,False,13,1,0,1015,200,0,0.011253248783759773,0.02315420808736235,1,59

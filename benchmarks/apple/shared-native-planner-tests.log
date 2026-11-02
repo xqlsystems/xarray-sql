@@ -1,0 +1,105 @@
+   Compiling einfold-datafusion v0.1.0 (/private/tmp/xql-einfold/crates/einfold-datafusion)
+    Finished `release` profile [optimized] target(s) in 30.45s
+     Running unittests src/lib.rs (target/release/deps/einfold_datafusion-61d1a80d1273af6e)
+
+running 1 test
+test tests::supported_datafusion_version ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/chains_vs_host.rs (target/release/deps/chains_vs_host-06069eff898e69c4)
+
+running 1 test
+test chains_answer_as_the_host_does ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+
+     Running tests/datafusion_behaviors.rs (target/release/deps/datafusion_behaviors-763cd73013d1e14b)
+
+running 9 tests
+test sort_merge_join_filter_reads_stale_columns ... ok
+test where_equality_on_a_not_distinct_join_matches_null_with_equals ... ok
+test not_distinct_join_then_cross_join_drops_null_matches ... ok
+test grouping_a_dictionary_encoded_double_keeps_signed_zeros_apart ... ok
+test mixed_null_equality_in_a_join_chain_matches_null_with_equals ... ok
+test sort_merge_join_over_signed_zeros_drops_a_match ... ok
+test joining_doubles_matches_signed_zeros_and_equal_nans ... ok
+test grouping_a_double_merges_signed_zeros_into_positive_zero ... ok
+test top_k_over_signed_zeros_depends_on_timing ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.03s
+
+     Running tests/detect_pipelines.rs (target/release/deps/detect_pipelines-bb20a5cf3478fdc7)
+
+running 2 tests
+test the_nadaraya_watson_control_fuses ... ok
+test einfold_finds_pipelines_and_changes_no_answer ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s
+
+     Running tests/detect_vs_host.rs (target/release/deps/detect_vs_host-d109c3a5636d37e5)
+
+running 22 tests
+test movable_functions_never_fail ... ok
+test fallbacks_hold_only_the_hosts_plan ... ok
+test joined_back_fallbacks_hold_only_the_hosts_plan ... ok
+test the_optimizer_sees_a_fallback_once ... ok
+test folds_estimate_their_rows ... ok
+test reset_plans_whose_fallback_ran_rerun ... ok
+test volatile_factors_are_left_alone ... ok
+test host_plan_runs_where_there_is_no_tokio_runtime ... ok
+test a_sessions_own_coalesce_is_no_fill ... ok
+test fallbacks_plan_with_the_sessions_variables ... ok
+test masked_folds_over_heads_run_dense ... ok
+test products_over_saved_scores_run_dense ... ok
+test folds_whose_fallback_runs_recur ... ok
+test masked_gradients_from_their_domain_run_dense ... ok
+test fallible_factors_stay_above_the_join ... ok
+test chains_of_three_products_contract_in_order ... ok
+test infallible_factors_are_found ... ok
+test joined_back_tests_apply_once ... ok
+test masked_folds_keep_their_mask_under_a_domain ... ok
+test einfold_changes_no_answer ... ok
+test einfold_runs_short_of_memory_only_where_the_host_does ... ok
+test folds_joined_back_check_their_domain ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.25s
+
+     Running tests/operator.rs (target/release/deps/operator-d8640b69eb8a148c)
+
+running 6 tests
+test fails_cleanly_when_the_memory_pool_is_too_small ... ok
+test holds_only_its_output_in_the_memory_pool ... ok
+test runs_where_there_is_no_tokio_runtime ... ok
+test reports_which_algorithm_ran ... ok
+test inputs_that_spawn_tasks_run_where_there_is_no_tokio_runtime ... ok
+test matches_sql_across_partitions_threads_and_batch_sizes ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/pipeline_operator.rs (target/release/deps/pipeline_operator-e63ed555cabe3858)
+
+running 3 tests
+test gives_no_rows_where_there_are_no_values ... ok
+test runs_the_fused_algorithm_on_complete_inputs ... ok
+test runs_the_host_plan_where_an_input_has_a_hole ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/simulation.rs (target/release/deps/simulation-64b0b23043012d32)
+
+running 6 tests
+test export ... ignored
+test host_hang ... ignored
+test host_rerun_hang ... ignored
+test soak ... ignored
+test panics_fail_alike ... ok
+test simulation ... ok
+
+test result: ok. 2 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.93s
+
+   Doc-tests einfold_datafusion
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

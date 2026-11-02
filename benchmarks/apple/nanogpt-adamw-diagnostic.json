@@ -1,0 +1,83 @@
+{
+  "learning_rate": 0.001,
+  "hosts": {
+    "shared_cpu": {
+      "gradient_max_absolute": {
+        "wte": 1.249000902703301e-16,
+        "wpe": 1.3877787807814457e-17,
+        "ln_1": 1.3010426069826053e-18,
+        "wq": 5.692061405548898e-19,
+        "wk": 6.505213034913027e-19,
+        "wv": 3.469446951953614e-17,
+        "wo": 4.163336342344337e-17,
+        "ln_2": 1.734723475976807e-18,
+        "w_fc": 2.42861286636753e-17,
+        "w_proj": 5.204170427930421e-17,
+        "ln_f": 2.6020852139652106e-18
+      },
+      "statistics": {
+        "table_registers": 24,
+        "gradient_preparations": 1,
+        "query_preparations": 11,
+        "cpu_matmul": 50,
+        "gpu_matmul": 0,
+        "gpu_attention": 0,
+        "declined": 0,
+        "physical_plans": 87,
+        "plan_executions": 163,
+        "stage_buffer_allocations": 54,
+        "stage_buffer_writes": 54,
+        "forward_stages": 1,
+        "planning_seconds": 0.8369682069169357,
+        "execution_seconds": 4.5019768761703745
+      },
+      "wpe": {
+        "gradient_sql": 1.541975823364026e-08,
+        "gradient_reference": 1.5419758236706518e-08,
+        "update_sql": 0.04069803292556577,
+        "update_reference": 0.04069803292553674,
+        "update_from_sql_gradient": 0.04069803292558585
+      },
+      "optimizer_vs_same_gradient_max_absolute": 2.996214387707141e-14
+    },
+    "shared_gpu": {
+      "gradient_max_absolute": {
+        "wte": 2.948455140455719e-08,
+        "wpe": 7.4002049228055755e-09,
+        "ln_1": 4.71347003094813e-10,
+        "wq": 1.626235499887184e-10,
+        "wk": 1.5224943631124074e-10,
+        "wv": 7.87050620509877e-09,
+        "wo": 1.0137126929543605e-08,
+        "ln_2": 1.1144436918436584e-09,
+        "w_fc": 8.032833453963661e-09,
+        "w_proj": 1.3967929500535714e-08,
+        "ln_f": 8.510604197287455e-10
+      },
+      "statistics": {
+        "table_registers": 24,
+        "gradient_preparations": 1,
+        "query_preparations": 11,
+        "cpu_matmul": 0,
+        "gpu_matmul": 50,
+        "gpu_attention": 0,
+        "declined": 0,
+        "physical_plans": 87,
+        "plan_executions": 163,
+        "stage_buffer_allocations": 54,
+        "stage_buffer_writes": 54,
+        "forward_stages": 1,
+        "planning_seconds": 0.895146002410911,
+        "execution_seconds": 4.649418214336038
+      },
+      "wpe": {
+        "gradient_sql": 1.3021668260323674e-08,
+        "gradient_reference": 1.5419758236706518e-08,
+        "update_sql": 0.040739296722165294,
+        "update_reference": 0.04069803292553674,
+        "update_from_sql_gradient": 0.04073929672214913
+      },
+      "optimizer_vs_same_gradient_max_absolute": 1.6160683902199935e-14
+    }
+  }
+}

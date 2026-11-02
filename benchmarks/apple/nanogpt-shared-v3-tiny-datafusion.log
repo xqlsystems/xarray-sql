@@ -1,0 +1,27 @@
+  1-layer GPT, vocab 65, 4,416 parameters: the loss is 123 lines of SQL
+  steps=5, optimizer=sgd, context=16, heads=2, embed=16, forward_only=False
+  loss, step 0                 datafusion  batch=4         1.180s
+  train (sgd), step 0          datafusion  batch=4         0.444s
+  loss, step 1                 datafusion  batch=4         1.188s
+  train (sgd), step 1          datafusion  batch=4         0.186s
+  loss, step 2                 datafusion  batch=4         1.092s
+  train (sgd), step 2          datafusion  batch=4         0.162s
+  loss, step 3                 datafusion  batch=4         1.048s
+  train (sgd), step 3          datafusion  batch=4         0.160s
+  loss, step 4                 datafusion  batch=4         1.043s
+  train (sgd), step 4          datafusion  batch=4         0.161s
+
+| demo | step | host | batch | seconds | check | loss | operators | rtol | atol | layers | embed | heads | context | vocab | parameters | optimizer | sgd_learning_rate | forward_only | load_seconds | model_seconds |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| nanogpt | loss, step 0 | datafusion | 4 | 1.180 | ok (4e-16) | 4.179 | 9882 | 1e-09 | 1e-09 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | n/a | n/a |
+| nanogpt | train (sgd), step 0 | datafusion | 4 | 0.444 | ok (5e-16) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 0.004 | 0.028 |
+| nanogpt | loss, step 1 | datafusion | 4 | 1.188 | ok (2e-16) | 4.105 | 9882 | 1e-09 | 1e-09 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | n/a | n/a |
+| nanogpt | train (sgd), step 1 | datafusion | 4 | 0.186 | ok (5e-16) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 0.006 | 0.051 |
+| nanogpt | loss, step 2 | datafusion | 4 | 1.092 | ok (1e-16) | 3.884 | 9882 | 1e-09 | 1e-09 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | n/a | n/a |
+| nanogpt | train (sgd), step 2 | datafusion | 4 | 0.162 | ok (6e-16) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 0.008 | 0.074 |
+| nanogpt | loss, step 3 | datafusion | 4 | 1.048 | ok (1e-16) | 3.642 | 9882 | 1e-09 | 1e-09 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | n/a | n/a |
+| nanogpt | train (sgd), step 3 | datafusion | 4 | 0.160 | ok (8e-16) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 0.010 | 0.097 |
+| nanogpt | loss, step 4 | datafusion | 4 | 1.043 | ok (5e-16) | 3.842 | 9882 | 1e-09 | 1e-09 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | n/a | n/a |
+| nanogpt | train (sgd), step 4 | datafusion | 4 | 0.161 | ok (1e-15) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 0.012 | 0.119 |
+
+wrote /Users/cromwellian/xql/xarray-sql/benchmarks/apple/nanogpt-shared-v3-tiny-datafusion.csv

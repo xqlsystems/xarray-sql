@@ -1,0 +1,28 @@
+  12-layer GPT, vocab 50257, 123,649,536 parameters: the loss is 1047 lines of SQL
+  steps=5, optimizer=sgd, context=128, heads=12, embed=768, forward_only=False
+  Padded vocabulary: inputs are character IDs, without GPT-2 BPE tokenization
+  loss, step 0                 dense_cpu   batch=1         0.402s
+  train (sgd), step 0          dense_cpu   batch=1         6.792s
+  loss, step 1                 dense_cpu   batch=1         0.310s
+  train (sgd), step 1          dense_cpu   batch=1         5.513s
+  loss, step 2                 dense_cpu   batch=1         0.301s
+  train (sgd), step 2          dense_cpu   batch=1         5.359s
+  loss, step 3                 dense_cpu   batch=1         0.305s
+  train (sgd), step 3          dense_cpu   batch=1         5.376s
+  loss, step 4                 dense_cpu   batch=1         0.312s
+  train (sgd), step 4          dense_cpu   batch=1         5.671s
+
+| demo | step | host | batch | seconds | check | loss | operators | rtol | atol | layers | embed | heads | context | vocab | parameters | optimizer | sgd_learning_rate | forward_only | table_registers | query_preparations | dense_programs | dense_executions | dense_cache_evictions | dense_peak_cached_bytes | dense_lowering_seconds | dense_call_seconds | key_cache_bytes | dense_last_decline | load_seconds | model_seconds | gradient_preparations | inplace_updates |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| nanogpt | loss, step 0 | dense_cpu | 1 | 0.402 | ok (2e-16) | 10.937 | n/a | 1e-09 | 1e-09 | 12 | 768 | 12 | 128 | 50257 | 123649536 | sgd | 0.010 | False | 13 | 1 | 65 | 65 | 0 | 1602653843 | 0.355 | 0.382 | 0 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 0 | dense_cpu | 1 | 6.792 | ok (6e-16) | n/a | n/a | n/a | n/a | 12 | 768 | 12 | 128 | 50257 | 123649536 | sgd | 0.010 | False | 13 | 1 | 707 | 707 | 0 | 22743236662 | 1.631 | 7.000 | 0 | n/a | 0.112 | 0.005 | 1 | 11 |
+| nanogpt | loss, step 1 | dense_cpu | 1 | 0.310 | ok (2e-16) | 8.742 | n/a | 1e-09 | 1e-09 | 12 | 768 | 12 | 128 | 50257 | 123649536 | sgd | 0.010 | False | 13 | 1 | 707 | 772 | 0 | 22743236662 | 1.914 | 7.283 | 0 | n/a | n/a | n/a | 1 | 12 |
+| nanogpt | train (sgd), step 1 | dense_cpu | 1 | 5.513 | ok (6e-16) | n/a | n/a | n/a | n/a | 12 | 768 | 12 | 128 | 50257 | 123649536 | sgd | 0.010 | False | 13 | 1 | 707 | 1414 | 0 | 22743236662 | 3.096 | 12.644 | 0 | n/a | 0.156 | 0.005 | 1 | 23 |
+| nanogpt | loss, step 2 | dense_cpu | 1 | 0.301 | ok (0e+00) | 7.756 | n/a | 1e-09 | 1e-09 | 12 | 768 | 12 | 128 | 50257 | 123649536 | sgd | 0.010 | False | 13 | 1 | 707 | 1479 | 0 | 22743236662 | 3.370 | 12.918 | 0 | n/a | n/a | n/a | 1 | 24 |
+| nanogpt | train (sgd), step 2 | dense_cpu | 1 | 5.359 | ok (6e-16) | n/a | n/a | n/a | n/a | 12 | 768 | 12 | 128 | 50257 | 123649536 | sgd | 0.010 | False | 13 | 1 | 707 | 2121 | 0 | 22743236662 | 4.522 | 18.109 | 0 | n/a | 0.200 | 0.005 | 1 | 35 |
+| nanogpt | loss, step 3 | dense_cpu | 1 | 0.305 | ok (3e-16) | 6.895 | n/a | 1e-09 | 1e-09 | 12 | 768 | 12 | 128 | 50257 | 123649536 | sgd | 0.010 | False | 13 | 1 | 707 | 2186 | 0 | 22743236662 | 4.798 | 18.384 | 0 | n/a | n/a | n/a | 1 | 36 |
+| nanogpt | train (sgd), step 3 | dense_cpu | 1 | 5.376 | ok (6e-16) | n/a | n/a | n/a | n/a | 12 | 768 | 12 | 128 | 50257 | 123649536 | sgd | 0.010 | False | 13 | 1 | 707 | 2828 | 0 | 22743236662 | 5.916 | 23.565 | 0 | n/a | 0.247 | 0.005 | 1 | 47 |
+| nanogpt | loss, step 4 | dense_cpu | 1 | 0.312 | ok (0e+00) | 6.484 | n/a | 1e-09 | 1e-09 | 12 | 768 | 12 | 128 | 50257 | 123649536 | sgd | 0.010 | False | 13 | 1 | 707 | 2893 | 0 | 22743236662 | 6.200 | 23.850 | 0 | n/a | n/a | n/a | 1 | 48 |
+| nanogpt | train (sgd), step 4 | dense_cpu | 1 | 5.671 | ok (6e-16) | n/a | n/a | n/a | n/a | 12 | 768 | 12 | 128 | 50257 | 123649536 | sgd | 0.010 | False | 13 | 1 | 707 | 3535 | 0 | 22743236662 | 7.351 | 29.368 | 0 | n/a | 0.291 | 0.005 | 1 | 59 |
+
+wrote /Users/cromwellian/xql/xarray-sql/benchmarks/apple/dense-measured-gpt2-c128-dense_cpu.csv

@@ -1,0 +1,27 @@
+  6-layer GPT, vocab 65, 10,745,088 parameters: the loss is 543 lines of SQL
+  steps=5, optimizer=sgd, context=256, heads=6, embed=384, forward_only=False
+  loss, step 0                 shared_cpu  batch=1         0.660s
+  train (sgd), step 0          shared_cpu  batch=1        30.688s
+  loss, step 1                 shared_cpu  batch=1         0.512s
+  train (sgd), step 1          shared_cpu  batch=1        28.098s
+  loss, step 2                 shared_cpu  batch=1         0.545s
+  train (sgd), step 2          shared_cpu  batch=1        29.014s
+  loss, step 3                 shared_cpu  batch=1         0.592s
+  train (sgd), step 3          shared_cpu  batch=1        28.573s
+  loss, step 4                 shared_cpu  batch=1         0.578s
+  train (sgd), step 4          shared_cpu  batch=1        29.116s
+
+| demo | step | host | batch | seconds | check | loss | operators | rtol | atol | layers | embed | heads | context | vocab | parameters | optimizer | sgd_learning_rate | forward_only | table_registers | query_preparations | cpu_matmul | gpu_matmul | gpu_attention | declined | physical_plans | plan_executions | stage_buffer_allocations | key_cache_hits | key_copy_bytes_avoided | forward_stages | planning_seconds | execution_seconds | stage_storage_seconds | key_cache_bytes | load_seconds | model_seconds | gradient_preparations | inplace_updates | deferred_stages | union_reduction_graphs | reduction_stage_executions | stage_buffer_writes | stage_replacements_keys_or_nulls | stage_replacements_rows |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| nanogpt | loss, step 0 | shared_cpu | 1 | 0.660 | ok (0e+00) | 4.243 | n/a | 1e-09 | 1e-09 | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 37 | 0 | 0 | 6 | 35 | 35 | 34 | 81 | 42915840 | 35 | 0.161 | 0.362 | 0.114 | 2762752 | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 0 | shared_cpu | 1 | 30.688 | ok (2e-16) | n/a | n/a | n/a | n/a | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 82 | 0 | 0 | 6 | 555 | 555 | 532 | 2354 | 2018056192 | 35 | 5.334 | 19.859 | 4.659 | 249680896 | 0.028 | 0.003 | 1 | 11 | 31 | 6 | 276 | n/a | n/a | n/a |
+| nanogpt | loss, step 1 | shared_cpu | 1 | 0.512 | ok (1e-16) | 3.671 | n/a | 1e-09 | 1e-09 | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 119 | 0 | 0 | 12 | 555 | 590 | 532 | 2354 | 2018056192 | 35 | 5.334 | 20.256 | 4.767 | 249680896 | n/a | n/a | 1 | 12 | 31 | 6 | 276 | 34 | n/a | n/a |
+| nanogpt | train (sgd), step 1 | shared_cpu | 1 | 28.098 | ok (3e-16) | n/a | n/a | n/a | n/a | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 164 | 0 | 0 | 12 | 865 | 1110 | 628 | 3483 | 2836817920 | 35 | 8.731 | 39.703 | 9.275 | 253017088 | 0.034 | 0.003 | 1 | 23 | 62 | 12 | 552 | 436 | 45 | 51 |
+| nanogpt | loss, step 2 | shared_cpu | 1 | 0.545 | ok (0e+00) | 3.682 | n/a | 1e-09 | 1e-09 | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 201 | 0 | 0 | 18 | 865 | 1145 | 628 | 3483 | 2836817920 | 35 | 8.731 | 40.129 | 9.386 | 253017088 | n/a | n/a | 1 | 24 | 62 | 12 | 552 | 470 | 45 | 51 |
+| nanogpt | train (sgd), step 2 | shared_cpu | 1 | 29.014 | ok (3e-16) | n/a | n/a | n/a | n/a | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 246 | 0 | 0 | 18 | 1175 | 1665 | 724 | 4612 | 3658344448 | 35 | 12.278 | 60.157 | 14.038 | 256408576 | 0.040 | 0.003 | 1 | 35 | 93 | 18 | 828 | 872 | 90 | 102 |
+| nanogpt | loss, step 3 | shared_cpu | 1 | 0.592 | ok (1e-16) | 3.366 | n/a | 1e-09 | 1e-09 | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 283 | 0 | 0 | 24 | 1175 | 1700 | 724 | 4612 | 3658344448 | 35 | 12.278 | 60.624 | 14.154 | 256408576 | n/a | n/a | 1 | 36 | 93 | 18 | 828 | 906 | 90 | 102 |
+| nanogpt | train (sgd), step 3 | shared_cpu | 1 | 28.573 | ok (3e-16) | n/a | n/a | n/a | n/a | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 328 | 0 | 0 | 24 | 1485 | 2220 | 820 | 5741 | 4478027776 | 35 | 15.806 | 80.343 | 18.689 | 259763200 | 0.046 | 0.003 | 1 | 47 | 124 | 24 | 1104 | 1308 | 135 | 153 |
+| nanogpt | loss, step 4 | shared_cpu | 1 | 0.578 | ok (1e-16) | 3.367 | n/a | 1e-09 | 1e-09 | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 365 | 0 | 0 | 30 | 1485 | 2255 | 820 | 5741 | 4478027776 | 35 | 15.806 | 80.794 | 18.808 | 259763200 | n/a | n/a | 1 | 48 | 124 | 24 | 1104 | 1342 | 135 | 153 |
+| nanogpt | train (sgd), step 4 | shared_cpu | 1 | 29.116 | ok (3e-16) | n/a | n/a | n/a | n/a | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 410 | 0 | 0 | 30 | 1795 | 2775 | 916 | 6870 | 5296482304 | 35 | 19.426 | 100.875 | 23.415 | 263093248 | 0.052 | 0.003 | 1 | 59 | 155 | 30 | 1380 | 1744 | 180 | 204 |
+
+wrote /Users/cromwellian/xql/xarray-sql/benchmarks/apple/nanogpt-shared-v3-shakespeare-shared_cpu.csv

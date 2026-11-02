@@ -1,0 +1,26 @@
+  1-layer GPT, vocab 65, 4,416 parameters: the loss is 123 lines of SQL
+  loss, step 0                 cpu_forced  batch=4         2.363s
+  train (sgd), step 0          cpu_forced  batch=4         0.559s
+  loss, step 1                 cpu_forced  batch=4         1.080s
+  train (sgd), step 1          cpu_forced  batch=4         0.261s
+  loss, step 2                 cpu_forced  batch=4         1.072s
+  train (sgd), step 2          cpu_forced  batch=4         0.264s
+  loss, step 3                 cpu_forced  batch=4         1.079s
+  train (sgd), step 3          cpu_forced  batch=4         0.259s
+  loss, step 4                 cpu_forced  batch=4         1.094s
+  train (sgd), step 4          cpu_forced  batch=4         0.257s
+
+| demo | step | host | batch | seconds | check | loss | operators | rtol | atol | table_registers | query_preparations | cpu_matmul | gpu_matmul | gpu_attention | declined | load_seconds | model_seconds | gradient_preparations | inplace_updates |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| nanogpt | loss, step 0 | cpu_forced | 4 | 2.363 | ok (2e-16) | 4.179 | 1 | 1e-09 | 1e-09 | 13 | 1 | 378 | 0 | 0 | 0 | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 0 | cpu_forced | 4 | 0.559 | ok (3e-16) | n/a | n/a | n/a | n/a | 13 | 1 | 403 | 0 | 0 | 0 | 0.004 | 0.026 | 1 | 11 |
+| nanogpt | loss, step 1 | cpu_forced | 4 | 1.080 | ok (0e+00) | 4.105 | 1 | 1e-09 | 1e-09 | 13 | 1 | 781 | 0 | 0 | 0 | n/a | n/a | 1 | 12 |
+| nanogpt | train (sgd), step 1 | cpu_forced | 4 | 0.261 | ok (3e-16) | n/a | n/a | n/a | n/a | 13 | 1 | 806 | 0 | 0 | 0 | 0.006 | 0.026 | 1 | 23 |
+| nanogpt | loss, step 2 | cpu_forced | 4 | 1.072 | ok (1e-16) | 3.884 | 1 | 1e-09 | 1e-09 | 13 | 1 | 1184 | 0 | 0 | 0 | n/a | n/a | 1 | 24 |
+| nanogpt | train (sgd), step 2 | cpu_forced | 4 | 0.264 | ok (6e-16) | n/a | n/a | n/a | n/a | 13 | 1 | 1209 | 0 | 0 | 0 | 0.008 | 0.026 | 1 | 35 |
+| nanogpt | loss, step 3 | cpu_forced | 4 | 1.079 | ok (1e-16) | 3.642 | 1 | 1e-09 | 1e-09 | 13 | 1 | 1587 | 0 | 0 | 0 | n/a | n/a | 1 | 36 |
+| nanogpt | train (sgd), step 3 | cpu_forced | 4 | 0.259 | ok (5e-16) | n/a | n/a | n/a | n/a | 13 | 1 | 1612 | 0 | 0 | 0 | 0.009 | 0.026 | 1 | 47 |
+| nanogpt | loss, step 4 | cpu_forced | 4 | 1.094 | ok (3e-16) | 3.842 | 1 | 1e-09 | 1e-09 | 13 | 1 | 1990 | 0 | 0 | 0 | n/a | n/a | 1 | 48 |
+| nanogpt | train (sgd), step 4 | cpu_forced | 4 | 0.257 | ok (8e-16) | n/a | n/a | n/a | n/a | 13 | 1 | 2015 | 0 | 0 | 0 | 0.011 | 0.026 | 1 | 59 |
+
+wrote benchmarks/apple/nanogpt-5-steps-cpu-forced.csv
