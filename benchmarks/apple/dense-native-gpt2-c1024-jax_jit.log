@@ -1,0 +1,5 @@
+jax_jit {'step': 0, 'seconds': 2.7095948749920353, 'loss': 10.783063169305695, 'check': 'ok', 'max_scaled_error': 1.5821289497231385e-16}
+jax_jit {'step': 1, 'seconds': 2.4120942499721423, 'loss': 8.782007900424375, 'check': 'ok', 'max_scaled_error': 2.2200777105558492e-16}
+jax_jit {'step': 2, 'seconds': 2.4132071669446304, 'loss': 7.639927209727933, 'check': 'ok', 'max_scaled_error': 2.2200913907570052e-16}
+jax_jit {'step': 3, 'seconds': 2.5045561250299215, 'loss': 6.953781219773996, 'check': 'ok', 'max_scaled_error': 2.220100087616973e-16}
+jax_jit {'step': 4, 'seconds': 2.4481768329860643, 'loss': 6.847608614444603, 'check': 'ok', 'max_scaled_error': 2.2588187400865964e-16}

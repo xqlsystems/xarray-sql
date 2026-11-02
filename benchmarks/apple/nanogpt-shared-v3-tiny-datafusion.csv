@@ -1,0 +1,11 @@
+demo,step,host,batch,seconds,check,loss,operators,rtol,atol,layers,embed,heads,context,vocab,parameters,optimizer,sgd_learning_rate,forward_only,load_seconds,model_seconds
+nanogpt,"loss, step 0",datafusion,4,1.180193250067532,ok (4e-16),4.179251,9882,1e-09,1e-09,1,16,2,16,65,4416,sgd,0.5,False,,
+nanogpt,"train (sgd), step 0",datafusion,4,0.44398425007238984,ok (5e-16),,,,,1,16,2,16,65,4416,sgd,0.5,False,0.004402041551657021,0.027535583009012043
+nanogpt,"loss, step 1",datafusion,4,1.1881296660285443,ok (2e-16),4.104661,9882,1e-09,1e-09,1,16,2,16,65,4416,sgd,0.5,False,,
+nanogpt,"train (sgd), step 1",datafusion,4,0.18606933299452066,ok (5e-16),,,,,1,16,2,16,65,4416,sgd,0.5,False,0.0064596674637869,0.05075858300551772
+nanogpt,"loss, step 2",datafusion,4,1.0919131670380011,ok (1e-16),3.883857,9882,1e-09,1e-09,1,16,2,16,65,4416,sgd,0.5,False,,
+nanogpt,"train (sgd), step 2",datafusion,4,0.1615661249961704,ok (6e-16),,,,,1,16,2,16,65,4416,sgd,0.5,False,0.008429794339463115,0.07419408299028873
+nanogpt,"loss, step 3",datafusion,4,1.0477787499548867,ok (1e-16),3.641763,9882,1e-09,1e-09,1,16,2,16,65,4416,sgd,0.5,False,,
+nanogpt,"train (sgd), step 3",datafusion,4,0.16016441700048745,ok (8e-16),,,,,1,16,2,16,65,4416,sgd,0.5,False,0.01036438054870814,0.09697204199619591
+nanogpt,"loss, step 4",datafusion,4,1.0425397919025272,ok (5e-16),3.842234,9882,1e-09,1e-09,1,16,2,16,65,4416,sgd,0.5,False,,
+nanogpt,"train (sgd), step 4",datafusion,4,0.16091687500011176,ok (1e-15),,,,,1,16,2,16,65,4416,sgd,0.5,False,0.01233108842279762,0.11925070791039616

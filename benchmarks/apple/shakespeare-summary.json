@@ -1,0 +1,290 @@
+{
+  "date": "2026-11-01",
+  "device": "Apple M5 Ultra, 30 CPU cores, 64 GPU cores, 256 GiB unified memory",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "python": "3.12.14",
+  "packages": {
+    "xarray-sql": "0.6.0",
+    "ddxdb": "0.4.6+xqlmath.2",
+    "einfold": "0.2.0+xqlmlx.5",
+    "mlx": "0.32.4",
+    "datafusion": "55.0.0",
+    "numpy": "2.5.4",
+    "pyarrow": "26.0.0",
+    "xarray": "2026.9.0"
+  },
+  "ddx_revision": "af71683f6678bb093e600f948c212490a4d8b74b",
+  "nanogpt_revision": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291",
+  "code_sha256": {
+    "benchmarks/ml/02_nanogpt.py": "a8a45f5daad78e64cd8a6d0957cc4092cb28b2116d6136797b3695be7a6573a9",
+    "benchmarks/ml/03_shakespeare.py": "c1407a2f4564cb47607ef46e3a215e5e2003775b27022a52be0b9c5394d5429e",
+    "benchmarks/ml/_shakespeare_torch.py": "f341fc1ff6c3c70c368b78fca2efa21cbbe9521b00e14a3996aed602b7d8d9e0",
+    "accelerators/einfold_mlx/dense_program.py": "5151e331bfdd1ba88a7dca0e553d27660cd8a1ebfe93684ef1f7f5725507ea84",
+    "accelerators/ddx_math/erf.patch": "66e35a7330d47f9944e8ab025f092fd627c5715cc07efd06845298431403c24e",
+    "xarray_sql/_dense_mlx.py": "caf4fb2c2412ec5bad8dd284297c94d26e7941b904759076191f5bb8aecd13d9",
+    "xarray_sql/math.py": "cbb68d604168da39d7ab2b3e1068cb1d8534f3cbe3845215626e4df57370d499",
+    "xarray_sql/dense.py": "c5c0e431f6c872022eff1089000e5cd2c67038910a13d23e248d62ad525ebc86"
+  },
+  "environment": {
+    "MLX_ENABLE_TF32": "0 (GPU run)",
+    "PYTHONPATH": "/Users/cromwellian/xql/xarray-sql:/Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages"
+  },
+  "scope": "SQL loss forward + ddx backward + global clipping + SQL AdamW + result registration. Batch/mask sampling, evaluation, reference checks and checkpoint I/O excluded. Warm mean is steps 2-5. Runs are serial. Five updates do not establish convergence.",
+  "runs": [
+    {
+      "backend": "dense_gpu",
+      "precision": "float32",
+      "cache_gib": 16,
+      "config": {
+        "backend": "dense_gpu",
+        "data_dir": "/Users/cromwellian/nanoGPT/data/shakespeare_char",
+        "out_dir": "benchmarks/apple/shakespeare-matched-release-gpu-stable",
+        "resume": null,
+        "steps": 5,
+        "verify_nanogpt": "/Users/cromwellian/nanoGPT",
+        "batch_size": 12,
+        "block_size": 256,
+        "n_layer": 6,
+        "n_head": 6,
+        "n_embd": 384,
+        "gradient_accumulation_steps": 1,
+        "max_iters": 2000,
+        "lr_decay_iters": 2000,
+        "warmup_iters": 100,
+        "eval_interval": 200,
+        "eval_iters": 20,
+        "log_interval": 10,
+        "seed": 1337,
+        "dropout": 0.2,
+        "learning_rate": 0.001,
+        "min_lr": 0.0001,
+        "beta1": 0.9,
+        "beta2": 0.99,
+        "weight_decay": 0.1,
+        "grad_clip": 1.0,
+        "cache_gib": 16
+      },
+      "steps": 5,
+      "verified_every_gradient_weight_and_moment": true,
+      "warm_mean_seconds": 2.02414754149504,
+      "warm_tokens_per_second": 1517.6759287670372,
+      "cold_seconds": 2.52290066704154,
+      "training": [
+        {
+          "kind": "train",
+          "iteration": 0,
+          "loss": 4.221166610717773,
+          "lr": 9.900990099009901e-06,
+          "seconds": 2.52290066704154,
+          "tokens_per_second": 1217.646037409137,
+          "verified": true
+        },
+        {
+          "kind": "train",
+          "iteration": 1,
+          "loss": 4.05787992477417,
+          "lr": 1.9801980198019803e-05,
+          "seconds": 2.5857169170631096,
+          "tokens_per_second": 1188.0650893096283,
+          "verified": true
+        },
+        {
+          "kind": "train",
+          "iteration": 2,
+          "loss": 3.844763994216919,
+          "lr": 2.9702970297029702e-05,
+          "seconds": 1.8406671659322456,
+          "tokens_per_second": 1668.9600688585758,
+          "verified": true
+        },
+        {
+          "kind": "train",
+          "iteration": 3,
+          "loss": 3.62751841545105,
+          "lr": 3.9603960396039605e-05,
+          "seconds": 1.8549383329227567,
+          "tokens_per_second": 1656.1197455872104,
+          "verified": true
+        },
+        {
+          "kind": "train",
+          "iteration": 4,
+          "loss": 3.511723756790161,
+          "lr": 4.950495049504951e-05,
+          "seconds": 1.8152677500620484,
+          "tokens_per_second": 1692.3123323790635,
+          "verified": true
+        }
+      ],
+      "evaluation": [
+        {
+          "kind": "eval",
+          "iteration": 0,
+          "train": 4.197868084907531,
+          "val": 4.197463512420654
+        }
+      ],
+      "measurements": {
+        "table_registers": 55,
+        "inplace_updates": 302,
+        "dense_programs": 770,
+        "dense_executions": 3265,
+        "dense_cache_evictions": 0,
+        "dense_peak_cached_bytes": 10523102578,
+        "dense_lowering_seconds": 7.730973405065015,
+        "dense_call_seconds": 12.962130957050249,
+        "key_cache_bytes": 0,
+        "gpu_input_arrays": 6905,
+        "gpu_input_bytes": 9938858000,
+        "gpu_fused_programs": 73,
+        "gpu_fused_executions": 9695,
+        "gpu_contractions": 12560,
+        "gpu_readbacks": 325,
+        "gpu_readback_bytes": 859607295,
+        "gpu_scatter_reductions": 260,
+        "gpu_union_reductions": 245,
+        "dense_last_decline": null
+      },
+      "log": "benchmarks/apple/shakespeare-matched-release-gpu-stable.log",
+      "checkpoint": "benchmarks/apple/shakespeare-matched-release-gpu-stable/last.npz",
+      "command": [
+        "/private/tmp/xql-framework-venv/bin/python",
+        "benchmarks/ml/03_shakespeare.py",
+        "--backend",
+        "dense_gpu",
+        "--steps",
+        "5",
+        "--cache-gib",
+        "16",
+        "--verify-nanogpt",
+        "/Users/cromwellian/nanoGPT",
+        "--out-dir",
+        "benchmarks/apple/shakespeare-matched-release-gpu-stable"
+      ]
+    },
+    {
+      "backend": "dense_cpu",
+      "precision": "float64",
+      "cache_gib": 32,
+      "config": {
+        "backend": "dense_cpu",
+        "data_dir": "/Users/cromwellian/nanoGPT/data/shakespeare_char",
+        "out_dir": "benchmarks/apple/shakespeare-matched-release-cpu-stable",
+        "resume": null,
+        "steps": 5,
+        "verify_nanogpt": "/Users/cromwellian/nanoGPT",
+        "batch_size": 12,
+        "block_size": 256,
+        "n_layer": 6,
+        "n_head": 6,
+        "n_embd": 384,
+        "gradient_accumulation_steps": 1,
+        "max_iters": 2000,
+        "lr_decay_iters": 2000,
+        "warmup_iters": 100,
+        "eval_interval": 200,
+        "eval_iters": 20,
+        "log_interval": 10,
+        "seed": 1337,
+        "dropout": 0.2,
+        "learning_rate": 0.001,
+        "min_lr": 0.0001,
+        "beta1": 0.9,
+        "beta2": 0.99,
+        "weight_decay": 0.1,
+        "grad_clip": 1.0,
+        "cache_gib": 32.0
+      },
+      "steps": 5,
+      "verified_every_gradient_weight_and_moment": true,
+      "warm_mean_seconds": 9.746508520736825,
+      "warm_tokens_per_second": 315.18979267949794,
+      "cold_seconds": 10.362358084064908,
+      "training": [
+        {
+          "kind": "train",
+          "iteration": 0,
+          "loss": 4.221166694066472,
+          "lr": 9.900990099009901e-06,
+          "seconds": 10.362358084064908,
+          "tokens_per_second": 296.45761853415195,
+          "verified": true
+        },
+        {
+          "kind": "train",
+          "iteration": 1,
+          "loss": 4.057880311620805,
+          "lr": 1.9801980198019803e-05,
+          "seconds": 10.331209582975134,
+          "tokens_per_second": 297.3514355049353,
+          "verified": true
+        },
+        {
+          "kind": "train",
+          "iteration": 2,
+          "loss": 3.844764134425487,
+          "lr": 2.9702970297029702e-05,
+          "seconds": 9.599913167068735,
+          "tokens_per_second": 320.0028944572228,
+          "verified": true
+        },
+        {
+          "kind": "train",
+          "iteration": 3,
+          "loss": 3.6275185921665165,
+          "lr": 3.9603960396039605e-05,
+          "seconds": 9.483316457946785,
+          "tokens_per_second": 323.93730754663784,
+          "verified": true
+        },
+        {
+          "kind": "train",
+          "iteration": 4,
+          "loss": 3.511723839465803,
+          "lr": 4.950495049504951e-05,
+          "seconds": 9.571594874956645,
+          "tokens_per_second": 320.94964738192755,
+          "verified": true
+        }
+      ],
+      "evaluation": [
+        {
+          "kind": "eval",
+          "iteration": 0,
+          "train": 4.1978681571745575,
+          "val": 4.197463574385281
+        }
+      ],
+      "measurements": {
+        "table_registers": 55,
+        "inplace_updates": 302,
+        "dense_programs": 770,
+        "dense_executions": 3265,
+        "dense_cache_evictions": 3802,
+        "dense_peak_cached_bytes": 34359736986,
+        "dense_lowering_seconds": 61.90397226775531,
+        "dense_call_seconds": 90.60476937738713,
+        "key_cache_bytes": 0,
+        "dense_last_decline": null
+      },
+      "log": "benchmarks/apple/shakespeare-matched-release-cpu-stable.log",
+      "checkpoint": "benchmarks/apple/shakespeare-matched-release-cpu-stable/last.npz",
+      "command": [
+        "/private/tmp/xql-framework-venv/bin/python",
+        "benchmarks/ml/03_shakespeare.py",
+        "--backend",
+        "dense_cpu",
+        "--steps",
+        "5",
+        "--cache-gib",
+        "32",
+        "--verify-nanogpt",
+        "/Users/cromwellian/nanoGPT",
+        "--out-dir",
+        "benchmarks/apple/shakespeare-matched-release-cpu-stable"
+      ]
+    }
+  ],
+  "gpu_speedup_vs_cpu": 4.815117633933952,
+  "earlier_trials": "Other shakespeare-matched logs are diagnostics on a newer unreleased ddx snapshot or the intermediate window/CASE implementations. Only the release-*-stable runs describe the final implementation."
+}

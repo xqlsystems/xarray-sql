@@ -1,0 +1,18 @@
+  12-layer GPT, vocab 50257, 124,337,664 parameters: the loss is 1047 lines of SQL
+  steps=5, optimizer=sgd, context=1024, heads=12, embed=768, forward_only=True
+  Padded vocabulary: inputs are character IDs, without GPT-2 BPE tokenization
+  loss, step 0                 shared_cpu  batch=1         6.903s
+  loss, step 1                 shared_cpu  batch=1         6.688s
+  loss, step 2                 shared_cpu  batch=1         6.672s
+  loss, step 3                 shared_cpu  batch=1         6.493s
+  loss, step 4                 shared_cpu  batch=1         6.437s
+
+| demo | step | host | batch | seconds | check | loss | operators | rtol | atol | layers | embed | heads | context | vocab | parameters | optimizer | sgd_learning_rate | forward_only | table_registers | query_preparations | cpu_matmul | gpu_matmul | gpu_attention | declined | physical_plans | plan_executions | stage_buffer_allocations | key_cache_hits | key_copy_bytes_avoided | forward_stages | planning_seconds | execution_seconds | stage_storage_seconds | key_cache_bytes | load_seconds | model_seconds | inplace_updates | stage_buffer_writes |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| nanogpt | loss, step 0 | shared_cpu | 1 | 6.903 | ok (2e-16) | 10.783 | n/a | 1e-09 | 1e-09 | 12 | 768 | 12 | 1024 | 50257 | 124337664 | sgd | 0.010 | True | 13 | 1 | 73 | 0 | 0 | 12 | 65 | 65 | 64 | 159 | 1914986496 | 65 | 0.359 | 3.785 | 2.672 | 1254006784 | 0.069 | 0.005 | n/a | n/a |
+| nanogpt | loss, step 1 | shared_cpu | 1 | 6.688 | ok (0e+00) | 10.804 | n/a | 1e-09 | 1e-09 | 12 | 768 | 12 | 1024 | 50257 | 124337664 | sgd | 0.010 | True | 13 | 1 | 146 | 0 | 0 | 24 | 65 | 130 | 64 | 159 | 1914986496 | 65 | 0.359 | 7.945 | 5.141 | 1254006784 | 0.069 | 0.005 | 1 | 64 |
+| nanogpt | loss, step 2 | shared_cpu | 1 | 6.672 | ok (3e-16) | 10.842 | n/a | 1e-09 | 1e-09 | 12 | 768 | 12 | 1024 | 50257 | 124337664 | sgd | 0.010 | True | 13 | 1 | 219 | 0 | 0 | 36 | 65 | 195 | 64 | 159 | 1914986496 | 65 | 0.359 | 12.137 | 7.576 | 1254006784 | 0.070 | 0.005 | 2 | 128 |
+| nanogpt | loss, step 3 | shared_cpu | 1 | 6.493 | ok (2e-16) | 10.872 | n/a | 1e-09 | 1e-09 | 12 | 768 | 12 | 1024 | 50257 | 124337664 | sgd | 0.010 | True | 13 | 1 | 292 | 0 | 0 | 48 | 65 | 260 | 64 | 159 | 1914986496 | 65 | 0.359 | 16.167 | 10.001 | 1254006784 | 0.070 | 0.005 | 3 | 192 |
+| nanogpt | loss, step 4 | shared_cpu | 1 | 6.437 | ok (0e+00) | 10.873 | n/a | 1e-09 | 1e-09 | 12 | 768 | 12 | 1024 | 50257 | 124337664 | sgd | 0.010 | True | 13 | 1 | 365 | 0 | 0 | 60 | 65 | 325 | 64 | 159 | 1914986496 | 65 | 0.359 | 20.174 | 12.393 | 1254006784 | 0.070 | 0.005 | 4 | 256 |
+
+wrote /Users/cromwellian/xql/xarray-sql/benchmarks/apple/nanogpt-shared-v3-gpt2-forward-shared_cpu.csv

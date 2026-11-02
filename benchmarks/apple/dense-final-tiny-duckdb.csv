@@ -1,0 +1,11 @@
+demo,step,host,batch,seconds,check,loss,operators,rtol,atol,layers,embed,heads,context,vocab,parameters,optimizer,sgd_learning_rate,forward_only,load_seconds,model_seconds
+nanogpt,"loss, step 0",duckdb,4,0.02979412500280887,ok (0e+00),4.179251,126,1e-09,1e-09,1,16,2,16,65,4416,sgd,0.5,False,,
+nanogpt,"train (sgd), step 0",duckdb,4,0.2989180830772966,ok (6e-16),,,,,1,16,2,16,65,4416,sgd,0.5,False,0.010787540581077337,0.0011049999156966805
+nanogpt,"loss, step 1",duckdb,4,0.024936834000982344,ok (0e+00),4.104661,126,1e-09,1e-09,1,16,2,16,65,4416,sgd,0.5,False,,
+nanogpt,"train (sgd), step 1",duckdb,4,0.25098350003827363,ok (4e-16),,,,,1,16,2,16,65,4416,sgd,0.5,False,0.0161727488739416,0.0020935829961672425
+nanogpt,"loss, step 2",duckdb,4,0.02436333301011473,ok (1e-16),3.883857,126,1e-09,1e-09,1,16,2,16,65,4416,sgd,0.5,False,,
+nanogpt,"train (sgd), step 2",duckdb,4,0.2476455409778282,ok (5e-16),,,,,1,16,2,16,65,4416,sgd,0.5,False,0.021583832683973014,0.0030175409046933055
+nanogpt,"loss, step 3",duckdb,4,0.02453645900823176,ok (0e+00),3.641763,126,1e-09,1e-09,1,16,2,16,65,4416,sgd,0.5,False,,
+nanogpt,"train (sgd), step 3",duckdb,4,0.2526984999421984,ok (6e-16),,,,,1,16,2,16,65,4416,sgd,0.5,False,0.02712412376422435,0.003926208009943366
+nanogpt,"loss, step 4",duckdb,4,0.024509625043720007,ok (2e-16),3.842234,126,1e-09,1e-09,1,16,2,16,65,4416,sgd,0.5,False,,
+nanogpt,"train (sgd), step 4",duckdb,4,0.246333249961026,ok (1e-15),,,,,1,16,2,16,65,4416,sgd,0.5,False,0.032413956709206104,0.004844874027185142

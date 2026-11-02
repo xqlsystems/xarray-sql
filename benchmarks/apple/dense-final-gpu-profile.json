@@ -1,0 +1,36 @@
+{
+  "diagnostic": true,
+  "host": "dense_gpu",
+  "context": 16,
+  "parameters": 123563520,
+  "cache_gib": 8,
+  "paired_seconds": 3.6194783749524504,
+  "public_output_bytes": 3871488000,
+  "phases": {
+    "input_conversion_seconds": 0.2776629664003849,
+    "device_wait_seconds": 0.2570341653190553,
+    "numpy_view_seconds": 0.00044416775926947594
+  },
+  "statistics": {
+    "table_registers": 12,
+    "query_preparations": 1,
+    "gradient_preparations": 1,
+    "dense_programs": 707,
+    "dense_executions": 1414,
+    "dense_cache_evictions": 0,
+    "dense_peak_cached_bytes": 5152709312,
+    "dense_lowering_seconds": 3.1360446005128324,
+    "dense_call_seconds": 7.324241542024538,
+    "key_cache_bytes": 0,
+    "gpu_input_arrays": 3178,
+    "gpu_input_bytes": 3954057712,
+    "gpu_fused_programs": 140,
+    "gpu_fused_executions": 10998,
+    "gpu_contractions": 8008,
+    "gpu_readbacks": 68,
+    "gpu_readback_bytes": 1065703696,
+    "gpu_union_reductions": 336,
+    "gpu_scatter_reductions": 398,
+    "dense_last_decline": null
+  }
+}

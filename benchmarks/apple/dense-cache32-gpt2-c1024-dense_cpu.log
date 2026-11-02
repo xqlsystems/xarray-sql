@@ -1,0 +1,6 @@
+  12-layer GPT, vocab 50257, 124,337,664 parameters: the loss is 1047 lines of SQL
+  steps=5, optimizer=sgd, context=1024, heads=12, embed=768, forward_only=False
+  Padded vocabulary: inputs are character IDs, without GPT-2 BPE tokenization
+  loss, step 0                 dense_cpu   batch=1         4.114s
+  train (sgd), step 0          dense_cpu   batch=1       171.287s
+  loss, step 1                 dense_cpu   batch=1         3.747s

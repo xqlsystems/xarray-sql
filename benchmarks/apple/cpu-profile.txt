@@ -1,0 +1,43 @@
+Sat Oct 31 23:31:20 2026    /private/tmp/xql-baseline-attention.prof
+
+         2716130 function calls (2664128 primitive calls) in 2.758 seconds
+
+   Ordered by: cumulative time
+   List reduced from 8756 to 35 due to restriction <35>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+   1829/1    0.018    0.000    2.766    2.766 {built-in method builtins.exec}
+        1    0.000    0.000    2.765    2.765 01_attention.py:1(<module>)
+      182    0.002    0.000    2.223    0.012 __init__.py:1(<module>)
+        1    0.001    0.001    2.192    2.192 01_attention.py:214(main)
+       61    0.001    0.000    1.180    0.019 _hosts.py:89(query)
+       18    0.000    0.000    1.159    0.064 _bench.py:85(time)
+        8    0.000    0.000    1.026    0.128 _bench.py:110(attempt)
+   383/83    0.001    0.000    0.995    0.012 sql.py:245(sql)
+       24    0.000    0.000    0.983    0.041 ad.py:99(sql)
+       24    0.000    0.000    0.983    0.041 ad.py:750(sql)
+       24    0.000    0.000    0.983    0.041 ad.py:777(sql_all)
+       24    0.000    0.000    0.977    0.041 __init__.py:211(rewrite)
+       24    0.032    0.001    0.977    0.041 {built-in method ddxdb._ddxdb._rewrite}
+      589    0.000    0.000    0.939    0.002 dataframe.py:1739(to_arrow_table)
+      589    0.935    0.002    0.939    0.002 {method 'to_arrow_table' of 'datafusion.DataFrame' objects}
+  2193/13    0.003    0.000    0.852    0.066 <frozen importlib._bootstrap>:1349(_find_and_load)
+  1717/13    0.002    0.000    0.852    0.066 <frozen importlib._bootstrap>:1304(_find_and_load_unlocked)
+   1507/9    0.002    0.000    0.849    0.094 <frozen importlib._bootstrap>:911(_load_unlocked)
+   1300/9    0.001    0.000    0.849    0.094 <frozen importlib._bootstrap_external>:993(exec_module)
+  3815/22    0.002    0.000    0.848    0.039 <frozen importlib._bootstrap>:480(_call_with_frames_removed)
+   838/91    0.000    0.000    0.747    0.008 {built-in method builtins.__import__}
+ 2805/619    0.001    0.000    0.739    0.001 <frozen importlib._bootstrap>:1390(_handle_fromlist)
+      336    0.008    0.000    0.678    0.002 ad.py:392(materialize)
+  431/379    0.000    0.000    0.666    0.002 traceback_util.py:190(reraise_with_filtered_traceback)
+       76    0.000    0.000    0.591    0.008 pjit.py:1119(_pjit_call_impl_python)
+  370/294    0.001    0.000    0.565    0.002 profiler.py:585(wrapper)
+       76    0.000    0.000    0.520    0.007 pxla.py:1229(compile)
+       71    0.001    0.000    0.520    0.007 pxla.py:1706(from_hlo)
+       71    0.000    0.000    0.514    0.007 pxla.py:1519(_cached_compilation)
+    60/58    0.000    0.000    0.514    0.009 pjit.py:263(cache_miss)
+       71    0.000    0.000    0.508    0.007 compiler.py:436(compile_or_get_cached)
+       71    0.000    0.000    0.498    0.007 compiler.py:771(_compile_and_write_cache)
+       71    0.497    0.007    0.497    0.007 compiler.py:341(backend_compile_and_load)
+  437/167    0.001    0.000    0.494    0.003 core.py:687(bind)
+  494/167    0.001    0.000    0.493    0.003 core.py:736(bind_with_trace)

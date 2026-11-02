@@ -1,0 +1,122 @@
+{
+  "datafusion": {
+    "stages": [
+      {
+        "sql_dataframe_seconds": 0.01304174994584173,
+        "physical_planning_seconds": 0.9503352920291945,
+        "execute_existing_plan_seconds": 0.2082049580058083,
+        "loss": 4.1792514509261265
+      },
+      {
+        "sql_dataframe_seconds": 0.015322582912631333,
+        "physical_planning_seconds": 0.9564947080798447,
+        "execute_existing_plan_seconds": 0.1604719590395689,
+        "loss": 4.1792514509261265
+      },
+      {
+        "sql_dataframe_seconds": 0.013111292035318911,
+        "physical_planning_seconds": 0.9356817919760942,
+        "execute_existing_plan_seconds": 0.1561511670006439,
+        "loss": 4.1792514509261265
+      },
+      {
+        "sql_dataframe_seconds": 0.012777541996911168,
+        "physical_planning_seconds": 0.9527803340461105,
+        "execute_existing_plan_seconds": 0.16131829202640802,
+        "loss": 4.1792514509261265
+      }
+    ],
+    "physical_operators": 9882,
+    "operator_types": {
+      "ProjectionExec": 2229,
+      "AggregateExec": 1050,
+      "HashJoinExec": 2988,
+      "WindowAggExec": 81,
+      "SortExec": 81,
+      "DataSourceExec": 2989,
+      "FilterExec": 464
+    }
+  },
+  "duckdb": {
+    "stages": [
+      {
+        "relation_binding_seconds": 0.0006599589250981808,
+        "execute_relation_including_physical_planning_seconds": 0.030375082977116108,
+        "loss": 4.179251450926128
+      },
+      {
+        "relation_binding_seconds": 0.0008465000428259373,
+        "execute_relation_including_physical_planning_seconds": 0.02674108394421637,
+        "loss": 4.179251450926128
+      },
+      {
+        "relation_binding_seconds": 0.0008734579896554351,
+        "execute_relation_including_physical_planning_seconds": 0.024813542026095092,
+        "loss": 4.179251450926127
+      },
+      {
+        "relation_binding_seconds": 0.000853791949339211,
+        "execute_relation_including_physical_planning_seconds": 0.023691624985076487,
+        "loss": 4.179251450926128
+      }
+    ],
+    "physical_operators": 126,
+    "operator_types": {
+      "CTE": 9,
+      "UNGROUPED_AGGREGATE": 1,
+      "PROJECTION": 31,
+      "HASH_JOIN": 28,
+      "HASH_GROUP_BY": 17,
+      "WINDOW": 2,
+      "CTE_SCAN": 24,
+      "ARROW_SCAN": 14
+    },
+    "ctes": [
+      {
+        "CTE Name": "predicted",
+        "Table Index": "0",
+        "Estimated Cardinality": "1"
+      },
+      {
+        "CTE Name": "x0",
+        "Table Index": "4",
+        "Estimated Cardinality": "0"
+      },
+      {
+        "CTE Name": "l0_ln1_mean",
+        "Table Index": "5",
+        "Estimated Cardinality": "0"
+      },
+      {
+        "CTE Name": "l0_ln1",
+        "Table Index": "7",
+        "Estimated Cardinality": "0"
+      },
+      {
+        "CTE Name": "l0_weights",
+        "Table Index": "12",
+        "Estimated Cardinality": "0"
+      },
+      {
+        "CTE Name": "l0_mid",
+        "Table Index": "16",
+        "Estimated Cardinality": "0"
+      },
+      {
+        "CTE Name": "l0_ln2_mean",
+        "Table Index": "17",
+        "Estimated Cardinality": "0"
+      },
+      {
+        "CTE Name": "x1",
+        "Table Index": "23",
+        "Estimated Cardinality": "0"
+      },
+      {
+        "CTE Name": "final_mean",
+        "Table Index": "24",
+        "Estimated Cardinality": "0"
+      }
+    ]
+  }
+}

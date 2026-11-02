@@ -1,5 +1,8 @@
 # xarray-sql
 
+See [NanoGPT performance and optimization measurements](NANOGPT_PERFORMANCE.md)
+for SQL training features, startup costs, per-step timings and memory.
+
 _Query [Xarray](https://xarray.dev/) with SQL_
 
 ![PyPI Version](https://img.shields.io/pypi/v/xarray-sql?color=green)
