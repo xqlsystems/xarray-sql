@@ -9,7 +9,7 @@ the chain rule and higher derivatives; it does not substitute a model's
 handwritten backward pass.
 
 The builder uses the [ddx feature fork](https://github.com/cromwellian/ddx), pinned to commit
-`a941d46195632c9385a37e9812dd45dc10a50e94`, based on release commit
+`953b78ecfc8bce2b1c1a71f0d4c7300444d00cc7`, based on release commit
 `af71683f6678bb093e600f948c212490a4d8b74b`. Historical benchmark wheels used
 `ddxdb==0.4.6+xqlmath.3`; the contribution retains upstream version 0.4.6.
 The feature commit also exposes
