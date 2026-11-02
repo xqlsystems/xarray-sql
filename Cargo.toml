@@ -32,6 +32,7 @@ prost = { version = "0.14", optional = true }
 # enables `pyo3/extension-module` through pyproject.toml for wheel builds; it
 # must stay disabled for ordinary Cargo test binaries so they link libpython.
 pyo3 = { version = "0.29.0", features = ["abi3-py310"] }
+sqlparser = { version = "0.62", features = ["visitor"] }
 tokio = { version = "1.46.1", features = ["macros", "rt", "sync", "time"] }
 tonic = { version = "0.14", features = ["transport"], optional = true }
 
