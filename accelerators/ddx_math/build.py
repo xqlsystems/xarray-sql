@@ -14,7 +14,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-_REVISION = "3cd5f2711221e94295f47aa6f1270f712c2edfab"
+_REVISION = "a941d46195632c9385a37e9812dd45dc10a50e94"
 
 
 def main():
