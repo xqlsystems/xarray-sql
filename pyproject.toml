@@ -64,6 +64,12 @@ geo = [
 ml = [
   "ddxdb>=0.4.6,<0.5; sys_platform != 'emscripten'",
 ]
+# Benchmarks tracked over time in CI (see tests/test_benchmarks.py).
+# pytest-codspeed uses the same `benchmark` fixture name, so a benchmark
+# written against pytest-benchmark runs unmodified under either.
+benchmark = [
+  "pytest-benchmark>=4.0",
+]
 test = [
   "adbc-driver-flightsql>=1.12",
   "adbc-driver-sqlite>=1.12",
@@ -133,6 +139,7 @@ ignore_missing_imports = true
 dev = [
     "xarray_sql[test]",
     "xarray_sql[docs]",
+    "xarray_sql[benchmark]",
     "py-spy>=0.4.0",
     "ruff>=0.15.10",
     "maturin>=1.9.1",
@@ -156,4 +163,5 @@ cache-keys = [{file = "pyproject.toml"}, {file = "rust/Cargo.toml"}, {file = "**
 testpaths = ["tests"]
 markers = [
     "integration: needs network (anonymous GCS); excluded from the CI unit run",
+    "benchmark: tracked by pytest-benchmark in its own CI job; excluded from the CI unit run",
 ]
