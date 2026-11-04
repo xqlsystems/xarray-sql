@@ -56,6 +56,33 @@ Pick your engine:
       binds as a native `GEOMETRY` with the CRS attached. See
       [Geospatial in SQL](geospatial.md#geoarrow-point-geometry-columns).
 
+    **A spatial join on the geometry column fails.**
+
+    - *Symptom:* joining a registered table's `geometry` column to a
+      table of polygons (`JOIN regions r ON ST_Within(t.geometry,
+      r.geom)`, or the same polygon through a subquery) raises
+      `NotImplementedException: Pushdown Filter Type EXPRESSION_FILTER
+      is not currently supported in PyArrow Scans`. DuckDB's spatial
+      join pushes a filter on the column into its Arrow scan, which
+      can't take it. A constant polygon works.
+    - *What to do:* build the point in the join,
+      `ST_Within(ST_SetCRS(ST_Point(t.x, t.y), 'OGC:CRS84'), r.geom)`,
+      or copy what you need into DuckDB first (`CREATE TABLE ... AS`)
+      and join the copy.
+
+    **Geometries with different CRS tags don't compare.**
+
+    - *Symptom:* `ST_Within` raises "Cannot call function 'ST_Within'
+      with geometries of different coordinate reference systems" when
+      the polygons come from `ST_Read`, which tags GeoJSON
+      `EPSG:4326`, while the registered points carry the default
+      `OGC:CRS84`.
+    - *What to do:* retag the polygons, `ST_SetCRS(geom, 'OGC:CRS84')`.
+      Both tags are WGS84, but `EPSG:4326` officially puts latitude
+      first, while GeoJSON and the registered points put longitude
+      first, as `OGC:CRS84` says. (Tagging the points `EPSG:4326`
+      instead would mislead a later `ST_Transform`.)
+
 === "Polars"
 
     **Float `is_in` literals lose precision.**
