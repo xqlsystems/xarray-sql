@@ -359,6 +359,24 @@ class TestCftimeGregorianLike:
         ).to_pandas()
         assert result["cnt"].iloc[0] == 29
 
+    def test_noleap_dates_across_gregorian_leap_day(self):
+        times = xr.date_range(
+            "2052-02-28",
+            periods=3,
+            freq="D",
+            calendar="noleap",
+            use_cftime=True,
+        )
+        ds = xr.Dataset(
+            {"tas": ("time", [1.0, 2.0, 3.0])}, coords={"time": times}
+        )
+        ctx = XarrayContext()
+        ctx.from_dataset("tas", ds)
+        result = ctx.sql("SELECT time FROM tas ORDER BY time").to_pandas()
+        assert result["time"].tolist() == list(
+            pd.to_datetime(["2052-02-28", "2052-03-01", "2052-03-02"])
+        )
+
 
 class TestCftimeNonGregorian:
     """Tests for non-Gregorian cftime calendars (360_day, julian).
@@ -410,6 +428,28 @@ class TestCftimeNonGregorian:
             f"SELECT COUNT(*) AS cnt FROM ds360 WHERE time >= {mid}"
         ).to_pandas()
         assert 0 < result["cnt"].iloc[0] < 12
+
+    def test_all_leap_sub_day_times_survive_day_units(self):
+        times = xr.date_range(
+            "2001-02-28T12:00",
+            periods=4,
+            freq="12h",
+            calendar="all_leap",
+            use_cftime=True,
+        )
+        ds = xr.Dataset(
+            {"tas": ("time", np.arange(4.0))}, coords={"time": times}
+        )
+        ds.time.encoding["units"] = "days since 2001-01-01"
+        ctx = XarrayContext()
+        ctx.from_dataset("tas", ds)
+        result = ctx.sql(
+            "SELECT COUNT(DISTINCT time) AS n, "
+            "COUNT(*) FILTER (WHERE time >= cftime('2001-02-29')) AS after "
+            "FROM tas"
+        ).to_pandas()
+        assert result["n"].iloc[0] == 4
+        assert result["after"].iloc[0] == 3
 
     def test_360day_cftime_udf_registered(self, ds_360day):
         """from_dataset should auto-register a cftime() UDF for 360-day calendars."""

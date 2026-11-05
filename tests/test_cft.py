@@ -94,6 +94,12 @@ class TestConversion:
         values = rasm_ds.coords["time"].values
         assert len(cft.to_microseconds(values)) == len(values)
 
+    def test_to_microseconds_is_exact_past_float64_range(self):
+        import cftime
+
+        values = np.array([cftime.DatetimeNoLeap(2300, 1, 1, 0, 0, 0, 1)])
+        assert cft.to_microseconds(values)[0] % 2 == 1
+
     def test_to_offsets_returns_int64(self, ds_360day):
         values = ds_360day.coords["time"].values
         offsets = cft.to_offsets(values, cft.DEFAULT_UNITS, "360_day")

@@ -116,11 +116,24 @@ def encoding(ds: xr.Dataset, coord_name: str) -> tuple[str, str]:
     """Return ``(units, calendar)`` for a cftime coordinate.
 
     Reads xarray ``.encoding`` metadata (from the originating NetCDF file)
-    first, falling back to [DEFAULT_UNITS][xarray_sql.cftime.DEFAULT_UNITS].
+    first, falling back to [DEFAULT_UNITS][xarray_sql.cftime.DEFAULT_UNITS],
+    which is also used when the encoded units cannot hold every value as an
+    integer offset.
     """
     cal = calendar(ds, coord_name) or "standard"
     enc = ds.coords[coord_name].encoding
     units = enc.get("units", DEFAULT_UNITS)
+    if units != DEFAULT_UNITS and not is_gregorian_like(cal):
+        import cftime as _cftime
+
+        # Integer offsets in coarse units (e.g. days) would drop sub-unit
+        # times such as noon, so keep microseconds unless the units hold
+        # every value exactly.
+        raw = _cftime.date2num(
+            ds.coords[coord_name].values.ravel(), units=units, calendar=cal
+        )
+        if np.any(np.mod(raw, 1)):
+            units = DEFAULT_UNITS
     return units, cal
 
 
@@ -143,7 +156,8 @@ def to_microseconds(values) -> np.ndarray:
     if cal in ("noleap", "365_day"):
         cal = "proleptic_gregorian"
     us = _cftime.date2num(values.ravel(), units=DEFAULT_UNITS, calendar=cal)
-    return cast(np.ndarray, np.asarray(us, dtype=np.float64).astype(np.int64))
+    # No float64 detour: it rounds microsecond offsets past 2^53 (~2255).
+    return cast(np.ndarray, np.asarray(us).astype(np.int64))
 
 
 def to_offsets(values, units: str, cal: str) -> np.ndarray:
