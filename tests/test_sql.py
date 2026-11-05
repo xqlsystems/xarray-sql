@@ -451,6 +451,25 @@ class TestCftimeNonGregorian:
         assert result["n"].iloc[0] == 4
         assert result["after"].iloc[0] == 3
 
+    def test_pruning_matches_encoded_day_units(self):
+        times = xr.date_range(
+            "2001-01-01",
+            periods=120,
+            freq="D",
+            calendar="360_day",
+            use_cftime=True,
+        )
+        ds = xr.Dataset(
+            {"tas": ("time", np.arange(120.0))}, coords={"time": times}
+        ).chunk(time=30)
+        ds.time.encoding["units"] = "days since 2001-01-01"
+        ctx = XarrayContext()
+        ctx.from_dataset("tas", ds, chunks={"time": 30})
+        result = ctx.sql(
+            "SELECT COUNT(*) AS cnt FROM tas WHERE time < cftime('2001-03-01')"
+        ).to_pandas()
+        assert result["cnt"].iloc[0] == 60
+
     def test_360day_cftime_udf_registered(self, ds_360day):
         """from_dataset should auto-register a cftime() UDF for 360-day calendars."""
         ctx = XarrayContext()

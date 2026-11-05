@@ -15,10 +15,10 @@ this module handles the conversion in two tiers:
 * **Non-Gregorian calendars** (360_day, julian, all_leap/366_day): mapped
   to ``pa.int64()`` with ``xarray:units`` and ``xarray:calendar`` metadata
   on the Arrow field.  all_leap has a Feb 29 every year, which no Gregorian
-  timestamp can hold.  This preserves the original CF-convention encoding
-  losslessly.  A
-  ``cftime()`` DataFusion UDF (registered automatically by
-  ``Context.from_dataset``) provides ergonomic SQL filtering.
+  timestamp can hold.  Offsets are microseconds in the coordinate's own
+  calendar, which is lossless.  A ``cftime()`` DataFusion UDF (registered
+  automatically by ``Context.from_dataset``) provides ergonomic SQL
+  filtering.
 """
 
 from __future__ import annotations
@@ -115,25 +115,16 @@ def calendar(ds: xr.Dataset, coord_name: str) -> str | None:
 def encoding(ds: xr.Dataset, coord_name: str) -> tuple[str, str]:
     """Return ``(units, calendar)`` for a cftime coordinate.
 
-    Reads xarray ``.encoding`` metadata (from the originating NetCDF file)
-    first, falling back to [DEFAULT_UNITS][xarray_sql.cftime.DEFAULT_UNITS],
-    which is also used when the encoded units cannot hold every value as an
-    integer offset.
+    Gregorian-like calendars keep the units from xarray ``.encoding``
+    (the originating NetCDF file) as metadata.  Non-Gregorian calendars
+    always use [DEFAULT_UNITS][xarray_sql.cftime.DEFAULT_UNITS]: their
+    int64 offsets must share units with the partition bounds, and coarser
+    encoded units such as days would truncate times like noon.
     """
     cal = calendar(ds, coord_name) or "standard"
-    enc = ds.coords[coord_name].encoding
-    units = enc.get("units", DEFAULT_UNITS)
-    if units != DEFAULT_UNITS and not is_gregorian_like(cal):
-        import cftime as _cftime
-
-        # Integer offsets in coarse units (e.g. days) would drop sub-unit
-        # times such as noon, so keep microseconds unless the units hold
-        # every value exactly.
-        raw = _cftime.date2num(
-            ds.coords[coord_name].values.ravel(), units=units, calendar=cal
-        )
-        if np.any(np.mod(raw, 1)):
-            units = DEFAULT_UNITS
+    units = DEFAULT_UNITS
+    if is_gregorian_like(cal):
+        units = ds.coords[coord_name].encoding.get("units", DEFAULT_UNITS)
     return units, cal
 
 
