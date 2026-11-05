@@ -67,11 +67,15 @@ class TestCalendarClassification:
         assert cft.is_gregorian_like("noleap")
         assert cft.is_gregorian_like("standard")
         assert cft.is_gregorian_like("proleptic_gregorian")
-        assert cft.is_gregorian_like("all_leap")
 
     def test_360_day_is_not_gregorian_like(self):
         assert not cft.is_gregorian_like("360_day")
         assert not cft.is_gregorian_like("julian")
+
+    def test_all_leap_is_not_gregorian_like(self):
+        # Feb 29 of every year has no Gregorian timestamp
+        assert not cft.is_gregorian_like("all_leap")
+        assert not cft.is_gregorian_like("366_day")
 
 
 # -- Numeric conversion -----------------------------------------------------

@@ -319,6 +319,46 @@ class TestCftimeGregorianLike:
         )
         assert result["cnt"].iloc[0] == expected
 
+    def test_noleap_dates_keep_their_fields(self):
+        """A noleap date reads as the same calendar date, not time elapsed."""
+        times = xr.date_range(
+            "2050-01-01",
+            periods=3,
+            freq="D",
+            calendar="noleap",
+            use_cftime=True,
+        )
+        ds = xr.Dataset(
+            {"tas": ("time", [1.0, 2.0, 3.0])}, coords={"time": times}
+        )
+        ctx = XarrayContext()
+        ctx.from_dataset("tas", ds)
+        result = ctx.sql(
+            "SELECT time, EXTRACT(MONTH FROM time) AS month FROM tas ORDER BY time"
+        ).to_pandas()
+        assert result["time"].tolist() == list(
+            pd.date_range("2050-01-01", periods=3, freq="D")
+        )
+        assert result["month"].tolist() == [1, 1, 1]
+
+    def test_noleap_filter_matches_calendar_dates(self):
+        times = xr.date_range(
+            "2050-01-01",
+            periods=60,
+            freq="D",
+            calendar="noleap",
+            use_cftime=True,
+        )
+        ds = xr.Dataset(
+            {"tas": ("time", np.arange(60.0))}, coords={"time": times}
+        )
+        ctx = XarrayContext()
+        ctx.from_dataset("tas", ds, chunks={"time": 10})
+        result = ctx.sql(
+            "SELECT COUNT(*) AS cnt FROM tas WHERE time >= '2050-02-01'"
+        ).to_pandas()
+        assert result["cnt"].iloc[0] == 29
+
 
 class TestCftimeNonGregorian:
     """Tests for non-Gregorian cftime calendars (360_day, julian).

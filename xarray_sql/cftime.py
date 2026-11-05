@@ -6,14 +6,17 @@ Arrow and DataFusion have no native concept of non-Gregorian calendars, so
 this module handles the conversion in two tiers:
 
 * **Gregorian-like calendars** (standard, gregorian, proleptic_gregorian,
-  noleap/365_day, all_leap/366_day): mapped to ``pa.timestamp('us')`` so
-  that string-based SQL filters like ``WHERE time > '1980-01-01'`` work
-  naturally.  Microsecond resolution avoids the 1678–2262 overflow of
-  nanoseconds while preserving sub-second precision.
+  noleap/365_day): mapped to ``pa.timestamp('us')`` so that string-based
+  SQL filters like ``WHERE time > '1980-01-01'`` work naturally.  Every
+  noleap date is also a Gregorian date, so noleap dates map by their
+  fields: 2050-01-01 stays 2050-01-01.  Microsecond resolution avoids the
+  1678–2262 overflow of nanoseconds while preserving sub-second precision.
 
-* **Non-Gregorian calendars** (360_day, julian): mapped to ``pa.int64()``
-  with ``xarray:units`` and ``xarray:calendar`` metadata on the Arrow field.
-  This preserves the original CF-convention encoding losslessly.  A
+* **Non-Gregorian calendars** (360_day, julian, all_leap/366_day): mapped
+  to ``pa.int64()`` with ``xarray:units`` and ``xarray:calendar`` metadata
+  on the Arrow field.  all_leap has a Feb 29 every year, which no Gregorian
+  timestamp can hold.  This preserves the original CF-convention encoding
+  losslessly.  A
   ``cftime()`` DataFusion UDF (registered automatically by
   ``Context.from_dataset``) provides ergonomic SQL filtering.
 """
@@ -38,8 +41,6 @@ GREGORIAN_LIKE_CALENDARS: frozenset[str] = frozenset(
         "proleptic_gregorian",
         "noleap",
         "365_day",
-        "all_leap",
-        "366_day",
     }
 )
 """Calendars close enough to proleptic Gregorian for ``pa.timestamp('us')``."""
@@ -136,11 +137,12 @@ def to_microseconds(values) -> np.ndarray:
     """
     import cftime as _cftime
 
-    us = _cftime.date2num(
-        values.ravel(),
-        units=DEFAULT_UNITS,
-        calendar=values.ravel()[0].calendar,
-    )
+    cal = values.ravel()[0].calendar
+    # Map noleap dates by their fields, not by the time elapsed in a calendar
+    # with no leap days, which would read 2050-01-01 as 2049-12-12.
+    if cal in ("noleap", "365_day"):
+        cal = "proleptic_gregorian"
+    us = _cftime.date2num(values.ravel(), units=DEFAULT_UNITS, calendar=cal)
     return cast(np.ndarray, np.asarray(us, dtype=np.float64).astype(np.int64))
 
 
