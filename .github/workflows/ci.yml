@@ -123,8 +123,7 @@ jobs:
         run: uv run --no-project pytest -v tests/test_ml_demos.py
 
   benchmarks:
-    # tests/test_benchmarks.py, tracked over time with pytest-benchmark
-    # (issue #298).
+    # tests/test_benchmarks.py, tracked over time with pytest-benchmark.
     name: "benchmarks"
     runs-on: ubuntu-latest
     # Only on main: a PR from a fork has no permission to push to
@@ -138,6 +137,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
+        id: rust-toolchain
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
@@ -205,6 +205,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
+        id: rust-toolchain
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9

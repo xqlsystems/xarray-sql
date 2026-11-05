@@ -1,4 +1,4 @@
-"""A benchmark tracked over time in CI (see CONTRIBUTING, issue #298).
+"""A benchmark tracked over time in CI (see CONTRIBUTING.md).
 
 Starts small: one benchmark, over an in-memory Dataset that needs no
 network, so a regression in xarray-sql, DataFusion or the in-memory
@@ -49,8 +49,10 @@ def test_groupby_mean_over_time(benchmark, grid):
         return ctx.sql(
             "SELECT lat, lon, AVG(temperature) AS mean_temp "
             'FROM "grid" GROUP BY lat, lon ORDER BY lat, lon'
-        ).to_dataset(dims=["lat", "lon"])
+        ).to_dataset()
 
     result = benchmark(run)
     assert result.sizes["lat"] == grid.sizes["lat"]
     assert result.sizes["lon"] == grid.sizes["lon"]
+    expected = grid["temperature"].mean("time")
+    np.testing.assert_allclose(result["mean_temp"].values, expected.values)
