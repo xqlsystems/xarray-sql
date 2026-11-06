@@ -31,6 +31,8 @@ prost = { version = "0.14", optional = true }
 # platform works on all CPython >= 3.10 (matching `requires-python`). Maturin
 # enables `pyo3/extension-module` through pyproject.toml for wheel builds; it
 # must stay disabled for ordinary Cargo test binaries so they link libpython.
+# Parses SQL to share the CTEs and views a prepared query reads more than once.
+sqlparser = { version = "0.62", features = ["visitor"] }
 pyo3 = { version = "0.29.0", features = ["abi3-py310"] }
 tokio = { version = "1.46.1", features = ["macros", "rt", "sync", "time"] }
 tonic = { version = "0.14", features = ["transport"], optional = true }

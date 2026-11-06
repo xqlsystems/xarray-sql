@@ -204,6 +204,15 @@ planning, as it is over tables of more than about a megabyte, a call
 plans the query again and runs as fast as `ctx.sql`. So does a call of
 a plan over a lazy table (Dask or a lazily opened file).
 
+DataFusion plans a CTE or a view in full at each place a query reads
+it. A model whose layers each read the layer before more than once
+grows with every layer: a one-layer GPT's loss plans as 9,882 operators,
+repeats of only 87 distinct subplans. `prepare` runs each CTE or view read more
+than once just once per call, and keeps its rows in a table for the
+rest of the query to read. That GPT's loss takes 16 ms per call, and
+2.7 s with `ctx.sql`. A query with `WITH RECURSIVE`, or a subquery with
+CTEs of its own, is planned as it's written.
+
 ## Round-trip faster with ORDER BY
 
 Results that arrive **grid-ordered** — sorted by the dimension columns,

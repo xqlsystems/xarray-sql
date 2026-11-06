@@ -262,3 +262,108 @@ def test_a_quoted_table_replaced_in_sql_counts_too():
     ctx.sql('CREATE OR REPLACE TABLE "Mixed" AS VALUES (1), (2)').collect()
     with pytest.raises(ValueError, match="registered again"):
         query()
+
+
+def _planned(query, a, b, *setup):
+    """The rows of ``query`` planned from scratch over ``a`` and ``b``."""
+    fresh = Context()
+    fresh.from_dataset("a", a)
+    fresh.from_dataset("b", b)
+    for statement in setup:
+        fresh.sql(statement)
+    return fresh.sql(query).to_arrow_table()
+
+
+def _calls(query, *setup):
+    """A prepared ``query``'s rows on new values of ``a``, against planning
+    it."""
+    rng = np.random.default_rng(1)
+    b = _b(rng.normal(size=(4, 3)))
+    ctx = Context()
+    ctx.from_dataset("a", _a(rng.normal(size=(4, 3))))
+    ctx.from_dataset("b", b)
+    for statement in setup:
+        ctx.sql(statement)
+    prepared = ctx.prepare(query)
+    for _ in range(3):
+        a = _a(rng.normal(size=(4, 3)))
+        yield prepared(a=a), _planned(query, a, b, *setup)
+
+
+# Each reads `t` twice, so a call runs `t` once and stores its rows.
+@pytest.mark.parametrize(
+    "query",
+    [
+        # A CTE read twice.
+        (
+            "WITH t AS (SELECT i, j, 2 * v AS v2 FROM a) "
+            "SELECT x.i, x.j, x.v2 * y.v2 AS p FROM t x JOIN t y "
+            "ON x.i = y.i AND x.j = y.j ORDER BY x.i, x.j"
+        ),
+        # Read twice, by a CTE read twice itself.
+        (
+            "WITH t AS (SELECT i, j, v FROM a), "
+            "u AS (SELECT x.i, x.j, x.v + y.v AS v FROM t x JOIN t y "
+            "ON x.i = y.i AND x.j = y.j), "
+            "s AS (SELECT u.i, SUM(u.v * b.w) AS s FROM u JOIN b "
+            "ON u.i = b.i AND u.j = b.j GROUP BY u.i) "
+            "SELECT p.i, p.s + q.s AS s FROM s p JOIN s q ON p.i = q.i ORDER BY p.i"
+        ),
+        # Rows whose number changes from call to call.
+        (
+            "WITH t AS (SELECT i, j, v FROM a WHERE v > 0) "
+            "SELECT (SELECT COUNT(*) FROM t) AS n, (SELECT SUM(v) FROM t) AS s"
+        ),
+        # Rows with nulls, and with strings, which aren't written in place.
+        (
+            "WITH t AS (SELECT i, j, CASE WHEN v > 0 THEN v END AS v, "
+            "CASE WHEN v > 0 THEN 'up' ELSE 'down' END AS d FROM a) "
+            "SELECT x.i, x.j, x.v, y.d FROM t x JOIN t y "
+            "ON x.i = y.i AND x.j = y.j ORDER BY x.i, x.j"
+        ),
+        # Columns named where the CTE is.
+        (
+            "WITH t(r, c, val) AS (SELECT i, j, v FROM a) "
+            "SELECT x.r, x.c, x.val + y.val AS z FROM t x JOIN t y "
+            "ON x.r = y.r AND x.c = y.c ORDER BY x.r, x.c"
+        ),
+    ],
+)
+def test_a_cte_read_more_than_once_gives_the_rows_planning_gives(query):
+    for rows, want in _calls(query):
+        assert rows.equals(want)
+
+
+def test_a_view_read_more_than_once_gives_the_rows_planning_gives():
+    view = (
+        "CREATE VIEW t AS WITH p AS (SELECT i, j, 2 * v AS v FROM a) "
+        "SELECT x.i, x.j, x.v + y.v AS v FROM p x JOIN p y "
+        "ON x.i = y.i AND x.j = y.j"
+    )
+    query = (
+        "SELECT x.i, SUM(x.v * y.v) AS s FROM t x JOIN t y "
+        "ON x.i = y.i AND x.j = y.j GROUP BY x.i ORDER BY x.i"
+    )
+    for rows, want in _calls(query, view):
+        assert rows.equals(want)
+
+
+def test_a_cte_named_like_a_view_hides_it():
+    view = "CREATE VIEW t AS SELECT i, j, -v AS v FROM a"
+    query = (
+        "WITH t AS (SELECT i, j, v FROM a) "
+        "SELECT x.i, x.j, x.v + y.v AS v FROM t x JOIN t y "
+        "ON x.i = y.i AND x.j = y.j ORDER BY x.i, x.j"
+    )
+    for rows, want in _calls(query, view):
+        assert rows.equals(want)
+
+
+def test_a_recursive_cte_runs_again():
+    query = (
+        "WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r "
+        "WHERE n < 4) SELECT SUM(n) AS s FROM r"
+    )
+    prepared = Context().prepare(query)
+    assert prepared().to_pydict() == {"s": [10]}
+    assert prepared().to_pydict() == {"s": [10]}
