@@ -174,6 +174,12 @@ jobs:
           output-file-path: benchmark.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
+          # mike (docs.yml) owns dev/, 0.x/, latest/, index.html and
+          # versions.json on gh-pages, and replaces dev/ wholesale on
+          # every docs deploy; the default dev/bench would collide
+          # with that and get wiped out. Use a root-level path mike
+          # never touches.
+          benchmark-data-dir-path: benchmarks
           # Hosted runners are noisy; keep this loose until there's
           # enough history on gh-pages to pick a tighter threshold.
           alert-threshold: "200%"
