@@ -64,6 +64,17 @@ geo = [
 ml = [
   "ddxdb>=0.4.6,<0.5; sys_platform != 'emscripten'",
 ]
+# Benchmarks tracked over time in CI (see tests/test_benchmarks.py).
+# pytest-codspeed recognizes pytest-benchmark's `benchmark` fixture, so
+# a benchmark written against pytest-benchmark runs unmodified under
+# either. Installed together, a --codspeed run disables pytest-
+# benchmark's own instrumentation for that run rather than double-
+# measuring; CodSpeed's CI job (.github/workflows/ci.yml) is
+# dispatch-only until its GitHub App is installed on the repo.
+benchmark = [
+  "pytest-benchmark>=4.0",
+  "pytest-codspeed>=3.0",
+]
 test = [
   "adbc-driver-flightsql>=1.12",
   "adbc-driver-sqlite>=1.12",
@@ -133,6 +144,7 @@ ignore_missing_imports = true
 dev = [
     "xarray_sql[test]",
     "xarray_sql[docs]",
+    "xarray_sql[benchmark]",
     "py-spy>=0.4.0",
     "ruff>=0.15.10",
     "maturin>=1.9.1",
@@ -156,4 +168,5 @@ cache-keys = [{file = "pyproject.toml"}, {file = "rust/Cargo.toml"}, {file = "**
 testpaths = ["tests"]
 markers = [
     "integration: needs network (anonymous GCS); excluded from the CI unit run",
+    "benchmark: tracked by pytest-benchmark in its own CI job; excluded from the CI unit run",
 ]
