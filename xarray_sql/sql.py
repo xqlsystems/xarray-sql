@@ -1,6 +1,8 @@
 import re
 import time
 import uuid
+from collections.abc import Callable
+from types import ModuleType
 
 import numpy as np
 import pyarrow as pa
@@ -9,7 +11,6 @@ from datafusion import SessionConfig, SessionContext
 from datafusion.catalog import Schema
 from datafusion.expr import TableScan
 from datafusion.plan import ExecutionPlan, LogicalPlan
-from types import ModuleType
 
 from . import cftime as cft
 from .df import (
@@ -38,14 +39,30 @@ try:  # ddxdb is an optional dependency (`pip install xarray-sql[ml]`).
 except ImportError:  # pragma: no cover - depends on the environment
     _ad = None
 
+_DYNAMIC_FILTERS = tuple(
+    f"datafusion.optimizer.enable{kind}_dynamic_filter_pushdown"
+    for kind in ("", "_join", "_topk", "_aggregate")
+)
+
 
 class Context(SessionContext):
     """A datafusion `SessionContext` that also supports `xarray.Dataset`s.
 
     Also available under its original name, ``XarrayContext``.
+    ``threads=`` sets DataFusion's target parallel partitions, overriding
+    that setting in an explicit ``config``. The default is the CPU count.
+    It is a concurrency target, rather than a fixed number of OS threads.
     """
 
-    def __init__(self, config: SessionConfig | None = None, *args, **kwargs):
+    def __init__(
+        self,
+        config: SessionConfig | None = None,
+        *args,
+        threads: int | None = None,
+        **kwargs,
+    ):
+        if threads is not None and threads < 1:
+            raise ValueError("threads must be positive")
         if config is None:
             # Split a query's work across partitions only where enough rows
             # reach it, by DataFusion's estimate. DataFusion otherwise splits
@@ -65,6 +82,8 @@ class Context(SessionContext):
                     "true",
                 )
             )
+        if threads is not None:
+            config = config.with_target_partitions(threads)
         super().__init__(config, *args, **kwargs)
         # Track registered xarray Datasets so XarrayDataFrame can recover
         # defaults (dimension_columns) and metadata (var/dataset attrs,
@@ -78,6 +97,8 @@ class Context(SessionContext):
         # registered again from Python was deregistered first; SQL that
         # replaces or drops a table counts too (see sql()).
         self._deregistrations: dict[str, int] = {}
+        self._custom_udfs: set[str] = set()
+        self._trusted_math_udfs: set[str] = set()
         # With pyproj installed, every context speaks CRS out of the box:
         # reproject(x, y, src_crs, dst_crs), à la PostGIS ST_Transform.
         if _proj is not None:
@@ -86,6 +107,41 @@ class Context(SessionContext):
         # and jvp() in a select list, and ddx_stop_gradient().
         if _ad is not None:
             _ad.register(self)
+
+    def register_udf(self, udf):
+        """Register a scalar function and track overrides for optional lowering."""
+        result = super().register_udf(udf)
+        self._custom_udfs.add(udf.name.lower())
+        self._trusted_math_udfs.discard(udf.name.lower())
+        return result
+
+    def register_udaf(self, udaf):
+        """Track aggregate-function overrides for optional numerical lowering."""
+        result = super().register_udaf(udaf)
+        self._custom_udfs.add(udaf.name.lower())
+        self._trusted_math_udfs.discard(udaf.name.lower())
+        return result
+
+    def register_udwf(self, udwf):
+        """Track window-function overrides for optional numerical lowering."""
+        result = super().register_udwf(udwf)
+        self._custom_udfs.add(udwf.name.lower())
+        self._trusted_math_udfs.discard(udwf.name.lower())
+        return result
+
+    def with_extensions(self, *extensions) -> "Context":
+        """Install DataFusion extension bundles, retaining xarray support.
+
+        Returns another handle on the same session, with this Context's
+        Dataset metadata and prepared-query invalidation state shared.
+        Extension codecs belong to the returned handle, so use it for
+        subsequent queries, as with DataFusion's own method.
+        """
+        session = super().with_extensions(*extensions)
+        derived = object.__new__(type(self))
+        derived.__dict__.update(self.__dict__)
+        derived.ctx = session.ctx
+        return derived
 
     def from_dataset(
         self,
@@ -214,9 +270,13 @@ class Context(SessionContext):
             table = read_xarray_table(
                 input_table, chunks, coord_arrays=coord_arrays
             )
+            register(table_name, table)
+        elif schema is None:
+            # Uniform Datasets can register their shared Arrow buffers
+            # directly, without a temporary catalog entry and lookup.
+            self.register_record_batches(table_name, partitions)
         else:
-            table = self._in_memory_table(partitions)
-        register(table_name, table)
+            register(table_name, self._in_memory_table(partitions))
         self._maybe_register_cftime_udf(input_table)
         return self
 
@@ -324,16 +384,11 @@ class Context(SessionContext):
             A [PreparedQuery][xarray_sql.PreparedQuery]; call it to run
             the query.
 
-        Raises:
-            NotImplementedError: If the query calls ``grad``, ``vjp`` or
-                ``jvp``, which only ``sql()`` computes for now.
+        Queries calling ``grad``, ``vjp`` or ``jvp`` retain ddx's programs
+        through [xarray_sql.ad.prepare][]. Their first call prepares the
+        programs; later calls check the catalog and settings and refresh
+        them if necessary.
         """
-        if _ad is not None and _ad.calls_ad(query):
-            # TODO(#294): prepare the query's programs with ddx.
-            raise NotImplementedError(
-                "prepare() doesn't compute grad, vjp or jvp yet; run the "
-                "query with sql(), or several with xarray_sql.ad.sql_all()"
-            )
         return PreparedQuery(self, query)
 
     def _write(self, writes: dict[str, xr.Dataset]) -> None:
@@ -415,10 +470,19 @@ class PreparedQuery:
     query again. A call raises if a table the query reads has been
     registered again since it was prepared. Functions such as ``now()``
     are evaluated once, when the query is prepared.
+
+    A query calling ``grad``, ``vjp`` or ``jvp`` instead retains ddx's
+    programs. Its first call prepares them, and subsequent calls refresh
+    them when schemas, views or settings change. Tables may be registered
+    again under the same names, as with [xarray_sql.ad.prepare][].
     """
 
     def __init__(self, ctx: Context, query: str):
         self._ctx = ctx
+        self._gradient: Callable[..., list[pa.Table]] | None = None
+        if _ad is not None and _ad.calls_ad(query):
+            self._gradient = _ad.prepare(ctx, [query])
+            return
         start = time.perf_counter()
         df = SessionContext.sql(ctx, query)
         plan = df.execution_plan()
@@ -441,11 +505,13 @@ class PreparedQuery:
         }
         # A plan keeps state from a run (a hash join keeps the table it
         # built), so each call runs a fresh copy of it, decoded from its
-        # serialized form. Copying a plan copies its in-memory tables, so
-        # over large ones it's slower than planning again; a plan that reads
-        # a lazy table, or is nested deeper than protobuf decodes, can't be
-        # copied at all. Either way, each call plans the query again.
+        # serialized form. The default codec copies in-memory tables, so
+        # over large ones it can be slower than planning again; extensions
+        # can supply a codec that resets state while retaining input buffers.
+        # A plan the session's codecs cannot copy is planned again each call.
         self._plan: ExecutionPlan | None = None
+        if not _safe_physical_reuse(ctx):
+            return
         start = time.perf_counter()
         try:
             _copy(ctx, plan)
@@ -464,6 +530,9 @@ class PreparedQuery:
         Returns:
             The query's rows.
         """
+        if self._gradient is not None:
+            (rows,) = self._gradient(**tables)
+            return rows
         for name in tables:
             if name not in self._registered:
                 raise ValueError(
@@ -495,7 +564,22 @@ def _copy(ctx: SessionContext, plan: ExecutionPlan) -> ExecutionPlan:
     # TODO(#283): reset the plan's state with datafusion-python's binding of
     # reset_plan_states, once it has one, rather than decode it again.
     # `plan` itself never runs, so it has no state to leave behind.
-    return ExecutionPlan.from_bytes(ctx, plan.to_bytes())
+    return ExecutionPlan.from_bytes(ctx, plan.to_bytes(ctx))
+
+
+def _safe_physical_reuse(ctx: SessionContext) -> bool:
+    """Dynamic filters retain value-dependent bounds even after a reset."""
+    names = ", ".join(repr(name) for name in _DYNAMIC_FILTERS)
+    try:
+        rows = SessionContext.sql(
+            ctx,
+            f"SELECT value FROM information_schema.df_settings WHERE name IN ({names})",
+        ).to_arrow_table()
+    except ValueError:
+        return False
+    return rows.num_rows == len(_DYNAMIC_FILTERS) and all(
+        value == "false" for value in rows["value"].to_pylist()
+    )
 
 
 def _tables_read(plan: LogicalPlan) -> set[str]:

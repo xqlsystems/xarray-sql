@@ -43,7 +43,11 @@ wrong number.
 
 [sql_all][xarray_sql.ad.sql_all] runs several statements that take
 ``grad`` of the same loss for the price of one backward pass, which is
-how a training step updates each of a model's parameter tables. For the
+how a training step updates each of a model's parameter tables. For repeated
+training steps, [prepare][xarray_sql.ad.prepare] retains ddx's
+programs between calls and materializes each statement's result.
+[Context.prepare][xarray_sql.Context.prepare] handles one such statement;
+``ad.prepare`` handles several statements sharing a loss. For the
 programs underneath (``grad``, ``vjp``, ``jvp`` and ``run``, to build a
 backward pass once and run it every step), use ``ddxdb.ad`` directly;
 they take a ``Context`` like any other ``SessionContext``.
@@ -52,12 +56,13 @@ they take a ``Context`` like any other ``SessionContext``.
 from __future__ import annotations
 
 import re
+import threading
 from collections.abc import Sequence
 
 from datafusion import SessionContext
 from ddxdb import ad as _ddx
 
-__all__ = ["STOP_GRADIENT", "calls_ad", "register", "sql", "sql_all"]
+__all__ = ["STOP_GRADIENT", "calls_ad", "prepare", "register", "sql", "sql_all"]
 
 STOP_GRADIENT = _ddx.STOP_GRADIENT
 """The SQL name of the stop-gradient function, ``ddx_stop_gradient``."""
@@ -138,3 +143,44 @@ def sql_all(ctx: SessionContext, statements: Sequence[str]) -> list:
     frames: list = _ddx.sql_all(ctx, list(statements))
     wrap = getattr(ctx, "_wrap", None)
     return [wrap(f) for f in frames] if wrap else frames
+
+
+def prepare(ctx: SessionContext, statements: Sequence[str]):
+    """Prepare SQL gradient statements for repeated execution.
+
+    ddx retains the differentiation programs and checks table schemas,
+    views and session settings on each call. This avoids rebuilding those
+    programs in a training loop while allowing tables to be registered
+    again. Several statements can share a loss, as with ``sql_all``::
+
+        step = xql.ad.prepare(ctx, [
+            f"WITH loss AS ({LOSS}) "
+            "SELECT i, val - 0.01 * grad(loss, val) AS val FROM w ORDER BY i"
+        ])
+        [rows] = step()
+
+    On a ``Context``, a call may first write Dataset values into registered
+    tables, using the same validation as ``Context.prepare``::
+
+        [rows] = step(w=new_weights)
+
+    Returns a callable producing one materialized ``pyarrow.Table`` per
+    statement. Results remain valid after later calls. Writes and execution
+    are serialized for calls to this prepared function. Other users of the
+    context must coordinate concurrent writes themselves.
+    """
+    if isinstance(statements, str):
+        raise TypeError("statements is a list of SQL statements")
+    run = _ddx.prepare(ctx, list(statements))
+    lock = threading.Lock()
+
+    def execute(**tables):
+        with lock:
+            if tables:
+                write = getattr(ctx, "_write", None)
+                if write is None:
+                    raise TypeError("Dataset writes require xarray_sql.Context")
+                write(tables)
+            return [frame.to_arrow_table() for frame in run()]
+
+    return execute
