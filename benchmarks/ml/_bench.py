@@ -24,7 +24,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
-from _hosts import HOSTS, Host
+from _hosts import DEFAULT_HOSTS, HOSTS, Host
 
 
 def cli(description: str, sizes: Sequence[int], size_name: str = "n"):
@@ -33,9 +33,9 @@ def cli(description: str, sizes: Sequence[int], size_name: str = "n"):
     parser.add_argument(
         "--hosts",
         nargs="+",
-        default=list(HOSTS),
+        default=list(DEFAULT_HOSTS),
         choices=list(HOSTS),
-        help="engines to run on (default: all)",
+        help="engines to run on (default: datafusion einfold duckdb)",
     )
     parser.add_argument(
         "--sizes",
@@ -156,6 +156,15 @@ class Report:
         """Attach a measurement besides time to the last row."""
         self.rows[-1][key] = value
 
+    def _write_csv(self, path):
+        """Checkpoint completed checks during long model runs."""
+        if path:
+            columns = list(dict.fromkeys(k for row in self.rows for k in row))
+            with open(path, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=columns)
+                writer.writeheader()
+                writer.writerows(self.rows)
+
     def finish(self, csv_path: str | None = None) -> None:
         """Print the table, and write it as CSV if asked. Exits with an
         error if a host refused a step it wasn't expected to."""
@@ -166,10 +175,7 @@ class Report:
             cells = [_cell(row.get(c)) for c in columns]
             print(f"| {' | '.join(cells)} |")
         if csv_path:
-            with open(csv_path, "w", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=columns)
-                writer.writeheader()
-                writer.writerows(self.rows)
+            self._write_csv(csv_path)
             print(f"\nwrote {csv_path}", file=sys.stderr)
         if self.unexpected:
             sys.exit(

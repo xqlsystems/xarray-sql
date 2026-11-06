@@ -231,7 +231,15 @@ def main() -> None:
                 rows = report.time(
                     f"forward ({spelling})", host, n, host.query, FORWARD
                 )
-                report.check(assert_close("forward", matrix(rows), want))
+                report.check(
+                    assert_close(
+                        "forward",
+                        matrix(rows),
+                        want,
+                        rtol=host.rtol,
+                        atol=host.atol,
+                    )
+                )
                 report.note("operators", host.operators(FORWARD))
 
                 step = f"gradient ({spelling})"
@@ -242,7 +250,13 @@ def main() -> None:
                 if rows is None:
                     continue
                 errors = [
-                    assert_close(f"d/d{name}", matrix(rows, f"d{name}"), ref)
+                    assert_close(
+                        f"d/d{name}",
+                        matrix(rows, f"d{name}"),
+                        ref,
+                        rtol=host.rtol,
+                        atol=host.atol,
+                    )
                     for name, ref in zip("qkv", want_grads)
                 ]
                 report.check(max(errors))
@@ -303,7 +317,11 @@ def check_nadaraya_watson(host_names: Sequence[str], report: Report) -> None:
             NADARAYA_WATSON,
         )
         got = xql.to_dataset(rows, dims=["p"])["v"].values
-        report.check(assert_close("nadaraya-watson", got, want))
+        report.check(
+            assert_close(
+                "nadaraya-watson", got, want, rtol=host.rtol, atol=host.atol
+            )
+        )
 
 
 def check_einfold_fuses(host_names: Sequence[str]) -> None:
