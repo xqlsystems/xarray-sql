@@ -24,6 +24,8 @@ DEMOS = {
         ["--steps", "1"],
         ["--steps", "1", "--optimizer", "adamw"],
     ],
+    # TODO(#291): run Samudra once CI installs its PyTorch reference.
+    "04_samudra.py": [],
 }
 
 
