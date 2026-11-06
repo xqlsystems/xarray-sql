@@ -136,9 +136,54 @@ def test_a_mention_in_a_literal_is_not_a_call():
     assert rows == [{"s": "grad(x)", "jvp(v)": 1}]
 
 
-def test_prepare_refuses_a_gradient(problem):
-    ctx, *_ = problem
-    with pytest.raises(NotImplementedError, match="grad"):
-        ctx.prepare(
-            f"WITH {LOSS} SELECT feature, grad(loss, w) AS g FROM weights"
+def test_context_prepare_runs_gradient_steps_and_reads_writes(problem):
+    ctx, x, w, y = problem
+    step = ctx.prepare(
+        f"WITH {LOSS} SELECT feature, grad(loss, w) AS w FROM weights ORDER BY feature"
+    )
+    old = step()
+    original = old["w"].to_numpy().copy()
+    replacement = xr.Dataset(
+        {"w": ("feature", w.copy() * 2)}, coords={"feature": np.arange(3)}
+    )
+    got = step(weights=replacement)
+    np.testing.assert_allclose(
+        got["w"], 2 * x.T @ (x @ replacement.w.values - y)
+    )
+    np.testing.assert_array_equal(old["w"], original)
+    with pytest.raises(ValueError, match="coordinates"):
+        step(weights=replacement.assign_coords(feature=[3, 4, 5]))
+
+
+def test_prepared_gradients_read_new_values_and_keep_old_results(problem):
+    ctx, x, w, y = problem
+    statements = [
+        f"WITH {LOSS} SELECT feature, grad(loss, w) AS w FROM weights ORDER BY feature",
+        f"WITH {LOSS} SELECT feature, w - 0.01 * grad(loss, w) AS w FROM weights ORDER BY feature",
+    ]
+    run = ad.prepare(ctx, statements)
+    [first, _] = run()
+    original = first["w"].to_numpy().copy()
+    for scale in (0.5, -1.0, 2.0):
+        values = xr.Dataset(
+            {"w": ("feature", w.copy() * scale)},
+            coords={"feature": np.arange(3)},
         )
+        gradient, step = run(weights=values)
+        want = 2 * x.T @ (x @ values.w.values - y)
+        np.testing.assert_allclose(gradient["w"], want)
+        np.testing.assert_allclose(step["w"], values.w.values - 0.01 * want)
+        np.testing.assert_array_equal(first["w"], original)
+    # Regular ddx preparation resolves a replacement table by name.
+    ctx.deregister_table("weights")
+    ctx.from_dataset("weights", values * 2)
+    [gradient, _] = run()
+    np.testing.assert_allclose(
+        gradient["w"], 2 * x.T @ (x @ (values.w.values * 2) - y)
+    )
+
+
+def test_prepared_statements_require_a_sequence(problem):
+    ctx, *_ = problem
+    with pytest.raises(TypeError, match="list"):
+        ad.prepare(ctx, "SELECT 1")

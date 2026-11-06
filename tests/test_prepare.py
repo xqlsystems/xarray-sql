@@ -9,12 +9,37 @@ from datafusion import SessionConfig
 
 from xarray_sql import Context
 
+try:
+    from einfold.datafusion import EinFold
+except ImportError:
+    EinFold = None
+
 # The build side of the join, `a`, is what a reused hash join would keep.
 JOIN = """
 SELECT b.i, SUM(t.v2 * b.w) AS s
 FROM (SELECT i, j, 2 * v AS v2 FROM a) t JOIN b ON t.j = b.j
 GROUP BY b.i ORDER BY b.i
 """
+
+
+@pytest.mark.parametrize("extension", [False, True])
+def test_join_key_data_columns_can_change_their_range(extension):
+    ctx = Context()
+    if extension:
+        if EinFold is None:
+            pytest.skip("requires the optional EinFold planner")
+        ctx = ctx.with_extensions(EinFold())
+    a = xr.Dataset({"key": ("i", np.arange(128)), "v": ("i", np.ones(128))})
+    b = xr.Dataset({"key": ("j", np.arange(256)), "w": ("j", np.arange(256.0))})
+    ctx.from_dataset("a", a)
+    ctx.from_dataset("b", b)
+    sql = "SELECT a.i,b.j,a.v+b.w AS s FROM a JOIN b ON a.key=b.key ORDER BY a.i,b.j"
+    query = ctx.prepare(sql)
+    for start in (0, 128, 16):
+        updated = a.copy(deep=True)
+        updated["key"][:] = np.arange(start, start + 128)
+        rows = query(a=updated)
+        assert rows.equals(ctx.sql(sql).to_arrow_table())
 
 
 def _a(v):
@@ -262,3 +287,50 @@ def test_a_quoted_table_replaced_in_sql_counts_too():
     ctx.sql('CREATE OR REPLACE TABLE "Mixed" AS VALUES (1), (2)').collect()
     with pytest.raises(ValueError, match="registered again"):
         query()
+
+
+def test_extension_handle_keeps_dataset_metadata_and_invalidation(ctx):
+    want = ctx.sql("SELECT * FROM a").to_dataset()
+    derived = ctx.with_extensions()
+    query = derived.prepare("SELECT i, j, v FROM a ORDER BY i, j")
+    xr.testing.assert_identical(
+        derived.sql("SELECT * FROM a").to_dataset(), want
+    )
+    ctx.deregister_table("a")
+    with pytest.raises(ValueError, match="registered again"):
+        query()
+
+
+@pytest.mark.parametrize(
+    "chunks", [{"i": 1, "j": 1}, {"i": 1}, {"i": 4, "j": 5}]
+)
+def test_fine_chunk_registration_keeps_rows_metadata_and_writes(chunks):
+    values = np.arange(129 * 33, dtype=np.float64).reshape(129, 33)
+    ds = _a(values)
+    ds.attrs["experiment"] = "fine chunks"
+    ctx = Context()
+    ctx.from_dataset("a", ds, chunks=chunks)
+    sql = "SELECT i,j,v FROM a ORDER BY i,j"
+    xr.testing.assert_identical(ctx.sql(sql).to_dataset(), ds)
+    run = ctx.prepare(sql)
+    replacement = ds * 2
+    rows = run(a=replacement)
+    np.testing.assert_array_equal(rows["v"], replacement.v.values.reshape(-1))
+
+
+@pytest.mark.parametrize("threads", [1, 60])
+def test_thread_target_is_explicit_and_keeps_xarray_support(threads):
+    ctx = Context(threads=threads)
+    assert ctx.sql(
+        "SELECT value FROM information_schema.df_settings "
+        "WHERE name='datafusion.execution.target_partitions'"
+    ).to_pylist() == [{"value": str(threads)}]
+    ctx.from_dataset("a", _a(np.ones((4, 3))))
+    assert ctx.prepare("SELECT SUM(v) AS s FROM a")().to_pylist() == [
+        {"s": 12.0}
+    ]
+
+
+def test_thread_target_must_be_positive():
+    with pytest.raises(ValueError, match="positive"):
+        Context(threads=0)
