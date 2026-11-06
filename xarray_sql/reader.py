@@ -11,6 +11,7 @@ actual stream implementation, wrapping xarray block iteration in a generator.
 from __future__ import annotations
 
 import itertools
+import math
 import os
 import sys
 from collections.abc import Callable, Iterable, Iterator
@@ -21,9 +22,9 @@ import pyarrow as pa
 import xarray as xr
 
 from .df import (
+    DEFAULT_BATCH_SIZE,
     Block,
     Chunks,
-    DEFAULT_BATCH_SIZE,
     _block_len,
     _block_metadata,
     _block_slices_from_resolved,
@@ -296,11 +297,10 @@ def _in_memory_partitions(
     # isn't contiguous in memory, and flattening it would copy. More
     # partitions than cores only adds overhead, since an in-memory table has
     # no partitions to prune.
+    # Count the Cartesian chunk grid without constructing slices that this
+    # in-memory path never reads, even for very finely chunked inputs.
     count = min(
-        sum(
-            1
-            for _ in _block_slices_from_resolved(ds, resolve_chunks(ds, chunks))
-        ),
+        math.prod(len(axis) for axis in resolve_chunks(ds, chunks).values()),
         os.cpu_count() or 1,
     )
     # `per_partition` batches of `size` rows each make `count` partitions,
@@ -324,7 +324,7 @@ def read_xarray_table(
     _iteration_callback: (
         Callable[[Block, list[str] | None], None] | None
     ) = None,
-) -> "LazyArrowStreamTable":
+) -> LazyArrowStreamTable:
     """Create a lazy DataFusion table from an xarray Dataset.
 
     This is the simplest way to register xarray data with DataFusion.

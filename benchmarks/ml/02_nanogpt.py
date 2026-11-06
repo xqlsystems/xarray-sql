@@ -85,6 +85,7 @@ Run ``uv run benchmarks/ml/02_nanogpt.py --help`` for the options.
 from __future__ import annotations
 
 import pathlib
+import time
 import urllib.request
 
 import jax
@@ -167,11 +168,33 @@ def layer_norm(x: str, out: str, gain: str, layer: int | None = None) -> str:
 GELU_SCALE = np.sqrt(2 / np.pi)
 
 
-def attention(layer: int, x: str, out: str) -> str:
+def attention(
+    layer: int, x: str, out: str, *, dropout=False, grouped_softmax=False
+) -> str:
     """nanoGPT's ``CausalSelfAttention``: each position of ``x`` attends to
     itself and the positions before it, in each head, and ``out`` is the
     heads' outputs, projected back to the residual stream."""
     l = f"l{layer}"
+    mask = (
+        f"JOIN {l}_adrop d ON a.seq=d.seq AND a.h=d.h AND a.i=d.i AND a.j=d.j"
+        if dropout
+        else ""
+    )
+    scale = " * d.scale" if dropout else ""
+    projected = f"{out}_raw" if dropout else out
+    weights = f"""
+{l}_weights AS (
+  SELECT seq, h, i, j,
+         exp(s - MAX(s) OVER (PARTITION BY seq, h, i)) AS p
+  FROM {l}_scores),"""
+    if grouped_softmax:
+        weights = f"""
+{l}_maximum AS (
+  SELECT seq, h, i, ddx_stop_gradient(MAX(s)) AS m FROM {l}_scores GROUP BY seq, h, i),
+{l}_weights AS (
+  SELECT a.seq, a.h, a.i, a.j, exp(a.s - m.m) AS p
+  FROM {l}_scores a JOIN {l}_maximum m
+  ON a.seq=m.seq AND a.h=m.h AND a.i=m.i),"""
     projections = "".join(
         f"""
 {l}_{name} AS (
@@ -188,30 +211,37 @@ def attention(layer: int, x: str, out: str) -> str:
   FROM {l}_q q JOIN {l}_k k ON q.seq = k.seq AND q.h = k.h AND q.c = k.c
   WHERE q.pos >= k.pos
   GROUP BY q.seq, q.h, q.pos, k.pos),
-{l}_weights AS (
-  -- The max only keeps exp() from overflowing: it cancels out of p / z.
-  SELECT seq, h, i, j,
-         exp(s - MAX(s) OVER (PARTITION BY seq, h, i)) AS p
-  FROM {l}_scores),
+{weights}
 {l}_norm AS (
   SELECT seq, h, i, SUM(p) AS z FROM {l}_weights GROUP BY seq, h, i),
 {l}_heads AS (
-  SELECT a.seq, a.i AS pos, a.h, v.c, SUM(a.p / n.z * v.val) AS val
+  SELECT a.seq, a.i AS pos, a.h, v.c, SUM(a.p / n.z * v.val{scale}) AS val
   FROM {l}_weights a
   JOIN {l}_v v ON a.seq = v.seq AND a.h = v.h AND a.j = v.pos
   JOIN {l}_norm n ON a.seq = n.seq AND a.h = n.h AND a.i = n.i
+  {mask}
   GROUP BY a.seq, a.i, a.h, v.c),
-{out} AS (
+{projected} AS (
   SELECT a.seq, a.pos, p.e, SUM(a.val * p.w) AS val
   FROM {l}_heads a JOIN wo p ON a.h = p.h AND a.c = p.c
   WHERE p.layer = {layer}
-  GROUP BY a.seq, a.pos, p.e),"""
+  GROUP BY a.seq, a.pos, p.e),""" + (
+        _dropout(projected, out, f"{l}_rdrop") if dropout else ""
+    )
 
 
-def mlp(layer: int, x: str, out: str) -> str:
+def mlp(
+    layer: int, x: str, out: str, *, exact_gelu=False, dropout=False
+) -> str:
     """nanoGPT's ``MLP``: each position of ``x`` through a hidden layer
     four times as wide, and GELU, back to the residual stream as ``out``."""
     l = f"l{layer}"
+    activation = (
+        "0.5 * val * (1 + erf(val / sqrt(2.0)))"
+        if exact_gelu
+        else f"0.5 * val * (1 + tanh({GELU_SCALE} * (val + 0.044715 * val * val * val)))"
+    )
+    projected = f"{out}_raw" if dropout else out
     return f"""
 {l}_fc AS (
   SELECT x.seq, x.pos, p.f, SUM(x.val * p.w) AS val
@@ -220,14 +250,22 @@ def mlp(layer: int, x: str, out: str) -> str:
   GROUP BY x.seq, x.pos, p.f),
 {l}_hidden AS (
   SELECT seq, pos, f,
-         0.5 * val * (1 + tanh({GELU_SCALE} * (val + 0.044715 * val * val * val)))
-           AS val
+         {activation} AS val
   FROM {l}_fc),
-{out} AS (
+{projected} AS (
   SELECT x.seq, x.pos, p.e, SUM(x.val * p.w) AS val
   FROM {l}_hidden x JOIN w_proj p ON x.f = p.f
   WHERE p.layer = {layer}
-  GROUP BY x.seq, x.pos, p.e),"""
+  GROUP BY x.seq, x.pos, p.e),""" + (
+        _dropout(projected, out, f"{l}_mdrop") if dropout else ""
+    )
+
+
+def _dropout(x, out, mask):
+    return f"""
+{out} AS (
+  SELECT x.seq, x.pos, x.e, x.val * d.scale AS val
+  FROM {x} x JOIN {mask} d ON x.seq=d.seq AND x.pos=d.pos AND x.e=d.e),"""
 
 
 def residual(x: str, y: str, out: str) -> str:
@@ -238,38 +276,71 @@ def residual(x: str, y: str, out: str) -> str:
   FROM {x} x JOIN {y} y ON x.seq = y.seq AND x.pos = y.pos AND x.e = y.e),"""
 
 
-def block(layer: int, x: str, out: str) -> str:
+def block(
+    layer: int,
+    x: str,
+    out: str,
+    *,
+    exact_gelu=False,
+    dropout=False,
+    grouped_softmax=False,
+) -> str:
     """nanoGPT's ``Block``: ``mid = x + attention(ln_1(x))``, then
     ``out = mid + mlp(ln_2(mid))``."""
     l = f"l{layer}"
     return "".join(
         [
             layer_norm(x, f"{l}_ln1", "ln_1", layer),
-            attention(layer, f"{l}_ln1", f"{l}_attn"),
+            attention(
+                layer,
+                f"{l}_ln1",
+                f"{l}_attn",
+                dropout=dropout,
+                grouped_softmax=grouped_softmax,
+            ),
             residual(x, f"{l}_attn", f"{l}_mid"),
             layer_norm(f"{l}_mid", f"{l}_ln2", "ln_2", layer),
-            mlp(layer, f"{l}_ln2", f"{l}_mlp"),
+            mlp(
+                layer,
+                f"{l}_ln2",
+                f"{l}_mlp",
+                exact_gelu=exact_gelu,
+                dropout=dropout,
+            ),
             residual(f"{l}_mid", f"{l}_mlp", out),
         ]
     )
 
 
-def model() -> str:
+def model(
+    *, exact_gelu=False, dropout=False, view="logits", grouped_softmax=False
+) -> str:
     """The model, as the view ``logits``: for each position of each
     sequence in ``batch``, a score for every character that could come
     next. A DataFusion view reads the tables that existed when it was
     created (DuckDB's looks them up by name), so it is recreated whenever
     the batch or the parameters are."""
     blocks = "".join(
-        block(layer, f"x{layer}", f"x{layer + 1}") for layer in range(LAYERS)
+        block(
+            layer,
+            f"x{layer}",
+            f"x{layer + 1}",
+            exact_gelu=exact_gelu,
+            dropout=dropout,
+            grouped_softmax=grouped_softmax,
+        )
+        for layer in range(LAYERS)
     )
+    embedded = "embed_raw" if dropout else "x0"
+    embed_dropout = _dropout(embedded, "x0", "embed_drop") if dropout else ""
     return f"""
-CREATE OR REPLACE VIEW logits AS
-WITH x0 AS (
+CREATE OR REPLACE VIEW {view} AS
+WITH {embedded} AS (
   SELECT b.seq, b.pos, te.e, te.w + pe.w AS val
   FROM batch b
   JOIN wte te ON b.tok = te.tok
   JOIN wpe pe ON b.pos = pe.pos AND te.e = pe.e),
+{embed_dropout}
 {blocks}
 {layer_norm(f"x{LAYERS}", "final", "ln_f").rstrip(",")}
 SELECT x.seq, x.pos, te.tok, SUM(x.val * te.w) AS val
@@ -460,15 +531,7 @@ def init_params(vocab: int, rng) -> dict[str, np.ndarray]:
     """nanoGPT's initialization, from GPT-2: weights normal with standard
     deviation 0.02, or 0.02/√(2 × layers) for the two projections that add
     to the residual stream; layer norm gains 1."""
-    sizes = {
-        "tok": vocab,
-        "pos": CONTEXT,
-        "layer": LAYERS,
-        "e": EMBED,
-        "h": HEADS,
-        "c": HEAD,
-        "f": HIDDEN,
-    }
+    sizes = _parameter_sizes(vocab)
     params = {}
     for name, dims in PARAMS.items():
         shape = [sizes[d] for d in dims]
@@ -479,6 +542,18 @@ def init_params(vocab: int, rng) -> dict[str, np.ndarray]:
         else:
             params[name] = rng.normal(0, 0.02, shape)
     return params
+
+
+def _parameter_sizes(vocab):
+    return {
+        "tok": vocab,
+        "pos": CONTEXT,
+        "layer": LAYERS,
+        "e": EMBED,
+        "h": HEADS,
+        "c": HEAD,
+        "f": HIDDEN,
+    }
 
 
 def as_table(name: str, w: np.ndarray, m=None, v=None) -> xr.Dataset:
@@ -528,18 +603,61 @@ def main():
     parser = cli(__doc__.splitlines()[0], sizes=[4], size_name="batch")
     parser.add_argument("--steps", type=int, default=5, help="training steps")
     parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=LEARNING_RATE,
+        help="SGD learning rate (AdamW uses its schedule)",
+    )
+    parser.add_argument(
+        "--preset",
+        choices=["tiny", "demo", "shakespeare", "gpt2"],
+        default="tiny",
+        help="model dimensions; explicit size flags override them",
+    )
+    parser.add_argument(
+        "--vocab-size",
+        type=int,
+        help="pad vocabulary (GPT-2 preset defaults to 50257; character inputs)",
+    )
+    parser.add_argument(
+        "--forward-only",
+        action="store_true",
+        help="benchmark loss without parameter updates",
+    )
+    parser.add_argument(
         "--optimizer",
         choices=["sgd", "adamw"],
         default="sgd",
         help="SGD at a fixed learning rate (default), or nanoGPT's AdamW",
     )
-    parser.add_argument("--layers", type=int, default=LAYERS, help="n_layer")
-    parser.add_argument("--embed", type=int, default=EMBED, help="n_embd")
-    parser.add_argument("--heads", type=int, default=HEADS, help="n_head")
-    parser.add_argument(
-        "--context", type=int, default=CONTEXT, help="block_size"
-    )
+    parser.add_argument("--layers", type=int, help="n_layer")
+    parser.add_argument("--embed", type=int, help="n_embd")
+    parser.add_argument("--heads", type=int, help="n_head")
+    parser.add_argument("--context", type=int, help="block_size")
     args = parser.parse_args()
+    if not np.isfinite(args.learning_rate) or args.learning_rate <= 0:
+        parser.error("--learning-rate must be finite and positive")
+    preset = {
+        "tiny": (1, 16, 2, 16),
+        "demo": (1, 128, 4, 64),
+        "shakespeare": (6, 384, 6, 256),
+        "gpt2": (12, 768, 12, 1024),
+    }[args.preset]
+    for name, value in zip(("layers", "embed", "heads", "context"), preset):
+        if getattr(args, name) is None:
+            setattr(args, name, value)
+    if (
+        min(
+            args.steps,
+            args.layers,
+            args.embed,
+            args.heads,
+            args.context,
+            *args.sizes,
+        )
+        <= 0
+    ):
+        parser.error("steps, model dimensions and batch sizes must be positive")
     if args.embed % args.heads:
         parser.error("--embed must be a multiple of --heads")
     LAYERS, EMBED, HEADS, CONTEXT = (
@@ -554,14 +672,43 @@ def main():
     report = Report("nanogpt", "batch", args.reps)
     text = shakespeare()
     vocab = len(set(text))
+    if args.vocab_size is None and args.preset == "gpt2":
+        args.vocab_size = 50257
+    if args.vocab_size is not None:
+        if args.vocab_size < vocab:
+            parser.error(
+                "--vocab-size must cover the Shakespeare character vocabulary"
+            )
+        vocab = args.vocab_size
     lines = len(model().splitlines()) + len(loss_statement().splitlines())
+    sizes = _parameter_sizes(vocab)
     count = sum(
-        v.size for v in init_params(vocab, np.random.default_rng(0)).values()
+        int(np.prod([sizes[d] for d in dims])) for dims in PARAMS.values()
     )
+    metadata = {
+        "layers": LAYERS,
+        "embed": EMBED,
+        "heads": HEADS,
+        "context": CONTEXT,
+        "vocab": vocab,
+        "parameters": count,
+        "optimizer": args.optimizer,
+        "sgd_learning_rate": args.learning_rate if not adamw else None,
+        "forward_only": args.forward_only,
+    }
     print(
         f"  {LAYERS}-layer GPT, vocab {vocab}, {count:,} parameters: "
         f"the loss is {lines} lines of SQL"
     )
+    print(
+        f"  steps={args.steps}, optimizer={args.optimizer}, "
+        f"context={CONTEXT}, heads={HEADS}, embed={EMBED}, "
+        f"forward_only={args.forward_only}"
+    )
+    if vocab != len(set(text)):
+        print(
+            "  Padded vocabulary: inputs are character IDs, without GPT-2 BPE tokenization"
+        )
 
     for size in args.sizes:
         init = init_params(vocab, np.random.default_rng(0))
@@ -572,18 +719,34 @@ def main():
         )
 
         for host in hosts(args.hosts):
+            load_seconds = 0.0
+            model_seconds = 0.0
+
+            def load_table(name, values, host=host):
+                nonlocal load_seconds
+                start = time.perf_counter()
+                host.load(name, values)
+                load_seconds += time.perf_counter() - start
+
             reference = dict(init)
-            moments = {
-                n: (np.zeros_like(w), np.zeros_like(w)) for n, w in init.items()
-            }
+            moments = (
+                {
+                    n: (np.zeros_like(w), np.zeros_like(w))
+                    for n, w in init.items()
+                }
+                if adamw
+                else {}
+            )
             for name, values in init.items():
                 state = moments[name] if adamw else ()
-                host.load(name, as_table(name, values, *state))
-            host.load("schedule", lr)
+                load_table(name, as_table(name, values, *state))
+            load_table("schedule", lr)
 
             for step, batch in data:
-                host.load("batch", batch)
+                load_table("batch", batch)
+                start = time.perf_counter()
                 host.execute(model())
+                model_seconds += time.perf_counter() - start
                 tok, nxt = batch["tok"].values, batch["next"].values
 
                 rows = report.time(
@@ -595,10 +758,28 @@ def main():
                 )
                 want = jax_loss(reference, tok, nxt)
                 report.check(
-                    assert_close("loss", rows["l"][0].as_py(), want, rtol=1e-9)
+                    assert_close(
+                        "loss",
+                        rows["l"][0].as_py(),
+                        want,
+                        rtol=host.rtol,
+                        atol=host.atol,
+                    )
                 )
                 report.note("loss", round(float(want), 6))
                 report.note("operators", host.operators(loss_statement()))
+                report.note("rtol", f"{host.rtol:.0e}")
+                report.note("atol", f"{host.atol:.0e}")
+                for key, value in metadata.items():
+                    report.note(key, value)
+                for key, value in host.measurements().items():
+                    report.note(key, value)
+                if args.forward_only:
+                    report.note("load_seconds", load_seconds)
+                    report.note("model_seconds", model_seconds)
+                    report._write_csv(args.csv)
+                    continue
+                report._write_csv(args.csv)
 
                 train = f"train ({args.optimizer}), step {step}"
                 if not host.differentiates:
@@ -614,7 +795,7 @@ def main():
                         host,
                         size,
                         host.query_all,
-                        step_statements(LEARNING_RATE),
+                        step_statements(args.learning_rate),
                     )
                 if updated is None:
                     # Every later step starts from this one's weights.
@@ -626,7 +807,7 @@ def main():
                     )
                 else:
                     reference = {
-                        name: w - LEARNING_RATE * grads[name]
+                        name: w - args.learning_rate * grads[name]
                         for name, w in reference.items()
                     }
 
@@ -641,12 +822,21 @@ def main():
                                 f"{name}.{column}, step {step}",
                                 as_array(name, rows, column),
                                 values,
+                                rtol=host.rtol,
+                                atol=host.atol,
                             )
                         )
-                    host.load(
+                    load_table(
                         name, xql.to_dataset(rows, dims=list(PARAMS[name]))
                     )
                 report.check(max(errors))
+                report.note("load_seconds", load_seconds)
+                report.note("model_seconds", model_seconds)
+                for key, value in metadata.items():
+                    report.note(key, value)
+                for key, value in host.measurements().items():
+                    report.note(key, value)
+                report._write_csv(args.csv)
 
     report.finish(args.csv)
 

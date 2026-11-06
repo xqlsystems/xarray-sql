@@ -38,6 +38,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Apple silicon GPU kernels need the native hook built by
+# accelerators/einfold_mlx/build.py in addition to these dependencies.
+mlx = [
+  "einfold[datafusion]>=0.2,<0.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
+  "mlx>=0.32.4,<0.33; sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
 # Lazy, chunked results from `to_dataset(chunks=...)` need a chunk manager.
 dask = [
   "dask>=2024.8.0",
@@ -143,7 +149,7 @@ dev = [
     "ddxdb[duckdb]>=0.4.6,<0.5; sys_platform != 'emscripten'",
     # TODO(xqlsystems/einfold#118): install einfold on Windows too, once
     # it publishes a Windows wheel; until then it would build from source.
-    "einfold[datafusion]>=0.1.0rc2,<0.2; sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "einfold[datafusion]>=0.1.0rc2,<0.3; sys_platform != 'emscripten' and sys_platform != 'win32'",
     # jaxlib publishes no wheels for Intel macOS, so the demos skip there.
     "jax; sys_platform != 'darwin' or platform_machine != 'x86_64'",
 ]

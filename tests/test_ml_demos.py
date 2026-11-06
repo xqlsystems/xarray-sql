@@ -1,7 +1,9 @@
 """The ML demos in ``benchmarks/ml`` run, at their smallest sizes.
 
-Each demo checks its results against JAX and exits with an error on a
-mismatch, so this runs each one and checks that it succeeds. It needs the
+The original demos check their results against JAX and exit on a
+mismatch. The Shakespeare trainer's end-to-end tests, using prepared
+temporary data, live in test_shakespeare.py; here its CLI is checked.
+The original demos need the
 ``ml`` extra, ddx's DuckDB backend, einfold and JAX, which the ``dev``
 dependency group installs.
 
@@ -24,6 +26,7 @@ DEMOS = {
         ["--steps", "1"],
         ["--steps", "1", "--optimizer", "adamw"],
     ],
+    "03_shakespeare.py": [["--help"]],
 }
 
 

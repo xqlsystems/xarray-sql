@@ -1,5 +1,13 @@
 # Machine learning in SQL
 
+The optional `dense_cpu` and `dense_gpu` hosts retain compact arrays across
+SQL and gradient stages using the local
+[EinFold integration](../../accelerators/einfold_mlx/README.md).
+`dense_gpu` explicitly permits float32 arithmetic and requires
+`MLX_ENABLE_TF32=0`. The hosts use identical model SQL, ddx derivatives and
+existing reference checks. See the
+[dense execution measurements](../apple/dense-execution.md).
+
 These scripts write machine-learning models as SQL over tables that
 [xarray-sql](../../README.md) registers from xarray Datasets, and time the
 same SQL on several engines. Two related projects shape them:
@@ -11,7 +19,7 @@ same SQL on several engines. Two related projects shape them:
   are its [target demos](https://github.com/xqlsystems/einfold/blob/main/docs/demos.md),
   and the demos run on DataFusion with einfold as one of their engines.
 
-Each script checks its results against the same model in
+The first two scripts check their results against the same model in
 [JAX](https://github.com/jax-ml/jax), Google's library for differentiable
 array programs.
 
@@ -19,6 +27,7 @@ array programs.
 |---|---|---|---|
 | 01 | [`01_attention.py`](01_attention.py) | causal softmax attention, the core of a transformer, as a view (the model) in einfold's window and `GROUP BY` spellings, and a loss that reads it | the naive plan, which stores every score, against [FlashAttention](https://arxiv.org/abs/2205.14135)'s tiled plan, which einfold finds from the same SQL; gradients with respect to Q, K and V; masked pairs as absent rows; a control that isn't attention: the [Nadaraya–Watson estimator](https://en.wikipedia.org/wiki/Kernel_regression#Nadaraya%E2%80%93Watson_kernel_regression), an average of nearby points weighted by a Gaussian kernel, which einfold must fuse with the same rules |
 | 02 | [`02_nanogpt.py`](02_nanogpt.py) | [nanoGPT](https://github.com/karpathy/nanoGPT)'s GPT-2 model, at 1 layer and 4,416 parameters, as a view, and a cross-entropy loss that reads it, on Tiny Shakespeare | the loss on each host; training steps with SGD or, as nanoGPT trains, AdamW, every parameter table checked after every step |
+| 03 | [`03_shakespeare.py`](03_shakespeare.py) | nanoGPT's 6-layer, 384-channel, 6-head Shakespeare character model with context 256 and batch 12 | training from scratch with exact GELU, dropout, SQL AdamW, train/validation evaluation and resumable checkpoints; optional checks of every gradient, weight and optimizer moment against the original PyTorch model |
 
 The SQL favors legibility over speed. Each model reads like its definition,
 and the slow parts are left slow on purpose: they are what ddx, xarray-sql
@@ -29,7 +38,7 @@ these models fast is tracked in
 [#285](https://github.com/xqlsystems/xarray-sql/issues/285), which lists
 places to start.
 
-Every result is checked before it is timed into the table. Each script
+Every result in the original demos is checked before it is timed into the table. Each demo
 computes the same model in JAX from the same inputs and parameters, and a
 mismatch fails the run.
 
@@ -40,12 +49,99 @@ uv run benchmarks/ml/01_attention.py
 uv run benchmarks/ml/02_nanogpt.py --steps 5
 ```
 
-Each script carries [inline `uv` metadata](https://docs.astral.sh/uv/guides/scripts/)
+### Shakespeare training matching nanoGPT's train.py
+
+`03_shakespeare.py` is a training loop with checkpoints and held-out
+validation. Its defaults match `train_shakespeare_char.py` with these
+overrides: batch 12, context 256, layers/heads/channels 6/6/384, gradient
+accumulation 1, `max_iters=2000`, `lr_decay_iters=2000`, warmup 100,
+evaluation every 200 iterations over 20 batches per split. Inherited
+settings also match: dropout 0.2, exact GELU, no biases, tied embeddings,
+AdamW with learning rate 1e-3 to 1e-4, betas 0.9/0.99, epsilon 1e-8,
+weight decay 0.1 excluding layer norm gains, and global gradient clipping
+at 1. The learning rate uses `lr*(iteration+1)/(warmup_iters+1)` during
+warmup, as in the local nanoGPT source. There are **10,745,088 parameters**
+with the 65-character vocabulary; nanoGPT prints 10.65M when excluding
+position embeddings.
+
+Prepare the dataset once in a nanoGPT checkout with
+`python data/shakespeare_char/prepare.py`. The SQL script reads its
+`input.txt`, `train.bin` and `val.bin`, verifies the same sorted vocabulary
+and 90/10 split, and samples shifted next-character targets without
+crossing split boundaries. It initializes weights once per invocation
+and keeps updating them across iterations.
+
+Use this checkout's existing virtual environment with the optional
+[EinFold build](../../accelerators/einfold_mlx/README.md) and
+[ddx erf build](../../accelerators/ddx_math/README.md). Avoid `uv run`
+for this script, since environment synchronization can replace those local
+wheels. From the xarray-sql directory:
+
+```sh
+MLX_ENABLE_TF32=0 PYTHONPATH="$PWD" .venv/bin/python benchmarks/ml/03_shakespeare.py \
+  --backend dense_gpu \
+  --data-dir /Users/cromwellian/nanoGPT/data/shakespeare_char \
+  --out-dir out-shakespeare-sql
+```
+
+Use `--backend dense_cpu --cache-gib 32` for the measured compact float64 CPU path. GPU uses MLX
+float32. Both differentiate the original SQL with ddx and execute the
+model, global gradient clipping and AdamW arithmetic as SQL. They cache
+query programs across updates. AdamW moments live in separate SQL tables
+so the model's differentiated parameter column remains `w`. The maximum
+used for softmax stabilization is spelled with `GROUP BY` and joins to
+avoid repeated window-lowering traversal through the shared model graph.
+Its maximum is held constant with `ddx_stop_gradient`: subtracting any
+shared constant leaves softmax and cross entropy unchanged, so this
+removes a cancelling derivative through the maximum without changing the
+model's loss or parameter gradients.
+
+All size and recipe options accept nanoGPT's underscore spelling and
+hyphens, for example `--batch_size=12` and `--eval-iters=20`. The loop
+matches `train.py`'s termination condition: `max_iters=2000` includes
+iterations 0 through 2000, or 2001 optimizer updates. Add `--steps 5` to
+run exactly five updates while retaining the 2000-iteration LR schedule.
+
+Evaluation runs before the update at iteration 0, then every 200
+iterations, with dropout disabled on 20 train and 20 validation batches.
+`metrics.jsonl` records losses, learning rates and synchronized SQL
+training times. Times include forward loss, backward gradients, clipping,
+AdamW and result registration; sampling masks/batches, evaluation,
+checkpoint I/O and optional reference checks are outside the timer.
+
+`last.npz` contains all weights, optimizer moments, next iteration, both
+RNG states, vocabulary and configuration. `best.npz` saves an improved
+validation result after iteration 0. Resume with the same configuration:
+
+```sh
+MLX_ENABLE_TF32=0 PYTHONPATH="$PWD" .venv/bin/python benchmarks/ml/03_shakespeare.py \
+  --resume out-shakespeare-sql/last.npz
+```
+
+For an independent correctness check, install PyTorch in the execution
+environment and add `--steps 5 --verify-nanogpt /Users/cromwellian/nanoGPT`.
+This imports the original `model.py`, retains exact GELU and PyTorch
+AdamW, and compares evaluation/training loss, every raw gradient, every
+updated weight and both moments on every step. The oracle uses explicit
+attention and the same externally sampled Bernoulli dropout masks;
+reference checks do not replace SQL computation. GPU comparisons use
+the existing 3e-5 absolute/relative tolerance and CPU comparisons 1e-8.
+
+Random initialization and sampling use NumPy's RNG rather than PyTorch's,
+so the same integer seed alone does not reproduce a separate stock
+`train.py` trajectory. The oracle loads identical initial arrays and
+masks to test the arithmetic. Checkpoints use this script's safe NPZ
+format, rather than nanoGPT's PyTorch checkpoint format. This script
+currently supports gradient accumulation 1 and training without biases.
+The [measured comparison](../apple/shakespeare-training.md) records the
+verified five-step CPU/GPU runs and validation results.
+
+The first two scripts carry [inline `uv` metadata](https://docs.astral.sh/uv/guides/scripts/)
 and runs against the xarray-sql in this checkout, with the `ml` extra. The
 options are the same in each:
 
 ```shell
---hosts datafusion duckdb   # the engines to run on (default: all)
+--hosts datafusion duckdb   # default: datafusion einfold duckdb
 --sizes 64 256              # problem sizes: tokens, or batch size
 --reps 3                    # timed repetitions; the median is reported
 --csv results.csv           # also write the results table
@@ -104,6 +200,58 @@ in its plan.
 | `datafusion` | `xarray_sql.Context` | ddx |
 | `einfold` | `xarray_sql.Context`, with einfold as its query planner | ddx, whose steps einfold plans too |
 | `duckdb` | DuckDB, through `xql.register` | ddx, with the `duckdb` extra of ddxdb, which pins the DuckDB it supports |
+
+The optional Apple silicon comparison adds explicit hosts (the three
+defaults above stay the same):
+
+| Host | Execution |
+|---|---|
+| `datafusion_prepared` | Retain forward query plans, ddx programs, model views and parameter buffers |
+| `cpu_optimized` | Prepared path with EinFold and the float64 CPU matrix backend, using its normal thresholds |
+| `cpu_forced` | Same, with the backend threshold set to zero for a direct small-kernel comparison |
+| `gpu_optimized` | Prepared path with [MLX](https://github.com/ml-explore/mlx), Apple's array framework, and measured automatic GPU dispatch thresholds |
+| `gpu_forced` | Same, forcing eligible dense operations to GPU to measure dispatch overhead |
+| `shared_einfold` | Shared forward CTEs and reusable ddx stages, with EinFold's CPU kernels |
+| `shared_cpu` | Shared execution with the float64 CPU matrix backend |
+| `shared_gpu` | Shared execution with explicitly enabled float32 MLX kernels |
+
+These hosts need the [optional native bridge](../../accelerators/einfold_mlx/README.md).
+GPU hosts explicitly permit float32 arithmetic and check JAX with
+`rtol=atol=3e-5`; float64 hosts retain `1e-9`. Completed CPU/GPU kernel
+counts are recorded, so an automatic-dispatch run that stays on CPU is
+visible. Dataset loading and model-view creation times are also recorded
+cumulatively on training rows. The loss/training times keep their original
+scope and exclude JAX reference work and those loading/view times.
+
+```sh
+MLX_ENABLE_TF32=0 PYTHONPATH="$PWD" .venv/bin/python benchmarks/ml/02_nanogpt.py \
+  --steps 5 --hosts datafusion einfold duckdb datafusion_prepared \
+  cpu_optimized cpu_forced gpu_optimized gpu_forced --csv comparison.csv
+```
+
+The [M5 Ultra five-step comparison](../apple/nanogpt-5-steps.md) reports
+cold and warm costs separately, checks every loss and weight update, and
+includes a forced GPU run with actual kernel counts.
+
+The [shared-execution report](../apple/nanogpt-shared.md) adds larger models.
+`--preset demo` uses one layer, 128 channels, four heads and context 64;
+`--preset shakespeare` uses six layers, 384 channels, six heads and context
+256, following nanoGPT's character-model dimensions. `--preset gpt2` uses
+12 layers, 768 channels, 12 heads, context 1024 and vocabulary 50257.
+Explicit dimension flags override presets. Inputs remain Shakespeare
+character IDs: padding the vocabulary does not add GPT-2 tokenization,
+pretrained weights, biases or dropout. `--forward-only` checks losses
+without running gradients or updates.
+
+```sh
+MLX_ENABLE_TF32=0 PYTHONPATH="$PWD" .venv/bin/python benchmarks/apple/run_nanogpt_sizes.py \
+  --preset shakespeare --steps 5 --batch 1 --learning-rate 0.01 \
+  --hosts shared_cpu shared_gpu --prefix local-shakespeare
+```
+
+This runner starts hosts serially, checkpoints checked CSV rows and records
+commands, exit status and sampled resident memory. A failed or bounded run
+is not reported as a completed training benchmark.
 
 A host that cannot differentiate still runs every forward query, and its
 gradient rows say `no ddx backend`. A gradient that ddx, or the engine

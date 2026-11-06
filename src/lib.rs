@@ -43,6 +43,7 @@
 
 #[cfg(feature = "flight")]
 mod flight;
+mod shared;
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::CString;
@@ -1656,6 +1657,8 @@ impl LazyArrowStreamTable {
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<LazyArrowStreamTable>()?;
+    m.add_function(wrap_pyfunction!(shared::shared_ctes, m)?)?;
+    m.add_class::<shared::SortedArrowTable>()?;
     #[cfg(feature = "flight")]
     m.add_class::<flight::FlightSqlServer>()?;
     Ok(())

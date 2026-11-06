@@ -3728,6 +3728,7 @@ dependencies = [
  "prost",
  "pyo3",
  "pyo3-build-config",
+ "sqlparser",
  "tokio",
  "tonic",
 ]

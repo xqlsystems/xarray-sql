@@ -17,3 +17,10 @@ CHANGELOG.md
 .direnv
 # Pyodide wheels copied in to test the browser demo locally
 docs/demo/*.whl
+# SQL training checkpoints; retain the accompanying text metrics/logs.
+out-shakespeare-sql/
+benchmarks/apple/shakespeare-matched-*/last.npz
+benchmarks/apple/shakespeare-matched-*/best.npz
+benchmarks/apple/shakespeare-resident-*/last.npz
+benchmarks/apple/shakespeare-compiled-*/last.npz
+benchmarks/apple/shakespeare-compiled-*/best.npz
