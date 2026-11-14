@@ -475,10 +475,12 @@ class PreparedQuery:
         }
         # A plan keeps state from a run (a hash join keeps the table it
         # built), so each call runs a fresh copy of it, decoded from its
-        # serialized form. The default codec copies in-memory tables, so
-        # over large ones it can be slower than planning again; extensions
-        # can supply a codec that resets state while retaining input buffers.
-        # A plan the session's codecs cannot copy is planned again each call.
+        # serialized form. Copying a plan copies its in-memory tables, so
+        # over large ones it's slower than planning again. A plan that reads
+        # a lazy table, has an extension's nodes, or is nested deeper than
+        # protobuf decodes can't be copied at all: DataFusion's own codec
+        # serializes it, since an extension's codec may keep state from a
+        # run. Either way, each call plans the query again.
         self._plan: ExecutionPlan | None = None
         start = time.perf_counter()
         try:
@@ -535,7 +537,9 @@ def _copy(ctx: SessionContext, plan: ExecutionPlan) -> ExecutionPlan:
     # TODO(#283): reset the plan's state with datafusion-python's binding of
     # reset_plan_states, once it has one, rather than decode it again.
     # `plan` itself never runs, so it has no state to leave behind.
-    return ExecutionPlan.from_bytes(ctx, plan.to_bytes(ctx))
+    # TODO(xqlsystems/einfold#159): serialize with the session's codecs
+    # too, once EinFold's copies read their tables' current values.
+    return ExecutionPlan.from_bytes(ctx, plan.to_bytes())
 
 
 def _tables_read(plan: LogicalPlan) -> set[str]:
