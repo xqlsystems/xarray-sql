@@ -39,11 +39,6 @@ try:  # ddxdb is an optional dependency (`pip install xarray-sql[ml]`).
 except ImportError:  # pragma: no cover - depends on the environment
     _ad = None
 
-_DYNAMIC_FILTERS = tuple(
-    f"datafusion.optimizer.enable{kind}_dynamic_filter_pushdown"
-    for kind in ("", "_join", "_topk", "_aggregate")
-)
-
 
 class Context(SessionContext):
     """A datafusion `SessionContext` that also supports `xarray.Dataset`s.
@@ -97,8 +92,6 @@ class Context(SessionContext):
         # registered again from Python was deregistered first; SQL that
         # replaces or drops a table counts too (see sql()).
         self._deregistrations: dict[str, int] = {}
-        self._custom_udfs: set[str] = set()
-        self._trusted_math_udfs: set[str] = set()
         # With pyproj installed, every context speaks CRS out of the box:
         # reproject(x, y, src_crs, dst_crs), à la PostGIS ST_Transform.
         if _proj is not None:
@@ -107,27 +100,6 @@ class Context(SessionContext):
         # and jvp() in a select list, and ddx_stop_gradient().
         if _ad is not None:
             _ad.register(self)
-
-    def register_udf(self, udf):
-        """Register a scalar function and track overrides for optional lowering."""
-        result = super().register_udf(udf)
-        self._custom_udfs.add(udf.name.lower())
-        self._trusted_math_udfs.discard(udf.name.lower())
-        return result
-
-    def register_udaf(self, udaf):
-        """Track aggregate-function overrides for optional numerical lowering."""
-        result = super().register_udaf(udaf)
-        self._custom_udfs.add(udaf.name.lower())
-        self._trusted_math_udfs.discard(udaf.name.lower())
-        return result
-
-    def register_udwf(self, udwf):
-        """Track window-function overrides for optional numerical lowering."""
-        result = super().register_udwf(udwf)
-        self._custom_udfs.add(udwf.name.lower())
-        self._trusted_math_udfs.discard(udwf.name.lower())
-        return result
 
     def with_extensions(self, *extensions) -> "Context":
         """Install DataFusion extension bundles, retaining xarray support.
@@ -374,8 +346,10 @@ class Context(SessionContext):
             for weights in trajectory:  # Datasets shaped like w's
                 rows = step(w=weights)
 
-        See [PreparedQuery][xarray_sql.PreparedQuery] for what a call
-        can write.
+        A query that calls ``grad``, ``vjp`` or ``jvp`` keeps the programs
+        ddx builds for them instead. See
+        [PreparedQuery][xarray_sql.PreparedQuery] for what a call can
+        write.
 
         Args:
             query: A SQL query string.
@@ -383,11 +357,6 @@ class Context(SessionContext):
         Returns:
             A [PreparedQuery][xarray_sql.PreparedQuery]; call it to run
             the query.
-
-        Queries calling ``grad``, ``vjp`` or ``jvp`` retain ddx's programs
-        through [xarray_sql.ad.prepare][]. Their first call prepares the
-        programs; later calls check the catalog and settings and refresh
-        them if necessary.
         """
         return PreparedQuery(self, query)
 
@@ -471,17 +440,18 @@ class PreparedQuery:
     registered again since it was prepared. Functions such as ``now()``
     are evaluated once, when the query is prepared.
 
-    A query calling ``grad``, ``vjp`` or ``jvp`` instead retains ddx's
-    programs. Its first call prepares them, and subsequent calls refresh
-    them when schemas, views or settings change. Tables may be registered
-    again under the same names, as with [xarray_sql.ad.prepare][].
+    A query that calls ``grad``, ``vjp`` or ``jvp`` keeps the programs ddx
+    builds for those calls, rather than a plan. A table it reads may also be
+    registered again under the same name, with the same columns and types.
+    A view it reads must keep its definition; prepare the query again after
+    changing one.
     """
 
     def __init__(self, ctx: Context, query: str):
         self._ctx = ctx
-        self._gradient: Callable[..., list[pa.Table]] | None = None
+        self._gradient: Callable[[], pa.Table] | None = None
         if _ad is not None and _ad.calls_ad(query):
-            self._gradient = _ad.prepare(ctx, [query])
+            self._gradient = _ad._prepare(ctx, query)
             return
         start = time.perf_counter()
         df = SessionContext.sql(ctx, query)
@@ -510,8 +480,6 @@ class PreparedQuery:
         # can supply a codec that resets state while retaining input buffers.
         # A plan the session's codecs cannot copy is planned again each call.
         self._plan: ExecutionPlan | None = None
-        if not _safe_physical_reuse(ctx):
-            return
         start = time.perf_counter()
         try:
             _copy(ctx, plan)
@@ -531,8 +499,11 @@ class PreparedQuery:
             The query's rows.
         """
         if self._gradient is not None:
-            (rows,) = self._gradient(**tables)
-            return rows
+            for name in tables:
+                if name not in self._ctx._registered_datasets:
+                    raise ValueError(f"no Dataset is registered as {name!r}")
+            self._ctx._write(tables)
+            return self._gradient()
         for name in tables:
             if name not in self._registered:
                 raise ValueError(
@@ -565,21 +536,6 @@ def _copy(ctx: SessionContext, plan: ExecutionPlan) -> ExecutionPlan:
     # reset_plan_states, once it has one, rather than decode it again.
     # `plan` itself never runs, so it has no state to leave behind.
     return ExecutionPlan.from_bytes(ctx, plan.to_bytes(ctx))
-
-
-def _safe_physical_reuse(ctx: SessionContext) -> bool:
-    """Dynamic filters retain value-dependent bounds even after a reset."""
-    names = ", ".join(repr(name) for name in _DYNAMIC_FILTERS)
-    try:
-        rows = SessionContext.sql(
-            ctx,
-            f"SELECT value FROM information_schema.df_settings WHERE name IN ({names})",
-        ).to_arrow_table()
-    except ValueError:
-        return False
-    return rows.num_rows == len(_DYNAMIC_FILTERS) and all(
-        value == "false" for value in rows["value"].to_pylist()
-    )
 
 
 def _tables_read(plan: LogicalPlan) -> set[str]:
