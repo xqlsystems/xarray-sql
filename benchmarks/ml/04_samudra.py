@@ -408,7 +408,7 @@ def eager(host: Host, levels: int, grid: Grid) -> pa.Table:
     return host.query(QUERY)
 
 
-class _PyTorch:
+class _PyTorch(Host):
     """Samudra's own model, as a row of the results."""
 
     name = "pytorch"
