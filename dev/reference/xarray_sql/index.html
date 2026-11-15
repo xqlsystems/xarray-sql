@@ -26,7 +26,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="zensical-0.1.0">
+      <meta name="generator" content="zensical-0.1.1">
     
     
       
@@ -37,7 +37,7 @@
       
         
       
-      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.4ab2de0c.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.ebb7f775.min.css">
       
         
           
@@ -793,6 +793,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#xarray_sql.Context.with_extensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        with_extensions
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3453,6 +3464,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         sql
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xarray_sql.sql.Context.with_extensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        with_extensions
       </span>
     </span>
   </a>
@@ -3686,6 +3708,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#xarray_sql.Context.with_extensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        with_extensions
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -6352,6 +6385,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#xarray_sql.sql.Context.with_extensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        with_extensions
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -6505,7 +6549,10 @@
 
 
         <p>A datafusion <code>SessionContext</code> that also supports <code>xarray.Dataset</code>s.</p>
-<p>Also available under its original name, <code>XarrayContext</code>.</p>
+<p>Also available under its original name, <code>XarrayContext</code>.
+<code>threads=</code> sets DataFusion's target parallel partitions, overriding
+that setting in an explicit <code>config</code>. The default is the CPU count.
+It is a concurrency target, rather than a fixed number of OS threads.</p>
 
 
 
@@ -6749,8 +6796,10 @@ new values into the query's tables::</p>
 for weights in trajectory:  # Datasets shaped like w's
     rows = step(w=weights)
 </code></pre></div>
-<p>See <a class="autorefs autorefs-internal" href="./#xarray_sql.PreparedQuery">PreparedQuery</a> for what a call
-can write.</p>
+<p>A query that calls <code>grad</code>, <code>vjp</code> or <code>jvp</code> keeps the programs
+ddx builds for them instead. See
+<a class="autorefs autorefs-internal" href="./#xarray_sql.PreparedQuery">PreparedQuery</a> for what a call can
+write.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -6810,30 +6859,6 @@ can write.</p>
             <td>
               <div class="doc-md-description">
                 <p>the query.</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-<p><span class="doc-section-title">Raises:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="NotImplementedError">NotImplementedError</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>If the query calls <code>grad</code>, <code>vjp</code> or
-<code>jvp</code>, which only <code>sql()</code> computes for now.</p>
               </div>
             </td>
           </tr>
@@ -6950,6 +6975,28 @@ the query may also call <code>grad</code>, <code>vjp</code> and <code>jvp</code>
           </tr>
       </tbody>
     </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="xarray_sql.Context.with_extensions" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">with_extensions</span><span class="p">(</span><span class="o">*</span><span class="n">extensions</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.Context.with_extensions" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Install DataFusion extension bundles, retaining xarray support.</p>
+<p>Returns another handle on the same session, with this Context's
+Dataset metadata and prepared-query invalidation state shared.
+Extension codecs belong to the returned handle, so use it for
+subsequent queries, as with DataFusion's own method.</p>
 
 
     </div>
@@ -7463,6 +7510,12 @@ places, since xarray-sql reads them as NULL.</p>
 query again. A call raises if a table the query reads has been
 registered again since it was prepared. Functions such as <code>now()</code>
 are evaluated once, when the query is prepared.</p>
+<p>A query that calls <code>grad</code>, <code>vjp</code> or <code>jvp</code> keeps the programs ddx
+builds for those calls, rather than a plan. Preparing it runs it once,
+to build them and to find the tables it reads. A table it reads may also
+be registered again under the same name, with the same columns and types.
+A view it reads must keep its definition; prepare the query again after
+changing one.</p>
 
 
 
@@ -8484,7 +8537,7 @@ each block dict just before it's converted to Arrow.</p>
       <tbody>
           <tr class="doc-section-item">
             <td>
-                  <code>&#39;LazyArrowStreamTable&#39;</code>
+                  <code><span title="xarray_sql._native.LazyArrowStreamTable">LazyArrowStreamTable</span></code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -9248,7 +9301,9 @@ differentiate raises a <code>ddxdb.DdxError</code> subclass naming it, never a
 wrong number.</p>
 <p><a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;sql_all&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ctx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;statements&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;/code&gt;" href="./#xarray_sql.ad.sql_all">sql_all</a> runs several statements that take
 <code>grad</code> of the same loss for the price of one backward pass, which is
-how a training step updates each of a model's parameter tables. For the
+how a training step updates each of a model's parameter tables.
+<a class="autorefs autorefs-internal" title="&lt;code class=&quot;highlight language-python&quot;&gt;&lt;span class=&quot;n&quot;&gt;prepare&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;query&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;/code&gt;" href="./#xarray_sql.Context.prepare">Context.prepare</a> keeps ddx's programs for a
+statement that calls them, to run it again on every step. For the
 programs underneath (<code>grad</code>, <code>vjp</code>, <code>jvp</code> and <code>run</code>, to build a
 backward pass once and run it every step), use <code>ddxdb.ad</code> directly;
 they take a <code>Context</code> like any other <code>SessionContext</code>.</p>
@@ -17995,7 +18050,7 @@ each block dict just before it's converted to Arrow.</p>
       <tbody>
           <tr class="doc-section-item">
             <td>
-                  <code>&#39;LazyArrowStreamTable&#39;</code>
+                  <code><span title="xarray_sql._native.LazyArrowStreamTable">LazyArrowStreamTable</span></code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -18461,7 +18516,10 @@ re-executed.</p>
 
 
         <p>A datafusion <code>SessionContext</code> that also supports <code>xarray.Dataset</code>s.</p>
-<p>Also available under its original name, <code>XarrayContext</code>.</p>
+<p>Also available under its original name, <code>XarrayContext</code>.
+<code>threads=</code> sets DataFusion's target parallel partitions, overriding
+that setting in an explicit <code>config</code>. The default is the CPU count.
+It is a concurrency target, rather than a fixed number of OS threads.</p>
 
 
 
@@ -18705,8 +18763,10 @@ new values into the query's tables::</p>
 for weights in trajectory:  # Datasets shaped like w's
     rows = step(w=weights)
 </code></pre></div>
-<p>See <a class="autorefs autorefs-internal" href="./#xarray_sql.PreparedQuery">PreparedQuery</a> for what a call
-can write.</p>
+<p>A query that calls <code>grad</code>, <code>vjp</code> or <code>jvp</code> keeps the programs
+ddx builds for them instead. See
+<a class="autorefs autorefs-internal" href="./#xarray_sql.PreparedQuery">PreparedQuery</a> for what a call can
+write.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -18766,30 +18826,6 @@ can write.</p>
             <td>
               <div class="doc-md-description">
                 <p>the query.</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-<p><span class="doc-section-title">Raises:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="NotImplementedError">NotImplementedError</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>If the query calls <code>grad</code>, <code>vjp</code> or
-<code>jvp</code>, which only <code>sql()</code> computes for now.</p>
               </div>
             </td>
           </tr>
@@ -18912,6 +18948,28 @@ the query may also call <code>grad</code>, <code>vjp</code> and <code>jvp</code>
 
 </div>
 
+<div class="doc doc-object doc-function">
+
+
+<h5 id="xarray_sql.sql.Context.with_extensions" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">with_extensions</span><span class="p">(</span><span class="o">*</span><span class="n">extensions</span><span class="p">)</span></code>
+
+<a href="#xarray_sql.sql.Context.with_extensions" class="headerlink" title="Permanent link">&para;</a></h5>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Install DataFusion extension bundles, retaining xarray support.</p>
+<p>Returns another handle on the same session, with this Context's
+Dataset metadata and prepared-query invalidation state shared.
+Extension codecs belong to the returned handle, so use it for
+subsequent queries, as with DataFusion's own method.</p>
+
+
+    </div>
+
+</div>
+
 
 
   </div>
@@ -18947,6 +19005,12 @@ places, since xarray-sql reads them as NULL.</p>
 query again. A call raises if a table the query reads has been
 registered again since it was prepared. Functions such as <code>now()</code>
 are evaluated once, when the query is prepared.</p>
+<p>A query that calls <code>grad</code>, <code>vjp</code> or <code>jvp</code> keeps the programs ddx
+builds for those calls, rather than a plan. Preparing it runs it once,
+to build them and to find the tables it reads. A table it reads may also
+be registered again under the same name, with the same columns and types.
+A view it reads must keep its definition; prepare the query again after
+changing one.</p>
 
 
 
@@ -19126,7 +19190,7 @@ are evaluated once, when the query is prepared.</p>
       <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.action.view","content.code.annotate","content.code.copy","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.instant.progress","navigation.sections","navigation.top","navigation.tracking","search.highlight","search.share","search.suggest","toc.follow"],"redirect":null,"search":"../../assets/javascripts/workers/search.719e0d91.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"provider":"mike"}}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d31f0ffa.min.js"></script>
+      <script src="../../assets/javascripts/bundle.3cb411a8.min.js"></script>
       
     
   </body>
