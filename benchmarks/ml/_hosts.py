@@ -17,7 +17,10 @@ queries. A host does these things:
   differentiates, shares the backward pass between those that take
   ``grad`` of the same loss;
 * ``operators(sql)`` counts the operators in the physical plan it would
-  run, which shows, for one, whether a CTE read twice is computed twice.
+  run, which shows, for one, whether a CTE read twice is computed twice;
+* ``function(name, fn)`` registers a scalar function of one ``DOUBLE``,
+  ``fn`` taking and returning a NumPy array, for SQL a host doesn't
+  define, such as ``erf``.
 
 Forward queries run everywhere. Gradients (``grad``, ``vjp``, ``jvp``)
 need ddx (https://github.com/xqlsystems/ddx), which differentiates SQL
@@ -34,9 +37,11 @@ one entry in ``HOSTS``.
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
+import datafusion
 import duckdb
+import numpy as np
 import pyarrow as pa
 import xarray as xr
 from ddxdb import DdxError
@@ -68,6 +73,11 @@ class Host:
     def operators(self, sql: str) -> int:
         raise NotImplementedError
 
+    def function(
+        self, name: str, fn: Callable[[np.ndarray], np.ndarray]
+    ) -> None:
+        raise NotImplementedError
+
 
 class DataFusion(Host):
     """xarray-sql's ``Context``, with ddx's gradients (the ``ml`` extra)."""
@@ -95,6 +105,17 @@ class DataFusion(Host):
     def operators(self, sql):
         plan = self.ctx.sql(sql).execution_plan().display_indent()
         return len(plan.splitlines())
+
+    def function(self, name, fn):
+        self.ctx.register_udf(
+            datafusion.udf(
+                lambda v: pa.array(fn(np.asarray(v))),
+                [pa.float64()],
+                pa.float64(),
+                "immutable",
+                name,
+            )
+        )
 
 
 class EinFold(DataFusion):
@@ -153,6 +174,15 @@ class DuckDB(Host):
     def operators(self, sql):
         (_, plan), *_ = self.con.sql(f"EXPLAIN (FORMAT JSON) {sql}").fetchall()
         return sum(_count(node) for node in json.loads(plan))
+
+    def function(self, name, fn):
+        self.con.create_function(
+            name,
+            lambda v: pa.array(fn(np.asarray(v))),
+            [duckdb.sqltype("DOUBLE")],
+            duckdb.sqltype("DOUBLE"),
+            type="arrow",
+        )
 
 
 def _count(node: dict) -> int:
