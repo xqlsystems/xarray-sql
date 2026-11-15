@@ -145,18 +145,39 @@ from _hosts import Host
 from torch import nn
 
 OM4 = "https://nyu1.osn.mghpcc.org/m2lines-pubs/Samudra/v2026-09/om4_twodeg/"
-# OM4's depth levels this demo models: 2.5 m, 105 m, 775 m and 3,100 m.
-LEVELS = [0, 5, 10, 15]
-STATE = [f"{v}_{k}" for v in ("thetao", "so") for k in LEVELS] + ["zos"]
 FORCING = ["tauuo", "tauvo", "hfds"]
-STREAMED = STATE + FORCING
-# The network's inputs: the state, its forcing, and the heat flux's
-# anomaly from its climatology, computed here.
-INPUTS = STREAMED + ["hfds_anomalies"]
 # The two southernmost rows of the 2° grid are Antarctica at every depth.
 FIRST_ROW = 2
-WIDTHS = [8, 16]
-DILATIONS = [1, 2]
+
+
+def configure(levels: list[int], widths: list[int]) -> None:
+    """Set the depths the network models, as OM4's level numbers, and its
+    width at each level of the U-Net. The defaults, 4 depths at 8 and 16
+    channels, run on a CPU; ``--depths all`` models all 19, which Samudra's
+    heat-content metric needs."""
+    global LEVELS, STATE, STREAMED, INPUTS, WIDTHS, DILATIONS
+    LEVELS = levels
+    STATE = [f"{v}_{k}" for v in ("thetao", "so") for k in LEVELS] + ["zos"]
+    STREAMED = STATE + FORCING
+    # The network's inputs: the state, its forcing, and the heat flux's
+    # anomaly from its climatology, computed here.
+    INPUTS = STREAMED + ["hfds_anomalies"]
+    WIDTHS = widths
+    # Samudra 2's dilations: doubling at each level.
+    DILATIONS = [2**i for i in range(len(widths))]
+
+
+# OM4's depth levels, by default: 2.5 m, 105 m, 775 m and 3,100 m.
+LEVELS: list[int]
+STATE: list[str]
+STREAMED: list[str]
+INPUTS: list[str]
+WIDTHS: list[int]
+DILATIONS: list[int]
+configure([0, 5, 10, 15], [8, 16])
+# Where PyTorch trains and rolls out the mirror (``--device``). The SQL
+# check runs the mirror on the CPU, in float64.
+DEVICE = torch.device("cpu")
 # Five-day steps: 73 to a year.
 YEAR = 73
 
@@ -463,7 +484,9 @@ class Conv(nn.Module):
         d = self.dilation
         y = F.conv2d(_pad(x * present, d), self.weight, dilation=d)
         if self.partial:
-            ones = torch.ones(1, x.shape[1], 3, 3, dtype=x.dtype)
+            ones = torch.ones(
+                1, x.shape[1], 3, 3, dtype=x.dtype, device=x.device
+            )
             terms = F.conv2d(_pad(present.expand_as(x), d), ones, dilation=d)
             y = y * (9 * x.shape[1]) / terms.clamp(min=1)
         return (y + self.bias[:, None, None]) * out
@@ -549,12 +572,12 @@ def _upsample_taps(n: int, coarse: int, periodic: bool):
 def _upsample(x, coarse_present, fine_present):
     """``upsample``, without the skip connection."""
     _, _, h, w = fine_present.shape
-    total = torch.zeros(x.shape[:2] + (h, w), dtype=x.dtype)
-    weight = torch.zeros((1, 1, h, w), dtype=x.dtype)
+    total = torch.zeros(x.shape[:2] + (h, w), dtype=x.dtype, device=x.device)
+    weight = torch.zeros((1, 1, h, w), dtype=x.dtype, device=x.device)
     xm = x * coarse_present
     for sy, wy in _upsample_taps(h, x.shape[2], periodic=False):
         for sx, wx in _upsample_taps(w, x.shape[3], periodic=True):
-            ww = (wy[:, None] * wx[None, :]).to(x.dtype)
+            ww = (wy[:, None] * wx[None, :]).to(x.device, x.dtype)
             total += ww * xm[:, :, sy][:, :, :, sx]
             weight += ww * coarse_present[:, :, sy][:, :, :, sx]
     return total / weight.clamp(min=1e-12) * fine_present
@@ -624,7 +647,7 @@ def parameters(model: UNet) -> dict[str, xr.Dataset]:
     norms = {k.rsplit(".", 1)[0] for k in model.state_dict() if "running" in k}
     for module in norms:
         cols = {
-            leaf: model.state_dict()[f"{module}.{leaf}"].double().numpy()
+            leaf: model.state_dict()[f"{module}.{leaf}"].double().cpu().numpy()
             for leaf in ("weight", "bias", "running_mean", "running_var")
         }
         out[table(module)] = xr.Dataset(
@@ -635,7 +658,7 @@ def parameters(model: UNet) -> dict[str, xr.Dataset]:
             continue
         dims = {1: ("co",), 2: ("co", "ci"), 4: ("co", "ci", "ky", "kx")}
         out[table(key)] = xr.Dataset(
-            {"v": (dims[value.ndim], value.double().numpy())}
+            {"v": (dims[value.ndim], value.double().cpu().numpy())}
         )
     return out
 
@@ -668,12 +691,13 @@ def matrix(rows: pa.Table, shape: tuple[int, ...]) -> np.ndarray:
 
 
 def mirror(model: UNet, state: np.ndarray, wet: np.ndarray) -> np.ndarray:
-    """The mirror's forecast of one state, in float64, NaN where absent."""
-    model = model.double().eval()
+    """The mirror's forecast of one state, in float64 on the CPU, NaN where
+    absent."""
+    model = model.double().cpu().eval()
     with torch.no_grad():
         x = torch.from_numpy(np.where(wet, state, 0.0))[None]
         y = model(x, torch.from_numpy(wet))[0].numpy()
-    model.float()
+    model.float().to(DEVICE)
     return np.where(wet[: len(STATE)], y, np.nan)
 
 
@@ -720,12 +744,14 @@ class OM4Grid:
     """What OM4's 2° grid says about each input channel: ``wet``, where it
     has a row, and ``weight``, each state channel's ocean area per cell
     (``areacello`` times ``ocean_fraction`` at its depth), used only
-    relative to itself."""
+    relative to itself. ``coords`` holds the grid's ``y`` and ``x`` (its
+    latitudes and longitudes), ``lev`` (each depth) and ``areacello``."""
 
     wet: np.ndarray
     weight: np.ndarray
     mean: np.ndarray
     std: np.ndarray
+    coords: dict[str, np.ndarray]
 
 
 def om4_grid() -> OM4Grid:
@@ -744,7 +770,9 @@ def om4_grid() -> OM4Grid:
     # The anomaly's statistics come from the training years (see main).
     mean = np.array([float(means[v]) for v in STREAMED] + [0.0])
     std = np.array([float(stds[v]) for v in STREAMED] + [1.0])
-    return OM4Grid(masks[level], weight, mean, std)
+    coords = {k: ds[k].values for k in ("y", "x", "lev")}
+    coords["areacello"] = area
+    return OM4Grid(masks[level], weight, mean, std, coords)
 
 
 def om4(
@@ -753,7 +781,8 @@ def om4(
     """Stream OM4's state and forcing from ``start`` to ``end``, as dates.
     With ``cache``, a directory, keep the streamed values there and read
     them from there next time."""
-    path = cache and pathlib.Path(cache) / f"om4_2deg_{start}_{end}.npz"
+    depths = "" if LEVELS == [0, 5, 10, 15] else f"_{len(LEVELS)}levels"
+    path = cache and pathlib.Path(cache) / f"om4_2deg_{start}_{end}{depths}.npz"
     if path and path.exists():
         saved = np.load(path)
         return Streamed(saved["x"], list(saved["times"]))
@@ -822,7 +851,8 @@ def inputs(ocean: Ocean, t: np.ndarray, state=None) -> torch.Tensor:
     ``state``) and the forcing over the five days to ``t + 1``."""
     s = len(STATE)
     state = ocean.x[t, :s] if state is None else state
-    return torch.from_numpy(np.concatenate([state, ocean.x[t + 1, s:]], axis=1))
+    x = np.concatenate([state, ocean.x[t + 1, s:]], axis=1)
+    return torch.from_numpy(x).to(DEVICE)
 
 
 def train(
@@ -842,13 +872,14 @@ def train(
     Samudra 2's variance-weighted loss does. Returns each epoch's loss."""
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
-    wet = torch.from_numpy(ocean.grid.wet)
+    wet = torch.from_numpy(ocean.grid.wet).to(DEVICE)
     target_wet = wet[: len(STATE)].float()
     if by_change:
         change = np.diff(ocean.x[:, : len(STATE)], axis=0)
         w = ocean.grid.wet[None, : len(STATE)]
         var = (change**2 * w).sum((0, 2, 3)) / (w.sum((0, 2, 3)) * len(change))
-        target_wet = target_wet / torch.from_numpy(var).float()[:, None, None]
+        var = torch.from_numpy(var).float().to(DEVICE)
+        target_wet = target_wet / var[:, None, None]
         target_wet = target_wet / target_wet.mean()
     steps = np.arange(len(ocean.x) - unroll)
     opt = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=1e-4)
@@ -861,13 +892,15 @@ def train(
         run = []
         for i in range(0, len(steps), batch):
             t = steps[i : i + batch]
-            loss, state = torch.zeros(()), None
+            loss, state = torch.zeros((), device=DEVICE), None
             for k in range(unroll):
                 x = inputs(ocean, t + k)
                 if state is not None:
                     x = torch.cat([state, x[:, len(STATE) :]], dim=1)
                 state = model(x, wet)
-                y = torch.from_numpy(ocean.x[t + k + 1, : len(STATE)])
+                y = torch.from_numpy(ocean.x[t + k + 1, : len(STATE)]).to(
+                    DEVICE
+                )
                 err = (state - y) ** 2 * target_wet
                 loss = loss + err.sum() / (
                     wet[: len(STATE)].sum() * len(t) * unroll
@@ -908,7 +941,8 @@ def rmse(ocean: Ocean, got: np.ndarray, want: np.ndarray, where: np.ndarray):
 def predict(model: UNet, ocean: Ocean, t: np.ndarray) -> np.ndarray:
     model.float().eval()
     with torch.no_grad():
-        return model(inputs(ocean, t), torch.from_numpy(ocean.grid.wet)).numpy()
+        wet = torch.from_numpy(ocean.grid.wet).to(DEVICE)
+        return model(inputs(ocean, t), wet).cpu().numpy()
 
 
 def rollout(model: UNet, ocean: Ocean, steps: int) -> np.ndarray:
@@ -917,10 +951,12 @@ def rollout(model: UNet, ocean: Ocean, steps: int) -> np.ndarray:
     state = ocean.x[:1, : len(STATE)]
     out = []
     model.float().eval()
-    wet = torch.from_numpy(ocean.grid.wet)
+    wet = torch.from_numpy(ocean.grid.wet).to(DEVICE)
     with torch.no_grad():
         for t in range(steps):
-            state = model(inputs(ocean, np.array([t]), state), wet).numpy()
+            state = (
+                model(inputs(ocean, np.array([t]), state), wet).cpu().numpy()
+            )
             out.append(state[0])
     return np.stack(out)
 
@@ -1047,6 +1083,40 @@ def score(models: dict[str, UNet], test: Ocean, steps: int) -> dict:
     return results
 
 
+def save_rollout(ocean: Ocean, states: np.ndarray, path: pathlib.Path) -> None:
+    """Write a rollout of normalized ``states``, one per step after the
+    first, as Samudra's evaluation writes its rollouts, for
+    ``samudra.metrics`` to score: ``thetao`` and ``so`` stacked by depth
+    (``time, lev, y, x``) and ``zos``, in their units, NaN on land, in
+    Zarr format 2, which Samudra reads."""
+    coords = ocean.grid.coords
+    # OM4 stamps each five-day mean at noon, and Samudra's metrics match
+    # times exactly.
+    noon = np.timedelta64(12, "h")
+    times = [np.datetime64(t) + noon for t in ocean.times[1 : len(states) + 1]]
+
+    def stack(name: str) -> np.ndarray:
+        return np.stack(
+            [physical(ocean, states, f"{name}_{k}") for k in LEVELS], axis=1
+        )
+
+    ds = xr.Dataset(
+        {
+            "thetao": (("time", "lev", "y", "x"), stack("thetao")),
+            "so": (("time", "lev", "y", "x"), stack("so")),
+            "zos": (("time", "y", "x"), physical(ocean, states, "zos")),
+        },
+        coords={
+            "time": times,
+            "lev": coords["lev"][LEVELS],
+            "y": coords["y"],
+            "x": coords["x"],
+            "areacello": (("y", "x"), coords["areacello"]),
+        },
+    )
+    ds.astype("float32").to_zarr(path, mode="w", zarr_format=2)
+
+
 def metamorphic(model: UNet, ocean: Ocean) -> dict[str, float]:
     """Invariants from Samudra's notes that a model must satisfy, as the
     largest change each makes to a forecast (0 when it holds):
@@ -1056,7 +1126,7 @@ def metamorphic(model: UNet, ocean: Ocean) -> dict[str, float]:
       network's downsampling rolls the forecast the same way;
     * in evaluation, a forecast doesn't depend on its batch-mates."""
     model.float().eval()
-    wet = torch.from_numpy(ocean.grid.wet)
+    wet = torch.from_numpy(ocean.grid.wet).to(DEVICE)
     x = inputs(ocean, np.array([0, 1]))
     with torch.no_grad():
         y = model(x, wet)
@@ -1145,6 +1215,27 @@ def main() -> None:
     parser.add_argument("--cache", help="a directory to keep streamed OM4 in")
     parser.add_argument("--json", help="also write the accuracy tables here")
     parser.add_argument(
+        "--depths",
+        default="0,5,10,15",
+        help="OM4's depth levels to model, by number, or 'all' for 19",
+    )
+    parser.add_argument(
+        "--widths",
+        type=int,
+        nargs="+",
+        default=[8, 16],
+        help="the U-Net's width at each level",
+    )
+    parser.add_argument(
+        "--device",
+        default="cpu",
+        help="where PyTorch trains and rolls out, such as cuda",
+    )
+    parser.add_argument(
+        "--save",
+        help="a directory for each model's weights and rollout, and OM4's",
+    )
+    parser.add_argument(
         "--by-change",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1172,6 +1263,12 @@ def main() -> None:
         "--threads", type=int, default=4, help="PyTorch's threads for training"
     )
     args = parser.parse_args()
+    depths = (
+        list(range(19))
+        if args.depths == "all"
+        else [int(k) for k in args.depths.split(",")]
+    )
+    configure(depths, args.widths)
     torch.set_num_threads(args.threads)
     report = Report("samudra_sparse", "lat", args.reps)
     if args.data == "synthetic":
@@ -1208,9 +1305,11 @@ def main() -> None:
     anomaly = raw.x[:, hfds] - clim[_step_of_year(raw.times), hfds]
     grid.std[-1] = np.nanstd(anomaly)
     data, test = normalize(raw, grid, clim), normalize(held_out, grid, clim)
-    models = {"sparse": UNet(partial=args.partial)}
+    global DEVICE
+    DEVICE = torch.device(args.device)
+    models = {"sparse": UNet(partial=args.partial).to(DEVICE)}
     if args.dense:
-        models["dense"] = UNet(dense=True)
+        models["dense"] = UNet(dense=True).to(DEVICE)
     for name, model in models.items():
         started = time.time()
         losses = train(
@@ -1227,7 +1326,7 @@ def main() -> None:
         )
         print(f"Invariants, {name}: {metamorphic(model, test)}")
     for t in range(args.sql_steps):
-        x = inputs(test, np.array([t]))[0].double().numpy()
+        x = inputs(test, np.array([t]))[0].double().cpu().numpy()
         check(
             report,
             hosts(args.hosts),
@@ -1241,6 +1340,18 @@ def main() -> None:
     results = score(models, test, args.rollout)
     if args.json:
         pathlib.Path(args.json).write_text(json.dumps(results, indent=1))
+    if args.save:
+        out = pathlib.Path(args.save)
+        out.mkdir(parents=True, exist_ok=True)
+        steps = min(args.rollout, len(test.x) - 1)
+        save_rollout(
+            test, test.x[1 : steps + 1, : len(STATE)], out / "om4.zarr"
+        )
+        for name, model in models.items():
+            torch.save(model.state_dict(), out / f"{name}.pt")
+            save_rollout(
+                test, rollout(model, test, steps), out / f"{name}.zarr"
+            )
 
 
 if __name__ == "__main__":
