@@ -62,18 +62,23 @@ asks since its 0.4.8. GELU is then exact, where demo 4 approximates
 
 **The data** is OM4 (Adcroft et al., 2019,
 https://doi.org/10.1029/2019MS001726), GFDL's ocean model, as Samudra's
-authors publish it for training, at 2° (90 × 180 cells, five-day means,
-1958 to 2022; https://m2lines.github.io/Samudra/docs/data/). The demo
-streams the slices it uses over HTTP and keeps them in memory, or, with
-``--cache``, in a directory. It models temperature (``thetao``) and
+authors publish it for training: five-day means from 1958 to 2022, at 2°
+(90 × 180 cells) or, with ``--resolution 1``, 1° (180 × 360;
+https://m2lines.github.io/Samudra/docs/data/). The demo streams the
+slices it uses over HTTP and keeps them in memory, or, with ``--cache``,
+in a directory. By default it models temperature (``thetao``) and
 salinity (``so``) at four of OM4's 19 depths, 2.5 m, 105 m, 775 m and
-3,100 m, and sea surface height (``zos``): 9 channels. The forcing is
-Samudra 2's: wind stress (``tauuo``, ``tauvo``), the heat flux into the
-ocean (``hfds``), and that flux's anomaly from its climatology
-(``hfds_anomalies``), over the five days being predicted. The two
-southernmost rows, all land, are dropped, so the grid is 88 × 180. Each
-field is normalized by OM4's own mean and standard deviation over ocean
-cells, so 0 is the mean.
+3,100 m, and sea surface height (``zos``): 9 channels. ``--depths all``
+models all 19 depths, and ``--velocities`` adds the currents (``uo``,
+``vo``) at each, as Samudra 2's state has them. The forcing is Samudra
+2's: wind stress (``tauuo``, ``tauvo``), the heat flux into the ocean
+(``hfds``), and that flux's anomaly from its climatology
+(``hfds_anomalies``), over the five days being predicted. The network
+reads the rows from the southernmost with any ocean to the northernmost,
+widened with rows of land until their count halves evenly at each level
+of the U-Net: at 2° and two levels, 88 of the 90. Each field is
+normalized by OM4's own mean and standard deviation over ocean cells, so
+0 is the mean.
 
 Samudra's notes for contributors, ``AGENTS.md`` and
 ``docs/concepts/ocean-physics.md`` in its repository
@@ -144,20 +149,30 @@ from _bench import Report, assert_close, cli, hosts
 from _hosts import Host
 from torch import nn
 
-OM4 = "https://nyu1.osn.mghpcc.org/m2lines-pubs/Samudra/v2026-09/om4_twodeg/"
+# OM4's processed releases, by resolution in degrees (``--resolution``).
+OM4_STORES = {
+    2: "https://nyu1.osn.mghpcc.org/m2lines-pubs/Samudra/v2026-09/om4_twodeg/",
+    1: "https://nyu1.osn.mghpcc.org/m2lines-pubs/Samudra/v2026-09/om4_onedeg/",
+}
 FORCING = ["tauuo", "tauvo", "hfds"]
-# The two southernmost rows of the 2° grid are Antarctica at every depth.
-FIRST_ROW = 2
 
 
-def configure(levels: list[int], widths: list[int]) -> None:
-    """Set the depths the network models, as OM4's level numbers, and its
-    width at each level of the U-Net. The defaults, 4 depths at 8 and 16
-    channels, run on a CPU; ``--depths all`` models all 19, which Samudra's
-    heat-content metric needs."""
-    global LEVELS, STATE, STREAMED, INPUTS, WIDTHS, DILATIONS
+def configure(
+    levels: list[int],
+    widths: list[int],
+    velocities: bool = False,
+    resolution: int = 2,
+) -> None:
+    """Set the depths the network models, as OM4's level numbers, its width
+    at each level of the U-Net, whether its state includes the currents
+    (``uo``, ``vo``) as Samudra 2's does, and OM4's resolution in degrees.
+    The defaults, 4 depths at 8 and 16 channels at 2°, run on a CPU;
+    ``--depths all`` models all 19, which Samudra's heat-content metric
+    needs."""
+    global LEVELS, STATE, STREAMED, INPUTS, WIDTHS, DILATIONS, OM4, RESOLUTION
     LEVELS = levels
-    STATE = [f"{v}_{k}" for v in ("thetao", "so") for k in LEVELS] + ["zos"]
+    names = ("thetao", "so", "uo", "vo") if velocities else ("thetao", "so")
+    STATE = [f"{v}_{k}" for v in names for k in LEVELS] + ["zos"]
     STREAMED = STATE + FORCING
     # The network's inputs: the state, its forcing, and the heat flux's
     # anomaly from its climatology, computed here.
@@ -165,6 +180,8 @@ def configure(levels: list[int], widths: list[int]) -> None:
     WIDTHS = widths
     # Samudra 2's dilations: doubling at each level.
     DILATIONS = [2**i for i in range(len(widths))]
+    RESOLUTION = resolution
+    OM4 = OM4_STORES[resolution]
 
 
 # OM4's depth levels, by default: 2.5 m, 105 m, 775 m and 3,100 m.
@@ -174,6 +191,8 @@ STREAMED: list[str]
 INPUTS: list[str]
 WIDTHS: list[int]
 DILATIONS: list[int]
+OM4: str
+RESOLUTION: int
 configure([0, 5, 10, 15], [8, 16])
 # Where PyTorch trains and rolls out the mirror (``--device``). The SQL
 # check runs the mirror on the CPU, in float64.
@@ -741,22 +760,50 @@ class Streamed:
 
 @dataclass
 class OM4Grid:
-    """What OM4's 2° grid says about each input channel: ``wet``, where it
+    """What OM4's grid says about each input channel: ``wet``, where it
     has a row, and ``weight``, each state channel's ocean area per cell
     (``areacello`` times ``ocean_fraction`` at its depth), used only
     relative to itself. ``coords`` holds the grid's ``y`` and ``x`` (its
-    latitudes and longitudes), ``lev`` (each depth) and ``areacello``."""
+    latitudes and longitudes), ``lev`` and ``dz`` (each depth and its
+    thickness) and ``areacello``; ``rows``, the span of rows it keeps."""
 
     wet: np.ndarray
     weight: np.ndarray
     mean: np.ndarray
     std: np.ndarray
     coords: dict[str, np.ndarray]
+    rows: tuple[int, int]
+
+
+def _rows(wet: np.ndarray, levels: int) -> tuple[int, int]:
+    """The rows of the grid the network reads: from the southernmost row
+    with any ocean to the northernmost, widened with land rows until the
+    count halves evenly ``levels`` times, as the U-Net's pooling needs.
+    Longitude can't be cropped, since it wraps around the globe, so it must
+    halve evenly already."""
+    factor = 2**levels
+    if wet.shape[1] % factor:
+        raise ValueError(
+            f"{wet.shape[1]} longitudes don't halve evenly {levels} times; "
+            "use fewer --widths"
+        )
+    ocean = np.flatnonzero(wet.any(1))
+    lo, hi = int(ocean[0]), int(ocean[-1]) + 1
+    short = -(hi - lo) % factor
+    lo -= min(short, lo)
+    hi += -(hi - lo) % factor
+    if hi > wet.shape[0]:
+        raise ValueError(
+            f"the grid's {wet.shape[0]} rows can't be padded to halve"
+        )
+    return lo, hi
 
 
 def om4_grid() -> OM4Grid:
     """The masks, areas and normalization statistics, from OM4's stores."""
-    ds = xr.open_zarr(OM4 + "OM4.zarr").isel(y=slice(FIRST_ROW, None))
+    ds = xr.open_zarr(OM4 + "OM4.zarr")
+    rows = _rows(ds.mask_0.values, len(WIDTHS))
+    ds = ds.isel(y=slice(*rows))
     means = xr.open_zarr(OM4 + "OM4_means.zarr")
     stds = xr.open_zarr(OM4 + "OM4_stds.zarr")
     level = [int(v.rsplit("_", 1)[1]) if v[-1].isdigit() else 0 for v in INPUTS]
@@ -770,9 +817,9 @@ def om4_grid() -> OM4Grid:
     # The anomaly's statistics come from the training years (see main).
     mean = np.array([float(means[v]) for v in STREAMED] + [0.0])
     std = np.array([float(stds[v]) for v in STREAMED] + [1.0])
-    coords = {k: ds[k].values for k in ("y", "x", "lev")}
+    coords = {k: ds[k].values for k in ("y", "x", "lev", "dz")}
     coords["areacello"] = area
-    return OM4Grid(masks[level], weight, mean, std, coords)
+    return OM4Grid(masks[level], weight, mean, std, coords, rows)
 
 
 def om4(
@@ -781,12 +828,13 @@ def om4(
     """Stream OM4's state and forcing from ``start`` to ``end``, as dates.
     With ``cache``, a directory, keep the streamed values there and read
     them from there next time."""
-    depths = "" if LEVELS == [0, 5, 10, 15] else f"_{len(LEVELS)}levels"
-    path = cache and pathlib.Path(cache) / f"om4_2deg_{start}_{end}{depths}.npz"
+    lo, hi = grid.rows
+    name = f"om4_{RESOLUTION}deg_{start}_{end}_{len(STATE)}state_rows{lo}-{hi}"
+    path = cache and pathlib.Path(cache) / f"{name}.npz"
     if path and path.exists():
         saved = np.load(path)
         return Streamed(saved["x"], list(saved["times"]))
-    ds = xr.open_zarr(OM4 + "OM4.zarr").isel(y=slice(FIRST_ROW, None))
+    ds = xr.open_zarr(OM4 + "OM4.zarr").isel(y=slice(*grid.rows))
     keys = [(t.year, t.month, t.day) for t in ds.time.values]
     first = tuple(map(int, start.split("-")))
     last = tuple(map(int, end.split("-")))
@@ -1086,29 +1134,32 @@ def score(models: dict[str, UNet], test: Ocean, steps: int) -> dict:
 def save_rollout(ocean: Ocean, states: np.ndarray, path: pathlib.Path) -> None:
     """Write a rollout of normalized ``states``, one per step after the
     first, as Samudra's evaluation writes its rollouts, for
-    ``samudra.metrics`` to score: ``thetao`` and ``so`` stacked by depth
-    (``time, lev, y, x``) and ``zos``, in their units, NaN on land, in
+    ``samudra.metrics`` to score: each variable with depths (``thetao``,
+    ``so``, and with ``--velocities`` ``uo`` and ``vo``) stacked by depth
+    (``time, lev, y, x``), and ``zos``, in their units, NaN on land, in
     Zarr format 2, which Samudra reads."""
     coords = ocean.grid.coords
     # OM4 stamps each five-day mean at noon, and Samudra's metrics match
     # times exactly.
     noon = np.timedelta64(12, "h")
     times = [np.datetime64(t) + noon for t in ocean.times[1 : len(states) + 1]]
-
-    def stack(name: str) -> np.ndarray:
-        return np.stack(
-            [physical(ocean, states, f"{name}_{k}") for k in LEVELS], axis=1
+    names = dict.fromkeys(v.rsplit("_", 1)[0] for v in STATE if v != "zos")
+    data: dict[str, tuple[tuple[str, ...], np.ndarray]] = {
+        name: (
+            ("time", "lev", "y", "x"),
+            np.stack(
+                [physical(ocean, states, f"{name}_{k}") for k in LEVELS], axis=1
+            ),
         )
-
+        for name in names
+    }
+    data["zos"] = (("time", "y", "x"), physical(ocean, states, "zos"))
     ds = xr.Dataset(
-        {
-            "thetao": (("time", "lev", "y", "x"), stack("thetao")),
-            "so": (("time", "lev", "y", "x"), stack("so")),
-            "zos": (("time", "y", "x"), physical(ocean, states, "zos")),
-        },
+        data,
         coords={
             "time": times,
             "lev": coords["lev"][LEVELS],
+            "dz": ("lev", coords["dz"][LEVELS]),
             "y": coords["y"],
             "x": coords["x"],
             "areacello": (("y", "x"), coords["areacello"]),
@@ -1183,7 +1234,7 @@ def main() -> None:
         "--data",
         choices=["synthetic", "om4"],
         default="synthetic",
-        help="a random grid and weights, or OM4 at 2° (streamed)",
+        help="a random grid and weights, or OM4 (streamed)",
     )
     parser.add_argument(
         "--partial",
@@ -1227,6 +1278,18 @@ def main() -> None:
         help="the U-Net's width at each level",
     )
     parser.add_argument(
+        "--resolution",
+        type=int,
+        choices=sorted(OM4_STORES),
+        default=2,
+        help="OM4's resolution, in degrees",
+    )
+    parser.add_argument(
+        "--velocities",
+        action="store_true",
+        help="include the currents, uo and vo, in the state, as Samudra 2 does",
+    )
+    parser.add_argument(
         "--device",
         default="cpu",
         help="where PyTorch trains and rolls out, such as cuda",
@@ -1268,7 +1331,7 @@ def main() -> None:
         if args.depths == "all"
         else [int(k) for k in args.depths.split(",")]
     )
-    configure(depths, args.widths)
+    configure(depths, args.widths, args.velocities, args.resolution)
     torch.set_num_threads(args.threads)
     report = Report("samudra_sparse", "lat", args.reps)
     if args.data == "synthetic":
