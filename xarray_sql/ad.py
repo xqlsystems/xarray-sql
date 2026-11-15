@@ -43,7 +43,9 @@ wrong number.
 
 [sql_all][xarray_sql.ad.sql_all] runs several statements that take
 ``grad`` of the same loss for the price of one backward pass, which is
-how a training step updates each of a model's parameter tables. For the
+how a training step updates each of a model's parameter tables.
+[Context.prepare][xarray_sql.Context.prepare] keeps ddx's programs for a
+statement that calls them, to run it again on every step. For the
 programs underneath (``grad``, ``vjp``, ``jvp`` and ``run``, to build a
 backward pass once and run it every step), use ``ddxdb.ad`` directly;
 they take a ``Context`` like any other ``SessionContext``.
@@ -52,9 +54,13 @@ they take a ``Context`` like any other ``SessionContext``.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+import threading
+from collections.abc import Callable, Sequence
 
-from datafusion import SessionContext
+import ddxdb
+import pyarrow as pa
+from datafusion import DataFrame, SessionContext
+from datafusion.plan import LogicalPlan
 from ddxdb import ad as _ddx
 
 __all__ = ["STOP_GRADIENT", "calls_ad", "register", "sql", "sql_all"]
@@ -138,3 +144,60 @@ def sql_all(ctx: SessionContext, statements: Sequence[str]) -> list:
     frames: list = _ddx.sql_all(ctx, list(statements))
     wrap = getattr(ctx, "_wrap", None)
     return [wrap(f) for f in frames] if wrap else frames
+
+
+class _RecordingBackend(_ddx.DataFusionBackend):
+    """ddx's DataFusion backend, keeping the plan of each query ddx
+    differentiates."""
+
+    def __init__(self, ctx: SessionContext):
+        super().__init__(ctx)
+        self.plans: list[LogicalPlan] = []
+
+    def plan_sql(self, sql: str) -> bytes:
+        self.plans.append(SessionContext.sql(self.ctx, sql).logical_plan())
+        plan: bytes = super().plan_sql(sql)
+        return plan
+
+
+def _prepare(
+    ctx: SessionContext, statement: str
+) -> tuple[Callable[[Callable[[], None]], pa.Table], list[LogicalPlan]]:
+    """``statement``, with the programs of its ``grad``, ``vjp`` and ``jvp``
+    calls kept to run it again. Calling the result with a function that
+    writes the tables' new values calls it, then returns the rows.
+
+    Preparing runs the statement once, which builds the programs. That run
+    also gives the logical plans of what the statement reads: the queries
+    ddx differentiates, and the statement once its calls are rewritten.
+
+    Between calls, a table may change its rows or be registered again under
+    its name, but must keep its columns and their types; a view must keep
+    its definition.
+    """
+    backend = _RecordingBackend(ctx)
+    prepared = ddxdb.Prepared(backend, [statement], "datafusion")
+    # Calls wait for each other, since each writes the same tables.
+    lock = threading.Lock()
+
+    def run() -> DataFrame:
+        with prepared.run() as rewritten:
+            # SessionContext's own sql, as ddx's sql_all does: the tables
+            # ddx wrote leave the catalog once the statement is planned.
+            (frame,) = [
+                SessionContext.sql(ctx, s) for s in rewritten.statements
+            ]
+        return frame
+
+    # The first run is what plans the queries ddx differentiates.
+    statement_plan = run().logical_plan()
+    plans = [*backend.plans, statement_plan]
+
+    def rows(write: Callable[[], None]) -> pa.Table:
+        # One lock from the writes until the rows are read, so another call
+        # can't change the tables in between.
+        with lock:
+            write()
+            return run().to_arrow_table()
+
+    return rows, plans

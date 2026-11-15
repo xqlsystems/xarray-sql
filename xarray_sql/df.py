@@ -630,9 +630,9 @@ def _parse_schema(ds: xr.Dataset) -> pa.Schema:
 
     cftime coordinates are mapped to one of two Arrow types:
 
-    * **Gregorian-like calendars** (standard, noleap, all_leap, etc.):
+    * **Gregorian-like calendars** (standard, noleap, etc.):
       ``pa.timestamp('us')`` so string-based SQL filters work naturally.
-    * **Non-Gregorian calendars** (360_day, julian):
+    * **Non-Gregorian calendars** (360_day, julian, all_leap):
       ``pa.int64()`` with ``xarray:units`` / ``xarray:calendar`` metadata
       on the field, preserving lossless CF-convention encoding.
     """

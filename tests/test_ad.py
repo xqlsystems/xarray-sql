@@ -136,9 +136,47 @@ def test_a_mention_in_a_literal_is_not_a_call():
     assert rows == [{"s": "grad(x)", "jvp(v)": 1}]
 
 
-def test_prepare_refuses_a_gradient(problem):
-    ctx, *_ = problem
-    with pytest.raises(NotImplementedError, match="grad"):
-        ctx.prepare(
-            f"WITH {LOSS} SELECT feature, grad(loss, w) AS g FROM weights"
-        )
+def test_context_prepare_runs_gradient_steps_and_reads_writes(problem):
+    ctx, x, w, y = problem
+    step = ctx.prepare(
+        f"WITH {LOSS} SELECT feature, grad(loss, w) AS w FROM weights ORDER BY feature"
+    )
+    old = step()
+    original = old["w"].to_numpy().copy()
+    replacement = xr.Dataset(
+        {"w": ("feature", w.copy() * 2)}, coords={"feature": np.arange(3)}
+    )
+    got = step(weights=replacement)
+    np.testing.assert_allclose(
+        got["w"], 2 * x.T @ (x @ replacement.w.values - y)
+    )
+    np.testing.assert_array_equal(old["w"], original)
+    with pytest.raises(ValueError, match="coordinates"):
+        step(weights=replacement.assign_coords(feature=[3, 4, 5]))
+    # A table registered again under its name, with the same columns.
+    ctx.deregister_table("weights")
+    ctx.from_dataset("weights", replacement * 2)
+    np.testing.assert_allclose(
+        step()["w"], 2 * x.T @ (x @ (2 * replacement.w.values) - y)
+    )
+
+
+def test_prepared_gradient_writes_only_the_tables_it_reads(problem):
+    ctx, x, w, y = problem
+    other = xr.Dataset(
+        {"w": ("feature", w.copy())}, coords={"feature": np.arange(3)}
+    )
+    ctx.from_dataset("w", other)
+    step = ctx.prepare(
+        f"WITH {LOSS} SELECT feature, grad(loss, w) AS w FROM weights ORDER BY feature"
+    )
+    with pytest.raises(ValueError, match="reads no Dataset registered as 'w'"):
+        step(w=other * 2)
+    np.testing.assert_array_equal(
+        ctx.sql("SELECT feature, w FROM w ORDER BY feature").to_dataset()["w"],
+        w,
+    )
+    # The loss reads the targets, so a call may write them.
+    want = 2 * x.T @ (x @ w + y)
+    targets = xr.Dataset({"y": ("sample", -y)}, coords={"sample": np.arange(6)})
+    np.testing.assert_allclose(step(targets=targets)["w"], want)

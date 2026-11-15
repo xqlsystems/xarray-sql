@@ -9,6 +9,7 @@ _Query [Xarray](https://xarray.dev/) with SQL_
 [![ci-rust](https://github.com/xqlsystems/xarray-sql/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/xqlsystems/xarray-sql/actions/workflows/ci-rust.yml)
 [![PyPI Downloads](https://static.pepy.tech/personalized-badge/xarray-sql?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/xarray-sql)
 [![PyPI Downloads](https://static.pepy.tech/personalized-badge/xarray-sql?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads%2Fmonth)](https://pepy.tech/projects/xarray-sql)
+[![Hacker News](https://hackergit.org/badge/xqlsystems/xarray-sql.svg)](https://hackergit.org/r/xqlsystems/xarray-sql)
 
 ```shell
 pip install xarray-sql
