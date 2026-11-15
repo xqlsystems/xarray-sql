@@ -81,8 +81,10 @@ jobs:
       - name: Run unit tests
         env:
           VIRTUAL_ENV: ${{ github.workspace }}/.venv
-        # The ML demos run in their own job, below.
-        run: uv run --no-project pytest -v . -m "not integration and not benchmark" --ignore=tests/test_ml_demos.py
+        # The ML demos run in their own job, below. --benchmark-disable runs
+        # each benchmark once, as a test, so a PR that breaks one fails here
+        # rather than in the benchmarks job on main.
+        run: uv run --no-project pytest -v . -m "not integration" --benchmark-disable --ignore=tests/test_ml_demos.py
 
   ml-demos:
     # Each ML demo in benchmarks/ml, at its smallest size, checked against
@@ -123,7 +125,11 @@ jobs:
         run: uv run --no-project pytest -v tests/test_ml_demos.py
 
   benchmarks:
-    # tests/test_benchmarks.py, tracked over time with pytest-benchmark.
+    # tests/test_benchmarks.py, timed with pytest-benchmark (a pytest
+    # plugin that runs a function repeatedly and reports its timings) and
+    # stored on gh-pages by github-action-benchmark (an action that keeps
+    # each run's results as a history, charts it, and comments on a commit
+    # that looks like a regression).
     name: "benchmarks"
     runs-on: ubuntu-latest
     # Only on main: a PR from a fork has no permission to push to
@@ -173,6 +179,11 @@ jobs:
           tool: "pytest"
           output-file-path: benchmark.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          # The action retries a push that gh-pages rejects (up to 10 times,
+          # re-cloning gh-pages each time), so it can share the branch with
+          # mike's pushes from docs.yml. A new point goes live when docs.yml
+          # next publishes gh-pages to Pages, which may be one push to main
+          # later if that publish checked out gh-pages before this push.
           auto-push: true
           # mike (docs.yml) owns dev/, 0.x/, latest/, index.html and
           # versions.json on gh-pages, and replaces dev/ wholesale on
@@ -185,61 +196,3 @@ jobs:
           alert-threshold: "200%"
           comment-on-alert: true
           fail-on-alert: false
-
-  codspeed:
-    # The same benchmark as the job above, run by CodSpeed
-    # (https://codspeed.io/), which counts instructions rather than
-    # wall time, so it doesn't need repeats to average out a hosted
-    # runner's noise. It can also report on pull requests, including
-    # from forks, since it needs no write access to this repository.
-    #
-    # Dispatch-only for now: CodSpeedHQ/action authenticates against a
-    # CodSpeed project for this repo, which doesn't exist until an org
-    # admin installs CodSpeed's GitHub App on xqlsystems/xarray-sql and
-    # connects it (https://codspeed.io/docs). Until then, `push` or
-    # `pull_request` would just fail. Once it's connected, add `push`
-    # and `pull_request` to the `if:` below (matching the `benchmarks`
-    # job isn't required: CodSpeed's own token doesn't need gh-pages's
-    # write access, so it can run on every PR, not just main).
-    name: "codspeed"
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-        id: rust-toolchain
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Configure sccache
-        run: |
-          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
-          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
-
-      - name: Cache Cargo
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo
-          key: cargo-cache-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('Cargo.lock') }}
-
-      - uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.12"
-          enable-cache: true
-
-      - name: Install xarray_sql
-        run: uv sync --locked --dev --extra benchmark --no-install-package xarray-sql
-      - name: build rust
-        run: uv run --no-project maturin develop --uv
-      - name: Run benchmarks
-        uses: CodSpeedHQ/action@v5
-        env:
-          VIRTUAL_ENV: ${{ github.workspace }}/.venv
-        with:
-          mode: simulation
-          run: uv run --no-project pytest tests/test_benchmarks.py -m benchmark --codspeed

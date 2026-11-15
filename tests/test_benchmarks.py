@@ -1,14 +1,15 @@
 """A benchmark tracked over time in CI (see CONTRIBUTING.md).
 
+It uses the ``benchmark`` fixture of pytest-benchmark
+(https://github.com/ionelmc/pytest-benchmark), a pytest plugin that runs
+a function repeatedly and reports its timings. On every push to main, CI
+stores the timings with github-action-benchmark
+(https://github.com/benchmark-action/github-action-benchmark), which
+keeps them as a history and flags a commit that looks like a regression.
+
 Starts small: one benchmark, over an in-memory Dataset that needs no
 network, so a regression in xarray-sql, DataFusion or the in-memory
-table adapter shows up in the history github-action-benchmark stores
-on every push to main.
-
-Uses pytest-benchmark's ``benchmark`` fixture. pytest-codspeed
-(https://codspeed.io/) provides a fixture of the same name, so a
-benchmark written this way can run unmodified under either, if
-CodSpeed's instruction-counting is added later.
+table adapter shows up in that history.
 """
 
 import numpy as np
