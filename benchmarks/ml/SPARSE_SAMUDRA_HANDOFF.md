@@ -4,8 +4,8 @@ Read first:
 - The modeling notes and early results: `benchmarks/ml/SPARSE_SAMUDRA_NOTES.md` on branch `sparse-samudra-notes` of https://github.com/xqlsystems/xarray-sql
 - The code: branch `samudra-demo` (draft PR https://github.com/xqlsystems/xarray-sql/pull/300).
   - `benchmarks/ml/04_samudra_sparse.py` is the model. It includes the SQL, a PyTorch "mirror" that trains it, and a dense ablation.
-  - `benchmarks/ml/_samudra_metrics.py` is the scorer. Pull first; it's being committed now.
-  - `uv run benchmarks/ml/04_samudra_sparse.py --help` lists the options. Key ones: `--data om4`, `--depths all`, `--widths`, `--unroll`, `--by-change`, `--dense`, `--device cuda`, `--train START END`, `--test START END`, `--rollout`, `--sql-steps`, `--save DIR`, `--json FILE`. A `--resolution 2|1` flag is being added.
+  - `benchmarks/ml/_samudra_metrics.py` is the scorer. It's a uv script with its own environment, because Samudra pins zarr below 3. Run it on the directory `--save` wrote; it writes `observation_metrics.csv` there. With all 19 depths, it calls `compute_observation_metrics`, as Samudra's evaluation does.
+  - `uv run benchmarks/ml/04_samudra_sparse.py --help` lists the options. Key ones: `--data om4`, `--depths all`, `--widths`, `--unroll`, `--by-change`, `--dense`, `--device cuda`, `--train START END`, `--test START END`, `--rollout`, `--sql-steps`, `--save DIR`, `--json FILE`. `--resolution 2|1` picks the grid, and `--velocities` adds `uo` and `vo`. The rows the network reads are worked out from the data's masks.
 - Samudra's Torch guide: https://m2lines.github.io/Samudra/docs/torch/. Also read Samudra's AGENTS.md, especially its ocean-state invariants and gotchas.
 
 Setup on Torch:
@@ -19,9 +19,10 @@ Setup on Torch:
 Experiments, in order. Score each with `samudra.metrics` over Samudra's inference period (rollout from 2014-10-10 to 2022-12-24, scored 2015 to 2022). Always train the dense ablation alongside, the same way.
 1. **Reproduce at 2°** with the defaults, and check you get roughly the numbers in the notes.
 2. **2°, all depths:** `--depths all --widths 32 64`, training on Samudra's split, 1975-01-03 to 2013-09-30, with `--unroll 2` and then 4. Try `--by-change` on and off. All depths are needed to score ocean heat content.
-3. **2°, with velocities** (`uo`, `vo`) and wider: `--widths 64 128 256`, `--unroll 4`, 40 epochs. Compare with the 2° Samudra 2 baseline once it exists.
+3. **2°, with velocities** and wider: `--velocities --widths 64 128`, `--unroll 4`, 40 epochs. Compare with the 2° Samudra 2 baseline once it exists.
+   - 2 levels is the most the 2° grid allows. Its 180 longitudes halve evenly only twice, and longitude wraps around the globe, so it can't be cropped. The script refuses deeper U-Nets at 2°.
+   - Run 3 levels (`--widths 64 128 256`) at 1°.
 4. **1°:** repeat steps 2 and 3 with `--resolution 1`.
-   - The 1° grid has 180 rows. Check that the land rows are cropped and that the U-Net halves cleanly at each level.
    - Baseline: score the public Samudra 2 checkpoint `M2LInES/Samudra2` `onedeg/ema_ckpt.pt` on Hugging Face with the same metrics.
 5. **1° at Samudra 2's widths** (280, 380, 480, 520; 4 levels), using its loss and rollout length if you can match them.
 6. **No retraining:** load the 1° Samudra 2 checkpoint into Samudra's own model, mask land after every layer (or use the sparse operators), and score it. This shows how much the trained model relies on land.
