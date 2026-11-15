@@ -156,14 +156,16 @@ class _RecordingBackend(_ddx.DataFusionBackend):
 
     def plan_sql(self, sql: str) -> bytes:
         self.plans.append(SessionContext.sql(self.ctx, sql).logical_plan())
-        return super().plan_sql(sql)
+        plan: bytes = super().plan_sql(sql)
+        return plan
 
 
 def _prepare(
     ctx: SessionContext, statement: str
-) -> tuple[Callable[[], pa.Table], list[LogicalPlan]]:
+) -> tuple[Callable[[Callable[[], None]], pa.Table], list[LogicalPlan]]:
     """``statement``, with the programs of its ``grad``, ``vjp`` and ``jvp``
-    calls kept to run it again; calling the result returns its rows.
+    calls kept to run it again. Calling the result with a function that
+    writes the tables' new values calls it, then returns the rows.
 
     Preparing runs the statement once, which builds the programs. That run
     also gives the logical plans of what the statement reads: the queries
@@ -179,7 +181,7 @@ def _prepare(
     lock = threading.Lock()
 
     def run() -> DataFrame:
-        with lock, prepared.run() as rewritten:
+        with prepared.run() as rewritten:
             # SessionContext's own sql, as ddx's sql_all does: the tables
             # ddx wrote leave the catalog once the statement is planned.
             (frame,) = [
@@ -191,7 +193,11 @@ def _prepare(
     statement_plan = run().logical_plan()
     plans = [*backend.plans, statement_plan]
 
-    def rows() -> pa.Table:
-        return run().to_arrow_table()
+    def rows(write: Callable[[], None]) -> pa.Table:
+        # One lock from the writes until the rows are read, so another call
+        # can't change the tables in between.
+        with lock:
+            write()
+            return run().to_arrow_table()
 
     return rows, plans

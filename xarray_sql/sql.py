@@ -455,7 +455,7 @@ class PreparedQuery:
 
     def __init__(self, ctx: Context, query: str):
         self._ctx = ctx
-        self._gradient: Callable[[], pa.Table] | None = None
+        self._gradient: Callable[[Callable[[], None]], pa.Table] | None = None
         if _ad is not None and _ad.calls_ad(query):
             self._gradient, plans = _ad._prepare(ctx, query)
             # A call may write any Dataset the query reads, which leaves out
@@ -522,8 +522,7 @@ class PreparedQuery:
                     "when it was prepared"
                 )
         if self._gradient is not None:
-            self._ctx._write(tables)
-            return self._gradient()
+            return self._gradient(lambda: self._ctx._write(tables))
         for name, deregistrations in self._read.items():
             if self._ctx._deregistrations.get(name, 0) != deregistrations:
                 raise ValueError(

@@ -1,6 +1,5 @@
 """Tests for queries planned once and run many times (`Context.prepare`)."""
 
-import os
 import time
 
 import numpy as np
@@ -333,12 +332,14 @@ def test_thread_target_is_explicit_and_keeps_xarray_support(threads):
 
 
 def test_thread_target_leaves_the_given_config_unchanged():
-    config = SessionConfig().with_information_schema(True)
+    config = (
+        SessionConfig().with_information_schema(True).with_target_partitions(7)
+    )
     Context(config, threads=2)
     assert Context(config).sql(
         "SELECT value FROM information_schema.df_settings "
         "WHERE name='datafusion.execution.target_partitions'"
-    ).to_pylist() == [{"value": str(os.cpu_count())}]
+    ).to_pylist() == [{"value": "7"}]
 
 
 def test_thread_target_must_be_positive():
