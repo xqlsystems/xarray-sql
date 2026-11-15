@@ -159,3 +159,24 @@ def test_context_prepare_runs_gradient_steps_and_reads_writes(problem):
     np.testing.assert_allclose(
         step()["w"], 2 * x.T @ (x @ (2 * replacement.w.values) - y)
     )
+
+
+def test_prepared_gradient_writes_only_the_tables_it_reads(problem):
+    ctx, x, w, y = problem
+    other = xr.Dataset(
+        {"w": ("feature", w.copy())}, coords={"feature": np.arange(3)}
+    )
+    ctx.from_dataset("w", other)
+    step = ctx.prepare(
+        f"WITH {LOSS} SELECT feature, grad(loss, w) AS w FROM weights ORDER BY feature"
+    )
+    with pytest.raises(ValueError, match="reads no Dataset registered as 'w'"):
+        step(w=other * 2)
+    np.testing.assert_array_equal(
+        ctx.sql("SELECT feature, w FROM w ORDER BY feature").to_dataset()["w"],
+        w,
+    )
+    # The loss reads the targets, so a call may write them.
+    want = 2 * x.T @ (x @ w + y)
+    targets = xr.Dataset({"y": ("sample", -y)}, coords={"sample": np.arange(6)})
+    np.testing.assert_allclose(step(targets=targets)["w"], want)

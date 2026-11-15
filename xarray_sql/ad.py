@@ -54,10 +54,13 @@ they take a ``Context`` like any other ``SessionContext``.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+import threading
+from collections.abc import Callable, Sequence
 
+import ddxdb
 import pyarrow as pa
-from datafusion import SessionContext
+from datafusion import DataFrame, SessionContext
+from datafusion.plan import LogicalPlan
 from ddxdb import ad as _ddx
 
 __all__ = ["STOP_GRADIENT", "calls_ad", "register", "sql", "sql_all"]
@@ -143,18 +146,52 @@ def sql_all(ctx: SessionContext, statements: Sequence[str]) -> list:
     return [wrap(f) for f in frames] if wrap else frames
 
 
-def _prepare(ctx: SessionContext, statement: str):
+class _RecordingBackend(_ddx.DataFusionBackend):
+    """ddx's DataFusion backend, keeping the plan of each query ddx
+    differentiates."""
+
+    def __init__(self, ctx: SessionContext):
+        super().__init__(ctx)
+        self.plans: list[LogicalPlan] = []
+
+    def plan_sql(self, sql: str) -> bytes:
+        self.plans.append(SessionContext.sql(self.ctx, sql).logical_plan())
+        return super().plan_sql(sql)
+
+
+def _prepare(
+    ctx: SessionContext, statement: str
+) -> tuple[Callable[[], pa.Table], list[LogicalPlan]]:
     """``statement``, with the programs of its ``grad``, ``vjp`` and ``jvp``
     calls kept to run it again; calling the result returns its rows.
+
+    Preparing runs the statement once, which builds the programs. That run
+    also gives the logical plans of what the statement reads: the queries
+    ddx differentiates, and the statement once its calls are rewritten.
 
     Between calls, a table may change its rows or be registered again under
     its name, but must keep its columns and their types; a view must keep
     its definition.
     """
-    run = _ddx.prepare(ctx, [statement])
+    backend = _RecordingBackend(ctx)
+    prepared = ddxdb.Prepared(backend, [statement], "datafusion")
+    # Calls wait for each other, since each writes the same tables.
+    lock = threading.Lock()
+
+    def run() -> DataFrame:
+        with lock, prepared.run() as rewritten:
+            # SessionContext's own sql, as ddx's sql_all does: the tables
+            # ddx wrote leave the catalog once the statement is planned.
+            (frame,) = [
+                SessionContext.sql(ctx, s) for s in rewritten.statements
+            ]
+        return frame
+
+    # The first run is what plans the queries ddx differentiates.
+    statement_plan = run().logical_plan()
+    plans = [*backend.plans, statement_plan]
 
     def rows() -> pa.Table:
-        (frame,) = run()
-        return frame.to_arrow_table()
+        return run().to_arrow_table()
 
-    return rows
+    return rows, plans

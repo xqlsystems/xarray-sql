@@ -1,3 +1,4 @@
+import copy
 import re
 import time
 import uuid
@@ -78,7 +79,11 @@ class Context(SessionContext):
                 )
             )
         if threads is not None:
-            config = config.with_target_partitions(threads)
+            # SessionConfig's with_ methods set the setting on the config
+            # they're called on, so set it on a copy: the caller's config is
+            # theirs to use again. The copy shares the Rust config, which
+            # with_target_partitions replaces rather than changes.
+            config = copy.copy(config).with_target_partitions(threads)
         super().__init__(config, *args, **kwargs)
         # Track registered xarray Datasets so XarrayDataFrame can recover
         # defaults (dimension_columns) and metadata (var/dataset attrs,
@@ -441,8 +446,9 @@ class PreparedQuery:
     are evaluated once, when the query is prepared.
 
     A query that calls ``grad``, ``vjp`` or ``jvp`` keeps the programs ddx
-    builds for those calls, rather than a plan. A table it reads may also be
-    registered again under the same name, with the same columns and types.
+    builds for those calls, rather than a plan. Preparing it runs it once,
+    to build them and to find the tables it reads. A table it reads may also
+    be registered again under the same name, with the same columns and types.
     A view it reads must keep its definition; prepare the query again after
     changing one.
     """
@@ -451,7 +457,13 @@ class PreparedQuery:
         self._ctx = ctx
         self._gradient: Callable[[], pa.Table] | None = None
         if _ad is not None and _ad.calls_ad(query):
-            self._gradient = _ad._prepare(ctx, query)
+            self._gradient, plans = _ad._prepare(ctx, query)
+            # A call may write any Dataset the query reads, which leaves out
+            # the tables ddx wrote. It finds each by name, so one registered
+            # again is written too.
+            self._writable = set().union(*map(_tables_read, plans)) & set(
+                ctx._registered_datasets
+            )
             return
         start = time.perf_counter()
         df = SessionContext.sql(ctx, query)
@@ -500,18 +512,18 @@ class PreparedQuery:
         Returns:
             The query's rows.
         """
-        if self._gradient is not None:
-            for name in tables:
-                if name not in self._ctx._registered_datasets:
-                    raise ValueError(f"no Dataset is registered as {name!r}")
-            self._ctx._write(tables)
-            return self._gradient()
+        writable = (
+            self._registered if self._gradient is None else self._writable
+        )
         for name in tables:
-            if name not in self._registered:
+            if name not in writable:
                 raise ValueError(
                     f"the query reads no Dataset registered as {name!r} "
                     "when it was prepared"
                 )
+        if self._gradient is not None:
+            self._ctx._write(tables)
+            return self._gradient()
         for name, deregistrations in self._read.items():
             if self._ctx._deregistrations.get(name, 0) != deregistrations:
                 raise ValueError(
