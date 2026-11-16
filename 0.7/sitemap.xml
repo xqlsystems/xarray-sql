@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url>
+        <loc>https://xqlsystems.github.io/xarray-sql/0.7/</loc>
+      </url>
+      <url>
+        <loc>https://xqlsystems.github.io/xarray-sql/0.7/browser/</loc>
+      </url>
+      <url>
+        <loc>https://xqlsystems.github.io/xarray-sql/0.7/contributing/</loc>
+      </url>
+      <url>
+        <loc>https://xqlsystems.github.io/xarray-sql/0.7/engines/</loc>
+      </url>
+      <url>
+        <loc>https://xqlsystems.github.io/xarray-sql/0.7/examples/</loc>
+      </url>
+      <url>
+        <loc>https://xqlsystems.github.io/xarray-sql/0.7/geospatial/</loc>
+      </url>
+      <url>
+        <loc>https://xqlsystems.github.io/xarray-sql/0.7/how-it-works/</loc>
+      </url>
+      <url>
+        <loc>https://xqlsystems.github.io/xarray-sql/0.7/learn/</loc>
+      </url>
+      <url>
+        <loc>https://xqlsystems.github.io/xarray-sql/0.7/limitations/</loc>
+      </url>
+      <url>
+        <loc>https://xqlsystems.github.io/xarray-sql/0.7/performance/</loc>
+      </url>
+      <url>
+        <loc>https://xqlsystems.github.io/xarray-sql/0.7/reference/xarray_sql/</loc>
+      </url>
+</urlset>
