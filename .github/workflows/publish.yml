@@ -141,20 +141,21 @@ jobs:
         with:
           rust-toolchain: stable
           rustup-components: rust-std rustfmt
-          # No `manylinux:` — sdist is platform-independent and runs on the
-          # host runner, which has python3 available. Running this in a
-          # manylinux container fails because maturin verifies the sdist by
-          # building a wheel from it, and the container has no interpreter.
-          args: --release --sdist --out dist
+          # `maturin sdist` builds only the source distribution. `maturin
+          # build --sdist` also builds a wheel for the host runner, whose
+          # platform tag PyPI may reject (`linux_x86_64`). No `manylinux:`,
+          # since an sdist is platform-independent.
+          command: sdist
+          args: --out dist
 
-      - name: Assert sdist build does not generate wheels
+      - name: Assert the sdist build made no wheels
         run: |
-          if [ -d "target/wheels" ] && [ "$(ls -A target/wheels)" ]; then
-            echo "Error: Sdist build generated wheels"
+          if ls dist/*.whl target/wheels/*.whl >/dev/null 2>&1; then
+            echo "Error: the sdist build made wheels:"
+            ls dist/*.whl target/wheels/*.whl 2>/dev/null
             exit 1
-          else
-            echo "Directory is clean"
           fi
+          ls dist
 
       - uses: actions/upload-artifact@v6
         with:
