@@ -7507,15 +7507,15 @@ too. <code>ds</code> must match <code>w_ds</code> in all but its values: the sam
 variables, dtypes, dims and coordinates, and NaN or NaT in the same
 places, since xarray-sql reads them as NULL.</p>
 <p>To change anything else, register the new Dataset and prepare the
-query again. A call raises if a table the query reads has been
-registered again since it was prepared. Functions such as <code>now()</code>
+query again. A call raises if a table the query reads, in a subquery
+too, has been registered again since it was prepared, or a view it
+reads has been replaced or dropped. Functions such as <code>now()</code>
 are evaluated once, when the query is prepared.</p>
 <p>A query that calls <code>grad</code>, <code>vjp</code> or <code>jvp</code> keeps the programs ddx
 builds for those calls, rather than a plan. Preparing it runs it once,
 to build them and to find the tables it reads. A table it reads may also
 be registered again under the same name, with the same columns and types.
-A view it reads must keep its definition; prepare the query again after
-changing one.</p>
+A call raises if a view it reads has been replaced or dropped.</p>
 
 
 
@@ -19008,15 +19008,15 @@ too. <code>ds</code> must match <code>w_ds</code> in all but its values: the sam
 variables, dtypes, dims and coordinates, and NaN or NaT in the same
 places, since xarray-sql reads them as NULL.</p>
 <p>To change anything else, register the new Dataset and prepare the
-query again. A call raises if a table the query reads has been
-registered again since it was prepared. Functions such as <code>now()</code>
+query again. A call raises if a table the query reads, in a subquery
+too, has been registered again since it was prepared, or a view it
+reads has been replaced or dropped. Functions such as <code>now()</code>
 are evaluated once, when the query is prepared.</p>
 <p>A query that calls <code>grad</code>, <code>vjp</code> or <code>jvp</code> keeps the programs ddx
 builds for those calls, rather than a plan. Preparing it runs it once,
 to build them and to find the tables it reads. A table it reads may also
 be registered again under the same name, with the same columns and types.
-A view it reads must keep its definition; prepare the query again after
-changing one.</p>
+A call raises if a view it reads has been replaced or dropped.</p>
 
 
 
