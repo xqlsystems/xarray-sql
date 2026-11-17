@@ -281,7 +281,7 @@ class Context(SessionContext):
         try:
             catalog = self.catalog(*path[:-1])
             schema = catalog.schema(*path[-1:])
-            return schema.table(table).kind == "view"
+            return bool(schema.table(table).kind == "view")
         except Exception:  # noqa: BLE001 - DataFusion raises a bare Exception
             return False
 
@@ -367,13 +367,22 @@ class Context(SessionContext):
         coord_arrays = shared_coord_arrays(input_table)
 
         if len(groups) <= 1:
-            self._registered_datasets[name] = input_table
-            return self._from_dataset(
+            self._from_dataset(
                 name, input_table, chunks, coord_arrays=coord_arrays
             )
+            # Recorded once DataFusion has registered the table, which it
+            # refuses to do under a name that's taken.
+            self._registered_datasets[name] = input_table
+            return self
 
         schema = Schema.memory_schema(self)
-        self.catalog().register_schema(name, schema)
+        # register_schema replaces a schema of the same name, tables and
+        # all, so each of its tables counts as replaced.
+        catalog = self.catalog()
+        if name in catalog.schema_names():
+            for table in catalog.schema(name).table_names():
+                self._forget(f"{name}.{table}")
+        catalog.register_schema(name, schema)
 
         for dims, var_names in groups.items():
             sub_name = names[dims]
@@ -432,7 +441,8 @@ class Context(SessionContext):
         placeholder = f"_xarray_sql_{uuid.uuid4().hex}"
         self.register_record_batches(placeholder, partitions)
         table = self.catalog().schema().table(placeholder)
-        self.deregister_table(placeholder)
+        # A placeholder isn't a table anyone replaced.
+        SessionContext.deregister_table(self, placeholder)
         return table
 
     def _maybe_register_cftime_udf(self, ds: xr.Dataset) -> None:
@@ -577,10 +587,11 @@ class Context(SessionContext):
             for var in registered.data_vars:
                 old, new = registered[var].variable, ds[var].variable
                 # Dims are matched by name, as xarray matches them.
-                if set(new.dims) != set(old.dims) or new.dtype != old.dtype:
+                if new.sizes != old.sizes or new.dtype != old.dtype:
                     raise ValueError(
-                        f"{name}.{var} is {old.dtype} over {old.dims}, and "
-                        f"the new values are {new.dtype} over {new.dims}"
+                        f"{name}.{var} is {old.dtype} over "
+                        f"{dict(old.sizes)}, and the new values are "
+                        f"{new.dtype} over {dict(new.sizes)}"
                     )
                 target = old.data
                 # A table reads a NumPy array's memory, shared or on every

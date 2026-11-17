@@ -37,6 +37,9 @@ def test_datasets_are_the_registered_datasets_and_read_only():
     assert ctx.datasets["a"] is a
     with pytest.raises(TypeError):
         ctx.datasets["b"] = a
+    with pytest.raises(Exception, match="already exists"):
+        ctx.from_dataset("a", _table(np.zeros(3)))
+    assert ctx.datasets["a"] is a
 
 
 def test_a_write_reaches_queries_and_datasets_but_not_replacements(ctx):
@@ -46,15 +49,21 @@ def test_a_write_reaches_queries_and_datasets_but_not_replacements(ctx):
     assert dict(ctx.replacements) == {}
 
 
-def test_a_write_that_fails_a_check_writes_no_table(ctx):
-    with pytest.raises(ValueError, match="int64"):
+@pytest.mark.parametrize(
+    "bad, match", [(np.arange(3.0), "float64"), (np.arange(5), "'k': 5")]
+)
+def test_a_write_that_fails_a_check_writes_no_table(bad, match):
+    ctx = Context()
+    ctx.from_dataset("a", xr.Dataset({"v": ("i", np.arange(3))}))
+    ctx.from_dataset("b", xr.Dataset({"v": ("k", np.arange(3))}))
+    with pytest.raises(ValueError, match=match):
         ctx.write(
             {
-                "a": _table(np.array([7.0, 8.0, 9.0])),
-                "b": _table(np.array([7, 8, 9])),
+                "a": xr.Dataset({"v": ("i", np.arange(7, 10))}),
+                "b": xr.Dataset({"v": ("k", bad)}),
             }
         )
-    assert _values(ctx, "a") == [0.0, 1.0, 2.0]
+    assert _values(ctx, "a") == [0, 1, 2]
 
 
 def test_a_write_needs_a_registered_dataset(ctx):
@@ -77,6 +86,22 @@ def test_replacements_count_each_table_or_view_replaced(ctx, change, name):
     ctx.sql("CREATE VIEW v AS SELECT v FROM b")
     change(ctx)
     assert dict(ctx.replacements) == {name: 1}
+
+
+def _split(v):
+    return xr.Dataset(
+        {"v": ("i", v), "t": (("i", "j"), np.ones((len(v), 2)))},
+        coords={"i": np.arange(len(v)), "j": np.arange(2)},
+    )
+
+
+def test_registering_a_split_dataset_again_replaces_each_table():
+    ctx = Context()
+    ctx.from_dataset("g", _split(np.arange(3.0)))
+    assert dict(ctx.replacements) == {}
+    ctx.from_dataset("g", _split(np.array([7.0, 8.0, 9.0])))
+    assert dict(ctx.replacements) == {"g.i": 1, "g.i_j": 1}
+    assert _values(ctx, "g.i") == [7.0, 8.0, 9.0]
 
 
 def test_creating_a_table_or_view_replaces_nothing(ctx):
