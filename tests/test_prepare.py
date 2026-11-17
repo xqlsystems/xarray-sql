@@ -260,6 +260,43 @@ def test_a_table_replaced_in_sql_counts_too(comment):
         query()
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT i FROM a WHERE i IN (SELECT i FROM b) GROUP BY i ORDER BY i",
+        "SELECT i, (SELECT MAX(w) FROM b) AS m FROM a GROUP BY i ORDER BY i",
+        (
+            "SELECT i FROM a WHERE EXISTS (SELECT 1 FROM b WHERE b.i = a.i) "
+            "GROUP BY i ORDER BY i"
+        ),
+    ],
+)
+def test_a_table_read_only_in_a_subquery_counts_too(ctx, query):
+    prepared = ctx.prepare(query)
+    ctx.deregister_table("b")
+    ctx.from_dataset("b", _b(np.ones((4, 3))))
+    with pytest.raises(ValueError, match="registered again"):
+        prepared()
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "CREATE OR REPLACE VIEW v AS SELECT w AS x FROM b",
+        "DROP VIEW v",
+        'DROP /* refresh */ VIEW -- now\n "public"."v"',
+        "DROP VIEW datafusion.public.v",
+    ],
+)
+@pytest.mark.parametrize("read", ["v", "public.v"])
+def test_a_view_replaced_or_dropped_in_sql_counts_too(ctx, statement, read):
+    ctx.sql("CREATE VIEW v AS SELECT v AS x FROM a").collect()
+    query = ctx.prepare(f"SELECT SUM(x) AS s FROM {read}")
+    ctx.sql(statement).collect()
+    with pytest.raises(ValueError, match="replaced or dropped"):
+        query()
+
+
 def test_a_dataset_replaced_in_sql_takes_no_writes(ctx):
     ctx.sql("CREATE OR REPLACE TABLE a AS SELECT * FROM b").collect()
     query = ctx.prepare("SELECT SUM(w) AS s FROM a")

@@ -10,7 +10,6 @@ import pyarrow as pa
 import xarray as xr
 from datafusion import SessionConfig, SessionContext
 from datafusion.catalog import Schema
-from datafusion.expr import TableScan
 from datafusion.plan import ExecutionPlan, LogicalPlan
 
 from . import cftime as cft
@@ -301,8 +300,8 @@ class Context(SessionContext):
         Returns:
             An [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame] wrapping the DataFusion DataFrame.
         """
-        # DataFusion runs a statement that replaces or drops a table as it
-        # plans it, without deregistering the table.
+        # DataFusion runs a statement that replaces or drops a table or a
+        # view as it plans it, without deregistering it.
         replaced = _table_replaced(query)
         existed = replaced is not None and self.table_exist(replaced)
         if _ad is not None and _ad.calls_ad(query):
@@ -315,10 +314,7 @@ class Context(SessionContext):
         else:
             df = super().sql(query, *args, **kwargs)
         if replaced is not None and existed:
-            # DataFusion keeps a quoted name's case, and lowers an unquoted
-            # one.
-            quoted = replaced.startswith('"')
-            self._forget(replaced[1:-1] if quoted else replaced.lower())
+            self._forget(_resolved(replaced))
         return self._wrap(df)
 
     def deregister_table(self, name: str) -> None:
@@ -330,6 +326,7 @@ class Context(SessionContext):
     def _forget(self, name: str) -> None:
         """Forget the Dataset registered as ``name``, whose table has been
         removed or replaced."""
+        name = _unqualified(name)
         self._registered_datasets.pop(name, None)
         self._deregistrations[name] = self._deregistrations.get(name, 0) + 1
 
@@ -441,16 +438,16 @@ class PreparedQuery:
     places, since xarray-sql reads them as NULL.
 
     To change anything else, register the new Dataset and prepare the
-    query again. A call raises if a table the query reads has been
-    registered again since it was prepared. Functions such as ``now()``
+    query again. A call raises if a table the query reads, in a subquery
+    too, has been registered again since it was prepared, or a view it
+    reads has been replaced or dropped. Functions such as ``now()``
     are evaluated once, when the query is prepared.
 
     A query that calls ``grad``, ``vjp`` or ``jvp`` keeps the programs ddx
     builds for those calls, rather than a plan. Preparing it runs it once,
     to build them and to find the tables it reads. A table it reads may also
     be registered again under the same name, with the same columns and types.
-    A view it reads must keep its definition; prepare the query again after
-    changing one.
+    A call raises if a view it reads has been replaced or dropped.
     """
 
     def __init__(self, ctx: Context, query: str):
@@ -464,6 +461,13 @@ class PreparedQuery:
             self._writable = set().union(*map(_tables_read, plans)) & set(
                 ctx._registered_datasets
             )
+            # ddx built its programs from each view's SQL as it was then.
+            self._read = {
+                name: ctx._deregistrations.get(name, 0)
+                for name in map(
+                    _unqualified, set().union(*map(_views_read, plans))
+                )
+            }
             return
         start = time.perf_counter()
         df = SessionContext.sql(ctx, query)
@@ -474,15 +478,18 @@ class PreparedQuery:
         # it was prepared with, and functions such as now() keep the values
         # they were folded into.
         self._optimized = df.optimized_logical_plan()
-        # Each table the query reads, by how often its name had been
-        # deregistered; and of those, the Datasets a call may write into.
+        # Each table and view the query reads, by how often its name had
+        # been deregistered; and of the tables, the Datasets a call may
+        # write into.
+        logical = df.logical_plan()
+        tables = _tables_read(logical)
         self._read = {
             name: ctx._deregistrations.get(name, 0)
-            for name in _tables_read(df.logical_plan())
+            for name in map(_unqualified, tables | _views_read(logical))
         }
         self._registered = {
             name: ctx._registered_datasets[name]
-            for name in self._read
+            for name in tables
             if name in ctx._registered_datasets
         }
         # A plan keeps state from a run (a hash join keeps the table it
@@ -521,14 +528,15 @@ class PreparedQuery:
                     f"the query reads no Dataset registered as {name!r} "
                     "when it was prepared"
                 )
-        if self._gradient is not None:
-            return self._gradient(lambda: self._ctx._write(tables))
         for name, deregistrations in self._read.items():
             if self._ctx._deregistrations.get(name, 0) != deregistrations:
                 raise ValueError(
-                    f"{name!r} has been registered again since the query was "
-                    "prepared; prepare the query again"
+                    f"{name!r} has been registered again, replaced or "
+                    "dropped since the query was prepared; prepare the "
+                    "query again"
                 )
+        if self._gradient is not None:
+            return self._gradient(lambda: self._ctx._write(tables))
         self._ctx._write(tables)
         if self._plan is None:
             df = self._ctx.create_dataframe_from_logical_plan(self._optimized)
@@ -553,33 +561,77 @@ def _copy(ctx: SessionContext, plan: ExecutionPlan) -> ExecutionPlan:
     return ExecutionPlan.from_bytes(ctx, plan.to_bytes())
 
 
+# A plan's display prints each of its nodes on a line of its own, with each
+# subquery's plan under the node whose expression holds it. The display is
+# read, rather than the nodes, since a node's inputs leave out its
+# subqueries, and datafusion-python's expressions don't reach every
+# subquery's plan (``EXISTS``'s, for one). DataFusion prints a scan's
+# options after its table's name, and a view's plan under its name.
+_SCAN = re.compile(
+    r"^ *TableScan: (.+?)"
+    r"(?: (?:projection|partial_filters|full_filters|fetch)=.*)?$",
+    re.MULTILINE,
+)
+_ALIAS = re.compile(r"^ *SubqueryAlias: (.+)$", re.MULTILINE)
+
+
 def _tables_read(plan: LogicalPlan) -> set[str]:
-    """The names of the tables ``plan`` scans, through any views."""
-    names = set()
-    stack = [plan]
-    while stack:
-        node = stack.pop()
-        variant = node.to_variant()
-        if isinstance(variant, TableScan):
-            names.add(variant.table_name())
-        stack.extend(node.inputs())
-    return names
+    """The names of the tables ``plan`` scans, in its subqueries too, and
+    through any views."""
+    return set(_SCAN.findall(plan.display_indent()))
 
 
+def _views_read(plan: LogicalPlan) -> set[str]:
+    """The names of the views ``plan`` reads, in its subqueries too.
+
+    DataFusion plans a view as its query, under its name, as it plans
+    ``FROM t AS x`` under ``x``, so these include the names a query gives
+    with ``AS``, less those of the tables it scans. One that's also the
+    name of a table the query doesn't read makes a prepared query raise
+    once that table is registered again, but never read anything wrongly.
+    """
+    text = plan.display_indent()
+    return set(_ALIAS.findall(text)) - set(_SCAN.findall(text))
+
+
+# Whitespace or comments, which SQL reads between any two words.
+_GAP = r"(?:\s|--[^\n]*|/\*.*?\*/)"
+# A name's part: quoted, which keeps its case, or not, which DataFusion
+# lowers.
+_PART = r'"[^"]+"|\w+'
 _TABLE_DDL = re.compile(
-    # Any comments before the statement, then the statement.
-    r"(?:\s+|--[^\n]*|/\*.*?\*/)*"
-    r"(?:CREATE\s+OR\s+REPLACE\s+(?:EXTERNAL\s+)?TABLE|DROP\s+TABLE)"
-    r"\s+(?:IF\s+EXISTS\s+)?(\"[^\"]+\"|[\w.]+)",
+    rf"{_GAP}*"
+    rf"(?:CREATE{_GAP}+OR{_GAP}+REPLACE{_GAP}+(?:(?:EXTERNAL{_GAP}+)?TABLE|VIEW)"
+    rf"|DROP{_GAP}+(?:TABLE|VIEW))"
+    rf"{_GAP}+(?:IF{_GAP}+EXISTS{_GAP}+)?((?:{_PART})(?:\.(?:{_PART}))*)",
     re.IGNORECASE | re.DOTALL,
 )
 
 
 def _table_replaced(query: str) -> str | None:
-    """The name of the table ``query`` replaces or drops, as it's written,
-    or ``None`` for any other statement."""
+    """The name of the table or view ``query`` replaces or drops, as it's
+    written, or ``None`` for any other statement."""
     match = _TABLE_DDL.match(query)
     return None if match is None else match.group(1)
+
+
+def _resolved(name: str) -> str:
+    """``name``, written in SQL, as a plan's display prints it: each part
+    unquoted, or lowered if it wasn't quoted, joined by dots."""
+    return ".".join(
+        part[1:-1] if part.startswith('"') else part.lower()
+        for part in re.findall(_PART, name)
+    )
+
+
+def _unqualified(name: str) -> str:
+    """``name`` without DataFusion's default catalog and schema, which a
+    query may name or leave out: ``datafusion.public.v`` and ``public.v``
+    are both ``v``."""
+    for prefix in ("datafusion.public.", "public."):
+        if name.startswith(prefix):
+            return name[len(prefix) :]
+    return name
 
 
 def _missing(values: np.ndarray) -> np.ndarray | None:
