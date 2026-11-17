@@ -314,10 +314,7 @@ class Context(SessionContext):
         else:
             df = super().sql(query, *args, **kwargs)
         if replaced is not None and existed:
-            # DataFusion keeps a quoted name's case, and lowers an unquoted
-            # one.
-            quoted = replaced.startswith('"')
-            self._forget(replaced[1:-1] if quoted else replaced.lower())
+            self._forget(_resolved(replaced))
         return self._wrap(df)
 
     def deregister_table(self, name: str) -> None:
@@ -329,6 +326,7 @@ class Context(SessionContext):
     def _forget(self, name: str) -> None:
         """Forget the Dataset registered as ``name``, whose table has been
         removed or replaced."""
+        name = _unqualified(name)
         self._registered_datasets.pop(name, None)
         self._deregistrations[name] = self._deregistrations.get(name, 0) + 1
 
@@ -466,7 +464,9 @@ class PreparedQuery:
             # ddx built its programs from each view's SQL as it was then.
             self._read = {
                 name: ctx._deregistrations.get(name, 0)
-                for name in set().union(*map(_views_read, plans))
+                for name in map(
+                    _unqualified, set().union(*map(_views_read, plans))
+                )
             }
             return
         start = time.perf_counter()
@@ -485,7 +485,7 @@ class PreparedQuery:
         tables = _tables_read(logical)
         self._read = {
             name: ctx._deregistrations.get(name, 0)
-            for name in tables | _views_read(logical)
+            for name in map(_unqualified, tables | _views_read(logical))
         }
         self._registered = {
             name: ctx._registered_datasets[name]
@@ -594,12 +594,16 @@ def _views_read(plan: LogicalPlan) -> set[str]:
     return set(_ALIAS.findall(text)) - set(_SCAN.findall(text))
 
 
+# Whitespace or comments, which SQL reads between any two words.
+_GAP = r"(?:\s|--[^\n]*|/\*.*?\*/)"
+# A name's part: quoted, which keeps its case, or not, which DataFusion
+# lowers.
+_PART = r'"[^"]+"|\w+'
 _TABLE_DDL = re.compile(
-    # Any comments before the statement, then the statement.
-    r"(?:\s+|--[^\n]*|/\*.*?\*/)*"
-    r"(?:CREATE\s+OR\s+REPLACE\s+(?:(?:EXTERNAL\s+)?TABLE|VIEW)"
-    r"|DROP\s+(?:TABLE|VIEW))"
-    r"\s+(?:IF\s+EXISTS\s+)?(\"[^\"]+\"|[\w.]+)",
+    rf"{_GAP}*"
+    rf"(?:CREATE{_GAP}+OR{_GAP}+REPLACE{_GAP}+(?:(?:EXTERNAL{_GAP}+)?TABLE|VIEW)"
+    rf"|DROP{_GAP}+(?:TABLE|VIEW))"
+    rf"{_GAP}+(?:IF{_GAP}+EXISTS{_GAP}+)?((?:{_PART})(?:\.(?:{_PART}))*)",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -609,6 +613,25 @@ def _table_replaced(query: str) -> str | None:
     written, or ``None`` for any other statement."""
     match = _TABLE_DDL.match(query)
     return None if match is None else match.group(1)
+
+
+def _resolved(name: str) -> str:
+    """``name``, written in SQL, as a plan's display prints it: each part
+    unquoted, or lowered if it wasn't quoted, joined by dots."""
+    return ".".join(
+        part[1:-1] if part.startswith('"') else part.lower()
+        for part in re.findall(_PART, name)
+    )
+
+
+def _unqualified(name: str) -> str:
+    """``name`` without DataFusion's default catalog and schema, which a
+    query may name or leave out: ``datafusion.public.v`` and ``public.v``
+    are both ``v``."""
+    for prefix in ("datafusion.public.", "public."):
+        if name.startswith(prefix):
+            return name[len(prefix) :]
+    return name
 
 
 def _missing(values: np.ndarray) -> np.ndarray | None:

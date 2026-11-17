@@ -281,11 +281,17 @@ def test_a_table_read_only_in_a_subquery_counts_too(ctx, query):
 
 @pytest.mark.parametrize(
     "statement",
-    ["CREATE OR REPLACE VIEW v AS SELECT w AS x FROM b", "DROP VIEW v"],
+    [
+        "CREATE OR REPLACE VIEW v AS SELECT w AS x FROM b",
+        "DROP VIEW v",
+        'DROP /* refresh */ VIEW -- now\n "public"."v"',
+        "DROP VIEW datafusion.public.v",
+    ],
 )
-def test_a_view_replaced_or_dropped_in_sql_counts_too(ctx, statement):
+@pytest.mark.parametrize("read", ["v", "public.v"])
+def test_a_view_replaced_or_dropped_in_sql_counts_too(ctx, statement, read):
     ctx.sql("CREATE VIEW v AS SELECT v AS x FROM a").collect()
-    query = ctx.prepare("SELECT SUM(x) AS s FROM v")
+    query = ctx.prepare(f"SELECT SUM(x) AS s FROM {read}")
     ctx.sql(statement).collect()
     with pytest.raises(ValueError, match="replaced or dropped"):
         query()
