@@ -161,6 +161,19 @@ def test_context_prepare_runs_gradient_steps_and_reads_writes(problem):
     )
 
 
+def test_prepared_gradient_reads_a_view_as_it_was_prepared(problem):
+    ctx, x, w, y = problem
+    ctx.sql("CREATE VIEW features AS SELECT * FROM data").collect()
+    step = ctx.prepare(
+        f"WITH {LOSS.replace('FROM data', 'FROM features')} "
+        "SELECT feature, grad(loss, w) AS w FROM weights ORDER BY feature"
+    )
+    np.testing.assert_allclose(step()["w"], 2 * x.T @ (x @ w - y))
+    ctx.sql("CREATE OR REPLACE VIEW features AS SELECT * FROM data").collect()
+    with pytest.raises(ValueError, match="replaced or dropped"):
+        step()
+
+
 def test_prepared_gradient_writes_only_the_tables_it_reads(problem):
     ctx, x, w, y = problem
     other = xr.Dataset(
