@@ -202,6 +202,12 @@ def test_a_table_replaced_by_datafusion_counts_as_registered_again(ctx):
         query()
 
 
+def test_a_table_named_with_its_schema_takes_writes(ctx):
+    query = ctx.prepare("SELECT i, j, v FROM datafusion.public.a ORDER BY i, j")
+    new = _a(np.ones((4, 3)))
+    assert query(a=new)["v"].to_pylist() == [1.0] * 12
+
+
 def test_a_table_the_query_doesnt_read_can_be_registered_again(ctx):
     query = ctx.prepare("SELECT SUM(v) AS s FROM a")
     want = query()

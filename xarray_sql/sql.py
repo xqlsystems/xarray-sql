@@ -2,13 +2,19 @@ import copy
 import re
 import time
 import uuid
-from collections.abc import Callable
-from types import ModuleType
+from collections.abc import Callable, Mapping, Sequence
+from types import MappingProxyType, ModuleType
 
 import numpy as np
 import pyarrow as pa
 import xarray as xr
-from datafusion import SessionConfig, SessionContext
+from datafusion import (
+    AggregateUDF,
+    ScalarUDF,
+    SessionConfig,
+    SessionContext,
+    WindowUDF,
+)
 from datafusion.catalog import Schema
 from datafusion.plan import ExecutionPlan, LogicalPlan
 
@@ -91,11 +97,14 @@ class Context(SessionContext):
         # in SQL (e.g. ``"air"`` for a uniform-dim Dataset, or
         # ``"era5.surface"`` for one entry from a multi-dim-group split).
         self._registered_datasets: dict[str, xr.Dataset] = {}
-        # How many times each name's table has been removed or replaced.
-        # DataFusion refuses to register a name that's taken, so a table
-        # registered again from Python was deregistered first; SQL that
-        # replaces or drops a table counts too (see sql()).
-        self._deregistrations: dict[str, int] = {}
+        # How many times each name's table or view has been removed or
+        # replaced. DataFusion refuses to register a name that's taken, so a
+        # table registered again from Python was deregistered first; SQL
+        # that replaces or drops a table or a view counts too (see sql()).
+        self._replacements: dict[str, int] = {}
+        # The function last registered under each name through this
+        # Context's register_ methods, which pyproj's reproject() below is.
+        self._functions: dict[str, ScalarUDF | AggregateUDF | WindowUDF] = {}
         # With pyproj installed, every context speaks CRS out of the box:
         # reproject(x, y, src_crs, dst_crs), à la PostGIS ST_Transform.
         if _proj is not None:
@@ -118,6 +127,193 @@ class Context(SessionContext):
         derived.__dict__.update(self.__dict__)
         derived.ctx = session.ctx
         return derived
+
+    @property
+    def datasets(self) -> Mapping[str, xr.Dataset]:
+        """The Dataset registered under each table's name, read-only.
+
+        Each value is the very Dataset the table reads, not a copy:
+        [write][xarray_sql.Context.write] updates it in place, so it holds
+        the new values as soon as ``write`` returns. Changing its arrays
+        any other way skips ``write``'s checks. A Dataset split into a
+        table per group of dims is listed under each table's qualified
+        name, such as ``"era5.surface"``. Tables registered any other way,
+        such as with ``SessionContext.register_record_batches``, aren't
+        listed.
+        """
+        return MappingProxyType(self._registered_datasets)
+
+    @property
+    def replacements(self) -> Mapping[str, int]:
+        """How many times each table or view has been replaced or dropped,
+        by name, read-only.
+
+        It counts [deregister_table][xarray_sql.Context.deregister_table],
+        which registering a name again needs first, and a statement run
+        with [sql][xarray_sql.Context.sql] that replaces or drops a table
+        or a view: ``CREATE OR REPLACE TABLE``, ``CREATE OR REPLACE VIEW``,
+        ``DROP TABLE`` or ``DROP VIEW``, and ``DROP SCHEMA`` for each table
+        and view in the schema. A ``CREATE OR REPLACE`` that fails counts
+        if it dropped the old table first. A name never replaced isn't in
+        it.
+        Names leave out DataFusion's default catalog and schema, as
+        [tables_read][xarray_sql.Context.tables_read] does. Writing new
+        values with [write][xarray_sql.Context.write] doesn't count.
+
+        A change made through ``SessionContext``'s own methods, such as
+        ``SessionContext.sql(ctx, ...)``, or from Rust, isn't counted.
+        """
+        return MappingProxyType(self._replacements)
+
+    @property
+    def registered_functions(
+        self,
+    ) -> Mapping[str, ScalarUDF | AggregateUDF | WindowUDF]:
+        """The function last registered under each name through this
+        Context, read-only.
+
+        It holds each ``ScalarUDF``, ``AggregateUDF`` and ``WindowUDF``
+        registered with [register_udf][xarray_sql.Context.register_udf],
+        [register_udaf][xarray_sql.Context.register_udaf] or
+        [register_udwf][xarray_sql.Context.register_udwf], less those
+        deregistered since. Registering a name again replaces its value
+        with the new object, so comparing objects shows whether a name was
+        registered again. Unlike DataFusion's ``udfs()``, it leaves out the
+        built-in functions, so it shows when a name such as ``sum`` means a
+        function of the user's.
+
+        Keys are each function's name as it was registered. SQL lowers an
+        unquoted name before looking it up, so compare lowered names to
+        match what a query calls.
+
+        It doesn't see a function registered from Rust: by an extension
+        bundle in [with_extensions][xarray_sql.Context.with_extensions],
+        by ``enable_spark_functions``, or by ddx, the package that
+        differentiates SQL, whose ``ddx_stop_gradient`` every Context has
+        with ``pip install "xarray-sql[ml]"``. Nor does it see one
+        registered through
+        ``SessionContext``'s own methods.
+        """
+        return MappingProxyType(self._functions)
+
+    def register_udf(self, udf: ScalarUDF) -> None:
+        """Register a scalar function, as ``SessionContext.register_udf``
+        does, and record it in
+        [registered_functions][xarray_sql.Context.registered_functions]."""
+        super().register_udf(udf)
+        self._functions[udf.name] = udf
+
+    def register_udaf(self, udaf: AggregateUDF) -> None:
+        """Register an aggregate function, as
+        ``SessionContext.register_udaf`` does, and record it in
+        [registered_functions][xarray_sql.Context.registered_functions]."""
+        super().register_udaf(udaf)
+        self._functions[udaf.name] = udaf
+
+    def register_udwf(self, udwf: WindowUDF) -> None:
+        """Register a window function, as ``SessionContext.register_udwf``
+        does, and record it in
+        [registered_functions][xarray_sql.Context.registered_functions]."""
+        super().register_udwf(udwf)
+        self._functions[udwf.name] = udwf
+
+    def deregister_udf(self, name: str) -> None:
+        """Remove a scalar function, and forget it in
+        [registered_functions][xarray_sql.Context.registered_functions]."""
+        super().deregister_udf(name)
+        self._forget_function(name, ScalarUDF)
+
+    def deregister_udaf(self, name: str) -> None:
+        """Remove an aggregate function, and forget it in
+        [registered_functions][xarray_sql.Context.registered_functions]."""
+        super().deregister_udaf(name)
+        self._forget_function(name, AggregateUDF)
+
+    def deregister_udwf(self, name: str) -> None:
+        """Remove a window function, and forget it in
+        [registered_functions][xarray_sql.Context.registered_functions]."""
+        super().deregister_udwf(name)
+        self._forget_function(name, WindowUDF)
+
+    def _forget_function(self, name: str, kind: type) -> None:
+        """Forget the function of ``kind`` recorded as ``name``, which a
+        function of another kind of the same name leaves alone."""
+        if isinstance(self._functions.get(name), kind):
+            del self._functions[name]
+
+    def tables_read(self, plan: LogicalPlan) -> set[str]:
+        """The names of the tables and views a query's plan reads.
+
+        It finds them in the plan's subqueries too (``IN``, ``EXISTS`` and
+        scalar subqueries), and lists both a view's own name and the tables
+        under it. Names leave out DataFusion's default catalog and schema,
+        so a query of ``public.air`` reads ``"air"``, the key it has in
+        [datasets][xarray_sql.Context.datasets].
+
+        Views are told apart from names given with ``AS`` by looking them
+        up in this Context's catalog as it is now, so call this before a
+        view the plan reads is dropped. A name given with ``AS`` that's
+        also a view's is listed too.
+
+        Args:
+            plan: A query's logical plan, such as
+                ``ctx.sql(query).logical_plan()``.
+
+        Returns:
+            The names of the tables and views ``plan`` reads.
+        """
+        read = set()
+        for name in _SCAN.findall(plan.display_indent()):
+            # A table dropped since the plan was made is in no reading.
+            read |= self._keys(name) or {_key(name.split("."))}
+        return read | self._views_read(plan)
+
+    def _views_read(self, plan: LogicalPlan) -> set[str]:
+        """The names of the views ``plan`` reads, in its subqueries too,
+        without DataFusion's default catalog and schema."""
+        # DataFusion plans a view as its query, under its name, as it plans
+        # ``FROM t AS x`` under ``x``; only the catalog tells them apart.
+        return set().union(
+            *(
+                self._keys(name, kind="view")
+                for name in _ALIAS.findall(plan.display_indent())
+            )
+        )
+
+    def _keys(self, name: str, kind: str | None = None) -> set[str]:
+        """The keys of each table or view (of ``kind``, if given) that
+        ``name``, as a plan's display prints it, may be in this Context's
+        catalog."""
+        # The display joins a name's parts with dots, and a quoted part
+        # may hold dots of its own, so ``x.y`` is the view "x.y" or the
+        # view y in the schema x. Each reading in the catalog counts.
+        parts = name.split(".")
+        readings: list[tuple[str, ...]] = [(name,)]
+        for t in range(1, len(parts)):
+            table = ".".join(parts[t:])
+            readings.append((".".join(parts[:t]), table))
+            readings += [
+                (".".join(parts[:c]), ".".join(parts[c:t]), table)
+                for c in range(1, t)
+            ]
+        return {
+            _key(reading)
+            for reading in readings
+            if (found := self._kind(reading)) is not None
+            and kind in (None, found)
+        }
+
+    def _kind(self, parts: tuple[str, ...]) -> str | None:
+        """The kind of the table or view whose name has ``parts`` (its
+        table; schema and table; or catalog, schema and table), or
+        ``None`` if there's no such table."""
+        *path, table = parts
+        try:
+            catalog = self.catalog(*path[:-1])
+            kind = catalog.schema(*path[-1:]).table(table).kind
+        except Exception:  # noqa: BLE001 - DataFusion raises a bare Exception
+            return None
+        return str(kind)
 
     def from_dataset(
         self,
@@ -201,13 +397,22 @@ class Context(SessionContext):
         coord_arrays = shared_coord_arrays(input_table)
 
         if len(groups) <= 1:
-            self._registered_datasets[name] = input_table
-            return self._from_dataset(
+            self._from_dataset(
                 name, input_table, chunks, coord_arrays=coord_arrays
             )
+            # Recorded once DataFusion has registered the table, which it
+            # refuses to do under a name that's taken.
+            self._registered_datasets[name] = input_table
+            return self
 
         schema = Schema.memory_schema(self)
-        self.catalog().register_schema(name, schema)
+        # register_schema replaces a schema of the same name, tables and
+        # all, so each of its tables counts as replaced.
+        catalog = self.catalog()
+        if name in catalog.schema_names():
+            for table in catalog.schema(name).table_names():
+                self._forget(_key((name, table)))
+        catalog.register_schema(name, schema)
 
         for dims, var_names in groups.items():
             sub_name = names[dims]
@@ -266,7 +471,8 @@ class Context(SessionContext):
         placeholder = f"_xarray_sql_{uuid.uuid4().hex}"
         self.register_record_batches(placeholder, partitions)
         table = self.catalog().schema().table(placeholder)
-        self.deregister_table(placeholder)
+        # A placeholder isn't a table anyone replaced.
+        SessionContext.deregister_table(self, placeholder)
         return table
 
     def _maybe_register_cftime_udf(self, ds: xr.Dataset) -> None:
@@ -300,35 +506,63 @@ class Context(SessionContext):
         Returns:
             An [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame] wrapping the DataFusion DataFrame.
         """
-        # DataFusion runs a statement that replaces or drops a table or a
-        # view as it plans it, without deregistering it.
-        replaced = _table_replaced(query)
-        existed = replaced is not None and self.table_exist(replaced)
-        if _ad is not None and _ad.calls_ad(query):
-            if args or kwargs:
-                raise TypeError(
-                    "a query that calls grad, vjp or jvp takes no other "
-                    "arguments"
-                )
-            df = _ad.sql(self, query)
-        else:
-            df = super().sql(query, *args, **kwargs)
-        if replaced is not None and existed:
-            self._forget(_resolved(replaced))
+        # DataFusion runs a statement that replaces or drops a table, a
+        # view or a schema as it plans it, without deregistering them.
+        replaced = self._replaced_by(query)
+        try:
+            if _ad is not None and _ad.calls_ad(query):
+                if args or kwargs:
+                    raise TypeError(
+                        "a query that calls grad, vjp or jvp takes no other "
+                        "arguments"
+                    )
+                df = _ad.sql(self, query)
+            else:
+                df = super().sql(query, *args, **kwargs)
+        except Exception:
+            # CREATE OR REPLACE drops the old table before it runs the
+            # query for the new one, which may then fail.
+            for key, parts in replaced.items():
+                if self._kind(parts) is None:
+                    self._forget(key)
+            raise
+        for key in replaced:
+            self._forget(key)
         return self._wrap(df)
+
+    def _replaced_by(self, query: str) -> dict[str, tuple[str, ...]]:
+        """The parts of the name of each table and view ``query`` would
+        replace or drop, by its key."""
+        match = _TABLE_DDL.match(query)
+        if match is not None:
+            parts = tuple(_parts(match.group(1)))
+            if self._kind(parts) is None:
+                return {}
+            return {_key(parts): parts}
+        match = _SCHEMA_DROP.match(query)
+        if match is None:
+            return {}
+        *catalog, schema = _parts(match.group(1))
+        try:
+            tables = self.catalog(*catalog).schema(schema).table_names()
+        except Exception:  # noqa: BLE001 - DataFusion raises a bare Exception
+            return {}
+        return {
+            _key((*catalog, schema, table)): (*catalog, schema, table)
+            for table in tables
+        }
 
     def deregister_table(self, name: str) -> None:
         """Remove a table from the session, and forget the Dataset
         registered under its name."""
         super().deregister_table(name)
-        self._forget(name)
+        self._forget(_key(name.split(".")))
 
     def _forget(self, name: str) -> None:
-        """Forget the Dataset registered as ``name``, whose table has been
-        removed or replaced."""
-        name = _unqualified(name)
+        """Forget the Dataset registered as ``name``, a key ``_key``
+        made, whose table has been removed or replaced."""
         self._registered_datasets.pop(name, None)
-        self._deregistrations[name] = self._deregistrations.get(name, 0) + 1
+        self._replacements[name] = self._replacements.get(name, 0) + 1
 
     def prepare(self, query: str) -> "PreparedQuery":
         """Plan a query once, to run it many times.
@@ -362,12 +596,37 @@ class Context(SessionContext):
         """
         return PreparedQuery(self, query)
 
-    def _write(self, writes: dict[str, xr.Dataset]) -> None:
-        """Write each Dataset's values into the arrays of the Dataset
-        registered under its name, all or none of them."""
+    def write(self, tables: Mapping[str, xr.Dataset]) -> None:
+        """Write new values into registered Datasets' arrays, in place.
+
+        ``ctx.write({"w": ds})`` writes ``ds``'s values into the Dataset
+        registered as ``w``, as ``w_ds["v"][...] = ds["v"]`` would, so every
+        query of ``w`` reads them from then on, and so does
+        ``ctx.datasets["w"]``. It checks every table before it writes any,
+        and writes all of them or none. A Dataset must match the one it's
+        written into in all but its values: the same data variables, dtypes,
+        dims and coordinates, and NaN or NaT in the same places, since
+        xarray-sql reads them as NULL. The registered arrays must be
+        writable NumPy arrays. To change anything else, register the new
+        Dataset instead.
+
+        Writing doesn't count in
+        [replacements][xarray_sql.Context.replacements], and
+        ``write({})`` does nothing.
+
+        Args:
+            tables: A Dataset of new values for each table, by the name it
+                has in [datasets][xarray_sql.Context.datasets].
+
+        Raises:
+            ValueError: If no Dataset is registered under a name, or a
+                Dataset doesn't match the one registered under its name.
+        """
         copies = []
-        for name, ds in writes.items():
-            registered = self._registered_datasets[name]
+        for name, ds in tables.items():
+            registered = self._registered_datasets.get(name)
+            if registered is None:
+                raise ValueError(f"no Dataset is registered as {name!r}")
             if set(ds.data_vars) != set(registered.data_vars):
                 raise ValueError(
                     f"{name!r} has the data variables "
@@ -386,10 +645,11 @@ class Context(SessionContext):
             for var in registered.data_vars:
                 old, new = registered[var].variable, ds[var].variable
                 # Dims are matched by name, as xarray matches them.
-                if set(new.dims) != set(old.dims) or new.dtype != old.dtype:
+                if new.sizes != old.sizes or new.dtype != old.dtype:
                     raise ValueError(
-                        f"{name}.{var} is {old.dtype} over {old.dims}, and "
-                        f"the new values are {new.dtype} over {new.dims}"
+                        f"{name}.{var} is {old.dtype} over "
+                        f"{dict(old.sizes)}, and the new values are "
+                        f"{new.dtype} over {dict(new.sizes)}"
                     )
                 target = old.data
                 # A table reads a NumPy array's memory, shared or on every
@@ -432,10 +692,8 @@ class PreparedQuery:
     ``query()`` runs it on the values its tables hold now, and returns its
     rows as a ``pyarrow.Table``. ``query(w=ds)`` first writes ``ds``'s
     values into the Dataset registered as ``w``, as
-    ``w_ds["v"][...] = ds["v"]`` would, so other queries of ``w`` see them
-    too. ``ds`` must match ``w_ds`` in all but its values: the same data
-    variables, dtypes, dims and coordinates, and NaN or NaT in the same
-    places, since xarray-sql reads them as NULL.
+    ``ctx.write({"w": ds})`` does, so other queries of ``w`` see them too.
+    [Context.write][xarray_sql.Context.write] says what ``ds`` must match.
 
     To change anything else, register the new Dataset and prepare the
     query again. A call raises if a table the query reads, in a subquery
@@ -458,15 +716,13 @@ class PreparedQuery:
             # A call may write any Dataset the query reads, which leaves out
             # the tables ddx wrote. It finds each by name, so one registered
             # again is written too.
-            self._writable = set().union(*map(_tables_read, plans)) & set(
-                ctx._registered_datasets
+            self._writable = set().union(*map(ctx.tables_read, plans)) & set(
+                ctx.datasets
             )
             # ddx built its programs from each view's SQL as it was then.
             self._read = {
-                name: ctx._deregistrations.get(name, 0)
-                for name in map(
-                    _unqualified, set().union(*map(_views_read, plans))
-                )
+                name: ctx.replacements.get(name, 0)
+                for name in set().union(*map(ctx._views_read, plans))
             }
             return
         start = time.perf_counter()
@@ -479,19 +735,10 @@ class PreparedQuery:
         # they were folded into.
         self._optimized = df.optimized_logical_plan()
         # Each table and view the query reads, by how often its name had
-        # been deregistered; and of the tables, the Datasets a call may
-        # write into.
-        logical = df.logical_plan()
-        tables = _tables_read(logical)
-        self._read = {
-            name: ctx._deregistrations.get(name, 0)
-            for name in map(_unqualified, tables | _views_read(logical))
-        }
-        self._registered = {
-            name: ctx._registered_datasets[name]
-            for name in tables
-            if name in ctx._registered_datasets
-        }
+        # been replaced; and of those, the Datasets a call may write into.
+        read = ctx.tables_read(df.logical_plan())
+        self._read = {name: ctx.replacements.get(name, 0) for name in read}
+        self._writable = read & set(ctx.datasets)
         # A plan keeps state from a run (a hash join keeps the table it
         # built), so each call runs a fresh copy of it, decoded from its
         # serialized form. Copying a plan copies its in-memory tables, so
@@ -519,25 +766,22 @@ class PreparedQuery:
         Returns:
             The query's rows.
         """
-        writable = (
-            self._registered if self._gradient is None else self._writable
-        )
         for name in tables:
-            if name not in writable:
+            if name not in self._writable:
                 raise ValueError(
                     f"the query reads no Dataset registered as {name!r} "
                     "when it was prepared"
                 )
-        for name, deregistrations in self._read.items():
-            if self._ctx._deregistrations.get(name, 0) != deregistrations:
+        for name, replacements in self._read.items():
+            if self._ctx.replacements.get(name, 0) != replacements:
                 raise ValueError(
                     f"{name!r} has been registered again, replaced or "
                     "dropped since the query was prepared; prepare the "
                     "query again"
                 )
         if self._gradient is not None:
-            return self._gradient(lambda: self._ctx._write(tables))
-        self._ctx._write(tables)
+            return self._gradient(lambda: self._ctx.write(tables))
+        self._ctx.write(tables)
         if self._plan is None:
             df = self._ctx.create_dataframe_from_logical_plan(self._optimized)
             return df.to_arrow_table()
@@ -575,25 +819,6 @@ _SCAN = re.compile(
 _ALIAS = re.compile(r"^ *SubqueryAlias: (.+)$", re.MULTILINE)
 
 
-def _tables_read(plan: LogicalPlan) -> set[str]:
-    """The names of the tables ``plan`` scans, in its subqueries too, and
-    through any views."""
-    return set(_SCAN.findall(plan.display_indent()))
-
-
-def _views_read(plan: LogicalPlan) -> set[str]:
-    """The names of the views ``plan`` reads, in its subqueries too.
-
-    DataFusion plans a view as its query, under its name, as it plans
-    ``FROM t AS x`` under ``x``, so these include the names a query gives
-    with ``AS``, less those of the tables it scans. One that's also the
-    name of a table the query doesn't read makes a prepared query raise
-    once that table is registered again, but never read anything wrongly.
-    """
-    text = plan.display_indent()
-    return set(_ALIAS.findall(text)) - set(_SCAN.findall(text))
-
-
 # Whitespace or comments, which SQL reads between any two words.
 _GAP = r"(?:\s|--[^\n]*|/\*.*?\*/)"
 # A name's part: quoted, which keeps its case, or not, which DataFusion
@@ -608,30 +833,33 @@ _TABLE_DDL = re.compile(
 )
 
 
-def _table_replaced(query: str) -> str | None:
-    """The name of the table or view ``query`` replaces or drops, as it's
-    written, or ``None`` for any other statement."""
-    match = _TABLE_DDL.match(query)
-    return None if match is None else match.group(1)
+_SCHEMA_DROP = re.compile(
+    rf"{_GAP}*DROP{_GAP}+SCHEMA{_GAP}+(?:IF{_GAP}+EXISTS{_GAP}+)?"
+    rf"((?:{_PART})(?:\.(?:{_PART}))?)",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
-def _resolved(name: str) -> str:
-    """``name``, written in SQL, as a plan's display prints it: each part
-    unquoted, or lowered if it wasn't quoted, joined by dots."""
-    return ".".join(
+def _parts(name: str) -> list[str]:
+    """The parts of ``name``, written in SQL, as DataFusion reads them:
+    each unquoted, or lowered if it wasn't quoted."""
+    return [
         part[1:-1] if part.startswith('"') else part.lower()
         for part in re.findall(_PART, name)
-    )
+    ]
 
 
-def _unqualified(name: str) -> str:
-    """``name`` without DataFusion's default catalog and schema, which a
-    query may name or leave out: ``datafusion.public.v`` and ``public.v``
-    are both ``v``."""
-    for prefix in ("datafusion.public.", "public."):
-        if name.startswith(prefix):
-            return name[len(prefix) :]
-    return name
+def _key(parts: Sequence[str]) -> str:
+    """The key of the table or view whose name has ``parts``: the parts
+    joined by dots, without DataFusion's default catalog and schema, which
+    a query may name or leave out. ``datafusion.public.v`` and
+    ``public.v`` are both ``v``, and ``datafusion.era5.v`` is ``era5.v``."""
+    parts = list(parts)
+    if len(parts) == 3 and parts[0] == "datafusion":
+        parts = parts[1:]
+    if len(parts) == 2 and parts[0] == "public":
+        parts = parts[1:]
+    return ".".join(parts)
 
 
 def _missing(values: np.ndarray) -> np.ndarray | None:
