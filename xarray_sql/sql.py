@@ -277,13 +277,30 @@ class Context(SessionContext):
     def _is_view(self, name: str) -> bool:
         """Whether ``name``, as a plan's display prints it, is a view in
         this Context's catalog."""
-        *path, table = name.split(".")
+        # The display joins a name's parts with dots, and a quoted part
+        # may hold dots of its own, so ``x.y`` is the view "x.y" or the
+        # view y in the schema x. Any reading that is a view counts.
+        parts = name.split(".")
+        readings: list[tuple[tuple[str, ...], str]] = [((), name)]
+        for t in range(1, len(parts)):
+            table = ".".join(parts[t:])
+            readings.append(((".".join(parts[:t]),), table))
+            readings += [
+                ((".".join(parts[:c]), ".".join(parts[c:t])), table)
+                for c in range(1, t)
+            ]
+        return any(self._kind(*reading) == "view" for reading in readings)
+
+    def _kind(self, path: tuple[str, ...], table: str) -> str | None:
+        """The kind of ``table`` in the schema ``path`` names, a schema of
+        the default catalog or a catalog and a schema, or ``None`` if
+        there's no such table."""
         try:
             catalog = self.catalog(*path[:-1])
-            schema = catalog.schema(*path[-1:])
-            return bool(schema.table(table).kind == "view")
+            kind = catalog.schema(*path[-1:]).table(table).kind
         except Exception:  # noqa: BLE001 - DataFusion raises a bare Exception
-            return False
+            return None
+        return str(kind)
 
     def from_dataset(
         self,
@@ -794,11 +811,11 @@ def _resolved(name: str) -> str:
 def _unqualified(name: str) -> str:
     """``name`` without DataFusion's default catalog and schema, which a
     query may name or leave out: ``datafusion.public.v`` and ``public.v``
-    are both ``v``."""
-    for prefix in ("datafusion.public.", "public."):
-        if name.startswith(prefix):
-            return name[len(prefix) :]
-    return name
+    are both ``v``, and ``datafusion.era5.v`` is ``era5.v``."""
+    # Two dots or more make the first part a catalog's name.
+    if name.startswith("datafusion.") and name.count(".") > 1:
+        name = name[len("datafusion.") :]
+    return name.removeprefix("public.")
 
 
 def _missing(values: np.ndarray) -> np.ndarray | None:

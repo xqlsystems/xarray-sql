@@ -186,9 +186,13 @@ def test_an_extension_handle_shares_what_the_context_records(ctx):
         ),
         ("SELECT v FROM w", {"w", "v", "b"}),
         ("SELECT x.v FROM datafusion.public.v AS x", {"v", "b"}),
+        ('SELECT v FROM "x.y"', {"x.y", "b"}),
+        ("SELECT v FROM datafusion.g.i", {"g.i"}),
     ],
 )
 def test_tables_read_lists_tables_and_views_in_subqueries_too(ctx, query, read):
     ctx.sql("CREATE VIEW v AS SELECT v FROM b")
     ctx.sql("CREATE VIEW w AS SELECT v FROM v")
+    ctx.sql('CREATE VIEW "x.y" AS SELECT v FROM b')
+    ctx.from_dataset("g", _split(np.arange(3.0)))
     assert ctx.tables_read(ctx.sql(query).logical_plan()) == read
