@@ -2,7 +2,7 @@ import copy
 import re
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from types import MappingProxyType, ModuleType
 
 import numpy as np
@@ -259,42 +259,52 @@ class Context(SessionContext):
         Returns:
             The names of the tables and views ``plan`` reads.
         """
-        return {
-            _unqualified(name) for name in _SCAN.findall(plan.display_indent())
-        } | self._views_read(plan)
+        read = set()
+        for name in _SCAN.findall(plan.display_indent()):
+            # A table dropped since the plan was made is in no reading.
+            read |= self._keys(name) or {_key(name.split("."))}
+        return read | self._views_read(plan)
 
     def _views_read(self, plan: LogicalPlan) -> set[str]:
         """The names of the views ``plan`` reads, in its subqueries too,
         without DataFusion's default catalog and schema."""
         # DataFusion plans a view as its query, under its name, as it plans
         # ``FROM t AS x`` under ``x``; only the catalog tells them apart.
-        return {
-            _unqualified(name)
-            for name in _ALIAS.findall(plan.display_indent())
-            if self._is_view(name)
-        }
+        return set().union(
+            *(
+                self._keys(name, kind="view")
+                for name in _ALIAS.findall(plan.display_indent())
+            )
+        )
 
-    def _is_view(self, name: str) -> bool:
-        """Whether ``name``, as a plan's display prints it, is a view in
-        this Context's catalog."""
+    def _keys(self, name: str, kind: str | None = None) -> set[str]:
+        """The keys of each table or view (of ``kind``, if given) that
+        ``name``, as a plan's display prints it, may be in this Context's
+        catalog."""
         # The display joins a name's parts with dots, and a quoted part
         # may hold dots of its own, so ``x.y`` is the view "x.y" or the
-        # view y in the schema x. Any reading that is a view counts.
+        # view y in the schema x. Each reading in the catalog counts.
         parts = name.split(".")
-        readings: list[tuple[tuple[str, ...], str]] = [((), name)]
+        readings: list[tuple[str, ...]] = [(name,)]
         for t in range(1, len(parts)):
             table = ".".join(parts[t:])
-            readings.append(((".".join(parts[:t]),), table))
+            readings.append((".".join(parts[:t]), table))
             readings += [
-                ((".".join(parts[:c]), ".".join(parts[c:t])), table)
+                (".".join(parts[:c]), ".".join(parts[c:t]), table)
                 for c in range(1, t)
             ]
-        return any(self._kind(*reading) == "view" for reading in readings)
+        return {
+            _key(reading)
+            for reading in readings
+            if (found := self._kind(reading)) is not None
+            and kind in (None, found)
+        }
 
-    def _kind(self, path: tuple[str, ...], table: str) -> str | None:
-        """The kind of ``table`` in the schema ``path`` names, a schema of
-        the default catalog or a catalog and a schema, or ``None`` if
-        there's no such table."""
+    def _kind(self, parts: tuple[str, ...]) -> str | None:
+        """The kind of the table or view whose name has ``parts`` (its
+        table; schema and table; or catalog, schema and table), or
+        ``None`` if there's no such table."""
+        *path, table = parts
         try:
             catalog = self.catalog(*path[:-1])
             kind = catalog.schema(*path[-1:]).table(table).kind
@@ -398,7 +408,7 @@ class Context(SessionContext):
         catalog = self.catalog()
         if name in catalog.schema_names():
             for table in catalog.schema(name).table_names():
-                self._forget(f"{name}.{table}")
+                self._forget(_key((name, table)))
         catalog.register_schema(name, schema)
 
         for dims, var_names in groups.items():
@@ -507,19 +517,18 @@ class Context(SessionContext):
         else:
             df = super().sql(query, *args, **kwargs)
         if replaced is not None and existed:
-            self._forget(_resolved(replaced))
+            self._forget(_key(_parts(replaced)))
         return self._wrap(df)
 
     def deregister_table(self, name: str) -> None:
         """Remove a table from the session, and forget the Dataset
         registered under its name."""
         super().deregister_table(name)
-        self._forget(name)
+        self._forget(_key(name.split(".")))
 
     def _forget(self, name: str) -> None:
-        """Forget the Dataset registered as ``name``, whose table has been
-        removed or replaced."""
-        name = _unqualified(name)
+        """Forget the Dataset registered as ``name``, a key ``_key``
+        made, whose table has been removed or replaced."""
         self._registered_datasets.pop(name, None)
         self._replacements[name] = self._replacements.get(name, 0) + 1
 
@@ -799,23 +808,26 @@ def _table_replaced(query: str) -> str | None:
     return None if match is None else match.group(1)
 
 
-def _resolved(name: str) -> str:
-    """``name``, written in SQL, as a plan's display prints it: each part
-    unquoted, or lowered if it wasn't quoted, joined by dots."""
-    return ".".join(
+def _parts(name: str) -> list[str]:
+    """The parts of ``name``, written in SQL, as DataFusion reads them:
+    each unquoted, or lowered if it wasn't quoted."""
+    return [
         part[1:-1] if part.startswith('"') else part.lower()
         for part in re.findall(_PART, name)
-    )
+    ]
 
 
-def _unqualified(name: str) -> str:
-    """``name`` without DataFusion's default catalog and schema, which a
-    query may name or leave out: ``datafusion.public.v`` and ``public.v``
-    are both ``v``, and ``datafusion.era5.v`` is ``era5.v``."""
-    # Two dots or more make the first part a catalog's name.
-    if name.startswith("datafusion.") and name.count(".") > 1:
-        name = name[len("datafusion.") :]
-    return name.removeprefix("public.")
+def _key(parts: Sequence[str]) -> str:
+    """The key of the table or view whose name has ``parts``: the parts
+    joined by dots, without DataFusion's default catalog and schema, which
+    a query may name or leave out. ``datafusion.public.v`` and
+    ``public.v`` are both ``v``, and ``datafusion.era5.v`` is ``era5.v``."""
+    parts = list(parts)
+    if len(parts) == 3 and parts[0] == "datafusion":
+        parts = parts[1:]
+    if len(parts) == 2 and parts[0] == "public":
+        parts = parts[1:]
+    return ".".join(parts)
 
 
 def _missing(values: np.ndarray) -> np.ndarray | None:
