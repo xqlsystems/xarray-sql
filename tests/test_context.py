@@ -111,6 +111,31 @@ def test_registering_a_split_dataset_again_replaces_each_table():
     assert _values(ctx, "g.i") == [7.0, 8.0, 9.0]
 
 
+def test_dropping_a_schema_replaces_each_of_its_tables(ctx):
+    ctx.from_dataset("g", _split(np.arange(3.0)))
+    ctx.sql("DROP SCHEMA g CASCADE")
+    assert dict(ctx.replacements) == {"g.i": 1, "g.i_j": 1}
+    assert set(ctx.datasets) == {"a", "b"}
+
+
+@pytest.mark.parametrize(
+    "query, replaced",
+    [
+        # Fails while it runs, after the old table is dropped.
+        ("SELECT 1 / (v - v) AS v FROM (VALUES (CAST(1 AS INT))) t(v)", True),
+        # Fails while it's planned, before.
+        ("SELECT v FROM missing", False),
+    ],
+)
+def test_a_replacement_that_fails_counts_if_it_dropped_the_table(
+    ctx, query, replaced
+):
+    with pytest.raises(Exception):  # noqa: B017 - DataFusion's bare Exception
+        ctx.sql(f"CREATE OR REPLACE TABLE a AS {query}")
+    assert dict(ctx.replacements) == ({"a": 1} if replaced else {})
+    assert ("a" in ctx.datasets) is not replaced
+
+
 def test_creating_a_table_or_view_replaces_nothing(ctx):
     ctx.sql("CREATE OR REPLACE VIEW v AS SELECT v FROM b")
     ctx.sql("CREATE TABLE c AS SELECT 1")

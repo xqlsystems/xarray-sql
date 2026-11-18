@@ -152,7 +152,10 @@ class Context(SessionContext):
         which registering a name again needs first, and a statement run
         with [sql][xarray_sql.Context.sql] that replaces or drops a table
         or a view: ``CREATE OR REPLACE TABLE``, ``CREATE OR REPLACE VIEW``,
-        ``DROP TABLE`` or ``DROP VIEW``. A name never replaced isn't in it.
+        ``DROP TABLE`` or ``DROP VIEW``, and ``DROP SCHEMA`` for each table
+        and view in the schema. A ``CREATE OR REPLACE`` that fails counts
+        if it dropped the old table first. A name never replaced isn't in
+        it.
         Names leave out DataFusion's default catalog and schema, as
         [tables_read][xarray_sql.Context.tables_read] does. Writing new
         values with [write][xarray_sql.Context.write] doesn't count.
@@ -503,22 +506,51 @@ class Context(SessionContext):
         Returns:
             An [XarrayDataFrame][xarray_sql.ds.XarrayDataFrame] wrapping the DataFusion DataFrame.
         """
-        # DataFusion runs a statement that replaces or drops a table or a
-        # view as it plans it, without deregistering it.
-        replaced = _table_replaced(query)
-        existed = replaced is not None and self.table_exist(replaced)
-        if _ad is not None and _ad.calls_ad(query):
-            if args or kwargs:
-                raise TypeError(
-                    "a query that calls grad, vjp or jvp takes no other "
-                    "arguments"
-                )
-            df = _ad.sql(self, query)
-        else:
-            df = super().sql(query, *args, **kwargs)
-        if replaced is not None and existed:
-            self._forget(_key(_parts(replaced)))
+        # DataFusion runs a statement that replaces or drops a table, a
+        # view or a schema as it plans it, without deregistering them.
+        replaced = self._replaced_by(query)
+        try:
+            if _ad is not None and _ad.calls_ad(query):
+                if args or kwargs:
+                    raise TypeError(
+                        "a query that calls grad, vjp or jvp takes no other "
+                        "arguments"
+                    )
+                df = _ad.sql(self, query)
+            else:
+                df = super().sql(query, *args, **kwargs)
+        except Exception:
+            # CREATE OR REPLACE drops the old table before it runs the
+            # query for the new one, which may then fail.
+            for key, parts in replaced.items():
+                if self._kind(parts) is None:
+                    self._forget(key)
+            raise
+        for key in replaced:
+            self._forget(key)
         return self._wrap(df)
+
+    def _replaced_by(self, query: str) -> dict[str, tuple[str, ...]]:
+        """The parts of the name of each table and view ``query`` would
+        replace or drop, by its key."""
+        match = _TABLE_DDL.match(query)
+        if match is not None:
+            parts = tuple(_parts(match.group(1)))
+            if self._kind(parts) is None:
+                return {}
+            return {_key(parts): parts}
+        match = _SCHEMA_DROP.match(query)
+        if match is None:
+            return {}
+        *catalog, schema = _parts(match.group(1))
+        try:
+            tables = self.catalog(*catalog).schema(schema).table_names()
+        except Exception:  # noqa: BLE001 - DataFusion raises a bare Exception
+            return {}
+        return {
+            _key((*catalog, schema, table)): (*catalog, schema, table)
+            for table in tables
+        }
 
     def deregister_table(self, name: str) -> None:
         """Remove a table from the session, and forget the Dataset
@@ -801,11 +833,11 @@ _TABLE_DDL = re.compile(
 )
 
 
-def _table_replaced(query: str) -> str | None:
-    """The name of the table or view ``query`` replaces or drops, as it's
-    written, or ``None`` for any other statement."""
-    match = _TABLE_DDL.match(query)
-    return None if match is None else match.group(1)
+_SCHEMA_DROP = re.compile(
+    rf"{_GAP}*DROP{_GAP}+SCHEMA{_GAP}+(?:IF{_GAP}+EXISTS{_GAP}+)?"
+    rf"((?:{_PART})(?:\.(?:{_PART}))?)",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def _parts(name: str) -> list[str]:
