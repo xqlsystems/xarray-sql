@@ -57,3 +57,54 @@ def test_groupby_mean_over_time(benchmark, grid):
     assert result.sizes["lon"] == grid.sizes["lon"]
     expected = grid["temperature"].mean("time")
     np.testing.assert_allclose(result["mean_temp"].values, expected.values)
+
+
+@pytest.fixture(scope="module")
+def store(tmp_path_factory) -> str:
+    """A Zarr store of 20 variables, one time step per chunk, NaN on land.
+
+    It's shaped like an ocean model's training data, whose loader reads a
+    window of time steps of every variable.
+    """
+    rng = np.random.default_rng(0)
+    time, lat, lon = 8, 90, 180
+    land = rng.random((lat, lon)) < 0.3
+    data = {}
+    for v in range(20):
+        values = rng.normal(size=(time, lat, lon)).astype("float32")
+        values[:, land] = np.nan
+        data[f"v{v:02d}"] = (("time", "lat", "lon"), values)
+    ds = xr.Dataset(
+        data,
+        coords={
+            "time": np.arange(time),
+            "lat": np.arange(lat),
+            "lon": np.arange(lon),
+        },
+    )
+    path = str(tmp_path_factory.mktemp("zarr") / "ocean.zarr")
+    ds.chunk({"time": 1}).to_zarr(path, zarr_format=3, consolidated=False)
+    return path
+
+
+@pytest.mark.parametrize("dask", [False, True], ids=["lazy", "dask"])
+def test_read_a_window_of_every_variable_from_zarr(benchmark, store, dask):
+    """A training loader's read: 4 time steps of all 20 variables."""
+    ds = xr.open_zarr(store, chunks={} if dask else None, consolidated=False)
+    ctx = Context()
+    ctx.from_dataset("ocean", ds, chunks={"time": 1})
+
+    def run():
+        return ctx.sql(
+            "SELECT * FROM ocean WHERE time BETWEEN 2 AND 5 "
+            "ORDER BY time, lat, lon"
+        ).to_arrow_table()
+
+    rows = benchmark(run)
+    window = ds.isel(time=slice(2, 6))
+    assert rows.num_rows == window.sizes["time"] * 90 * 180
+    np.testing.assert_allclose(
+        np.asarray(rows["v07"].to_numpy(zero_copy_only=False), "float64"),
+        window["v07"].values.ravel(),
+        rtol=1e-6,
+    )
