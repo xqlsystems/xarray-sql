@@ -84,6 +84,26 @@ MATURIN_PEP517_ARGS="--no-default-features --profile wasm" pyodide build -o dist
 On NixOS, run these commands in `nix run .#wasm-shell`. This shell is an
 FHS environment, which lets the prebuilt Emscripten and rustup binaries run.
 
+### Benchmarks
+
+`tests/test_benchmarks.py` holds benchmarks written with
+[pytest-benchmark](https://github.com/ionelmc/pytest-benchmark), a pytest
+plugin that runs a function repeatedly and reports its timings. Each one
+also checks its result, so it's a test too. To time them locally:
+
+```shell
+uv run pytest tests/test_benchmarks.py --benchmark-only
+```
+
+CI's unit run runs each benchmark once, untimed, with `--benchmark-disable`.
+On every push to main, the `benchmarks` job times them and stores the result
+on the `gh-pages` branch with
+[github-action-benchmark](https://github.com/benchmark-action/github-action-benchmark),
+which keeps the history, charts it at
+<https://xql.systems/xarray-sql/benchmarks/>, and comments on a commit that
+looks like a regression. A new point appears on the chart when the docs are
+next published.
+
 
 ## Before submitting a pull request...
 
