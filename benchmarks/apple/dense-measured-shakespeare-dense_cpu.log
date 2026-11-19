@@ -1,0 +1,27 @@
+  6-layer GPT, vocab 65, 10,745,088 parameters: the loss is 543 lines of SQL
+  steps=5, optimizer=sgd, context=256, heads=6, embed=384, forward_only=False
+  loss, step 0                 dense_cpu   batch=1         0.130s
+  train (sgd), step 0          dense_cpu   batch=1         1.740s
+  loss, step 1                 dense_cpu   batch=1         0.099s
+  train (sgd), step 1          dense_cpu   batch=1         1.346s
+  loss, step 2                 dense_cpu   batch=1         0.095s
+  train (sgd), step 2          dense_cpu   batch=1         1.255s
+  loss, step 3                 dense_cpu   batch=1         0.095s
+  train (sgd), step 3          dense_cpu   batch=1         1.328s
+  loss, step 4                 dense_cpu   batch=1         0.097s
+  train (sgd), step 4          dense_cpu   batch=1         1.310s
+
+| demo | step | host | batch | seconds | check | loss | operators | rtol | atol | layers | embed | heads | context | vocab | parameters | optimizer | sgd_learning_rate | forward_only | table_registers | query_preparations | dense_programs | dense_executions | dense_cache_evictions | dense_peak_cached_bytes | dense_lowering_seconds | dense_call_seconds | key_cache_bytes | dense_last_decline | load_seconds | model_seconds | gradient_preparations | inplace_updates |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| nanogpt | loss, step 0 | dense_cpu | 1 | 0.130 | ok (0e+00) | 4.243 | n/a | 1e-09 | 1e-09 | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 35 | 35 | 0 | 527038851 | 0.112 | 0.126 | 0 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 0 | dense_cpu | 1 | 1.740 | ok (1e-16) | n/a | n/a | n/a | n/a | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 316 | 316 | 0 | 5340715780 | 0.466 | 1.811 | 0 | n/a | 0.027 | 0.003 | 1 | 11 |
+| nanogpt | loss, step 1 | dense_cpu | 1 | 0.099 | ok (0e+00) | 3.671 | n/a | 1e-09 | 1e-09 | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 316 | 351 | 0 | 5340715780 | 0.561 | 1.906 | 0 | n/a | n/a | n/a | 1 | 12 |
+| nanogpt | train (sgd), step 1 | dense_cpu | 1 | 1.346 | ok (3e-16) | n/a | n/a | n/a | n/a | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 316 | 632 | 0 | 5340715780 | 0.899 | 3.198 | 0 | n/a | 0.033 | 0.003 | 1 | 23 |
+| nanogpt | loss, step 2 | dense_cpu | 1 | 0.095 | ok (2e-16) | 3.682 | n/a | 1e-09 | 1e-09 | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 316 | 667 | 0 | 5340715780 | 0.990 | 3.289 | 0 | n/a | n/a | n/a | 1 | 24 |
+| nanogpt | train (sgd), step 2 | dense_cpu | 1 | 1.255 | ok (3e-16) | n/a | n/a | n/a | n/a | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 316 | 948 | 0 | 5340715780 | 1.315 | 4.495 | 0 | n/a | 0.038 | 0.003 | 1 | 35 |
+| nanogpt | loss, step 3 | dense_cpu | 1 | 0.095 | ok (1e-16) | 3.366 | n/a | 1e-09 | 1e-09 | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 316 | 983 | 0 | 5340715780 | 1.407 | 4.587 | 0 | n/a | n/a | n/a | 1 | 36 |
+| nanogpt | train (sgd), step 3 | dense_cpu | 1 | 1.328 | ok (3e-16) | n/a | n/a | n/a | n/a | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 316 | 1264 | 0 | 5340715780 | 1.753 | 5.847 | 0 | n/a | 0.044 | 0.003 | 1 | 47 |
+| nanogpt | loss, step 4 | dense_cpu | 1 | 0.097 | ok (0e+00) | 3.367 | n/a | 1e-09 | 1e-09 | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 316 | 1299 | 0 | 5340715780 | 1.846 | 5.940 | 0 | n/a | n/a | n/a | 1 | 48 |
+| nanogpt | train (sgd), step 4 | dense_cpu | 1 | 1.310 | ok (3e-16) | n/a | n/a | n/a | n/a | 6 | 384 | 6 | 256 | 65 | 10745088 | sgd | 0.010 | False | 13 | 1 | 316 | 1580 | 0 | 5340715780 | 2.172 | 7.201 | 0 | n/a | 0.050 | 0.003 | 1 | 59 |
+
+wrote /Users/cromwellian/xql/xarray-sql/benchmarks/apple/dense-measured-shakespeare-dense_cpu.csv

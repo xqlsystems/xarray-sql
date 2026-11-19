@@ -1,0 +1,74 @@
+{
+  "date": "2026-11-01",
+  "device": "Apple M5 Ultra, 30 CPU cores, 64 GPU cores, 256 GiB unified memory",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "parameters": 10745088,
+  "batch_tokens": 3072,
+  "arithmetic": "float32; MLX_ENABLE_TF32=0; compile_training and gpu_dropout enabled",
+  "packages": {
+    "xarray-sql": "0.6.0",
+    "ddxdb": "0.4.6+xqlmath.3",
+    "einfold": "0.2.0+xqlmlx.6",
+    "mlx": "0.32.4",
+    "datafusion": "55.0.0",
+    "numpy": "2.5.4",
+    "pyarrow": "26.0.0",
+    "xarray": "2026.9.0"
+  },
+  "ddx_base": "af71683f6678bb093e600f948c212490a4d8b74b",
+  "einfold_base": "39b25210d3b39027ef91584383fb114dfa8a4a48",
+  "nanogpt_revision": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291",
+  "baseline_gpu_seconds": 2.02414754149504,
+  "native_mps_100_warm_seconds": 0.026962120810316667,
+  "native_evidence": "benchmarks/apple/shakespeare-resident-torch-mps-100.json",
+  "scope": "Synchronized SQL/ddx forward, backward, clipping and AdamW, resident state publication and loss scalar. Evaluation, batch sampling/upload, oracle and checkpoint I/O excluded; GPU dropout is inside. First-step excludes prior evaluation and process startup. Caches may already be warm. Warm mean excludes first update. Native includes next-batch prefetch and uses its own RNG trajectory.",
+  "runs": [
+    {
+      "metrics": "benchmarks/apple/shakespeare-resident-verified-gpu/metrics.jsonl",
+      "metrics_sha256": "412c14836eb1ba24c0a882625c52ea3d14320145054064b3e956c9a272bff2f8",
+      "updates": 5,
+      "verified_all_updates": true,
+      "first_step_seconds": 1.3801348749548197,
+      "warm_mean_seconds": 0.14594528125599027,
+      "warm_tokens_per_second": 21048.984753482127,
+      "speedup_over_arrow_gpu": 13.869222246005023,
+      "ratio_to_native_mps_100": 5.412974828009316,
+      "total_training_compilations": 1,
+      "timed_array_readback_bytes": 0,
+      "timed_training_exports": 0,
+      "status_reads_per_step": [
+        1
+      ],
+      "loss_reads_per_step": [
+        1
+      ]
+    },
+    {
+      "metrics": "benchmarks/apple/shakespeare-resident-steady-gpu/metrics.jsonl",
+      "metrics_sha256": "ed5a12b7834319e30935b43144560158167241fba335762803f69c5bff6ebbe1",
+      "updates": 100,
+      "verified_all_updates": false,
+      "first_step_seconds": 1.4675100420136005,
+      "warm_mean_seconds": 0.10133358803601239,
+      "warm_tokens_per_second": 30315.713274736296,
+      "speedup_over_arrow_gpu": 19.975090004468107,
+      "ratio_to_native_mps_100": 3.758368592326704,
+      "total_training_compilations": 1,
+      "timed_array_readback_bytes": 0,
+      "timed_training_exports": 0,
+      "status_reads_per_step": [
+        1
+      ],
+      "loss_reads_per_step": [
+        1
+      ],
+      "first_rss_bytes": 2639101952,
+      "last_rss_bytes": 2644819968,
+      "last_mlx_memory": {
+        "active_bytes": 532354042,
+        "cache_bytes": 5081660545,
+        "peak_bytes": 4428988178
+      }
+    }
+  ]
+}

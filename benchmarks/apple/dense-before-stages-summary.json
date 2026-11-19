@@ -1,0 +1,5644 @@
+{
+  "host": "shared_cpu",
+  "context": 16,
+  "instrumented": true,
+  "stages": [
+    {
+      "name": "__ddx_77668c50_1_saved_0",
+      "seconds": 0.0830829170299694,
+      "compile_seconds": 0.0029816250316798687,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_1",
+      "seconds": 0.053183124982751906,
+      "compile_seconds": 0.003785667009651661,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_2",
+      "seconds": 0.04624150006566197,
+      "compile_seconds": 0.0064265410182997584,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_3",
+      "seconds": 0.046304875053465366,
+      "compile_seconds": 0.00633874989580363,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_4",
+      "seconds": 0.0009725000709295273,
+      "compile_seconds": 0.0026871670270338655,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_5",
+      "seconds": 0.04911620810162276,
+      "compile_seconds": 0.00551541696768254,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_6",
+      "seconds": 0.0007793749682605267,
+      "compile_seconds": 0.00254620797932148,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_7",
+      "seconds": 0.001510916044935584,
+      "compile_seconds": 0.00476062495727092,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_8",
+      "seconds": 0.005846834043040872,
+      "compile_seconds": 0.0025149999419227242,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_9",
+      "seconds": 0.049393208930268884,
+      "compile_seconds": 0.003804708016104996,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_10",
+      "seconds": 0.04457054194062948,
+      "compile_seconds": 0.0043811670038849115,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_11",
+      "seconds": 0.057055250043049455,
+      "compile_seconds": 0.006856917054392397,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_12",
+      "seconds": 0.015947000007145107,
+      "compile_seconds": 0.0031031660037115216,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_13",
+      "seconds": 0.04988808301277459,
+      "compile_seconds": 0.004246958065778017,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_14",
+      "seconds": 0.049163166899234056,
+      "compile_seconds": 0.005276625044643879,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_15",
+      "seconds": 0.0474832080071792,
+      "compile_seconds": 0.008207167033106089,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_16",
+      "seconds": 0.05072245793417096,
+      "compile_seconds": 0.007719833985902369,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_17",
+      "seconds": 0.0008639999432489276,
+      "compile_seconds": 0.002766416990198195,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_18",
+      "seconds": 0.04841679101809859,
+      "compile_seconds": 0.00754600006621331,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_19",
+      "seconds": 0.0007794169941917062,
+      "compile_seconds": 0.002552666002884507,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_20",
+      "seconds": 0.0015972499968484044,
+      "compile_seconds": 0.003862750018015504,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_21",
+      "seconds": 0.005822625011205673,
+      "compile_seconds": 0.002553416066803038,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_22",
+      "seconds": 0.04901312501169741,
+      "compile_seconds": 0.004817166016437113,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_23",
+      "seconds": 0.05005024990532547,
+      "compile_seconds": 0.006006999989040196,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_24",
+      "seconds": 0.06101837498135865,
+      "compile_seconds": 0.00925937492866069,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_25",
+      "seconds": 0.02461233304347843,
+      "compile_seconds": 0.0033361250534653664,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_26",
+      "seconds": 0.054812459042295814,
+      "compile_seconds": 0.006639666971750557,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_27",
+      "seconds": 0.04935095796827227,
+      "compile_seconds": 0.00809108407702297,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_28",
+      "seconds": 0.049880500067956746,
+      "compile_seconds": 0.009469458949752152,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_29",
+      "seconds": 0.052384582930244505,
+      "compile_seconds": 0.00950675003696233,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_30",
+      "seconds": 0.000992208020761609,
+      "compile_seconds": 0.002896833000704646,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_31",
+      "seconds": 0.05212916596792638,
+      "compile_seconds": 0.010434709023684263,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_32",
+      "seconds": 0.0008572089718654752,
+      "compile_seconds": 0.002699458971619606,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_33",
+      "seconds": 0.0017859999788925052,
+      "compile_seconds": 0.00412662501912564,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_34",
+      "seconds": 0.006042041932232678,
+      "compile_seconds": 0.002640417078509927,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_35",
+      "seconds": 0.05019187496509403,
+      "compile_seconds": 0.006481750053353608,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_36",
+      "seconds": 0.04953099996782839,
+      "compile_seconds": 0.007229958078823984,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_37",
+      "seconds": 0.06315358402207494,
+      "compile_seconds": 0.009937666007317603,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_38",
+      "seconds": 0.01671562495175749,
+      "compile_seconds": 0.0030676660826429725,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_39",
+      "seconds": 0.060394749976694584,
+      "compile_seconds": 0.007317624986171722,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_40",
+      "seconds": 0.06937808298971504,
+      "compile_seconds": 0.009406125056557357,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_41",
+      "seconds": 0.05446574999950826,
+      "compile_seconds": 0.012234875001013279,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_42",
+      "seconds": 0.05196700000669807,
+      "compile_seconds": 0.011604541912674904,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_43",
+      "seconds": 0.001343625015579164,
+      "compile_seconds": 0.003093707957305014,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_44",
+      "seconds": 0.05275612499099225,
+      "compile_seconds": 0.012359707965515554,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_45",
+      "seconds": 0.0007840830367058516,
+      "compile_seconds": 0.0026588329346850514,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_46",
+      "seconds": 0.0016745839966461062,
+      "compile_seconds": 0.004628374939784408,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_47",
+      "seconds": 0.0060841660015285015,
+      "compile_seconds": 0.002733916975557804,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_48",
+      "seconds": 0.05329462490044534,
+      "compile_seconds": 0.008538000052794814,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_49",
+      "seconds": 0.05929183401167393,
+      "compile_seconds": 0.009858582983724773,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_50",
+      "seconds": 0.06462424993515015,
+      "compile_seconds": 0.013657290954142809,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_51",
+      "seconds": 0.020457540987990797,
+      "compile_seconds": 0.0035487499553710222,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_52",
+      "seconds": 0.059627957991324365,
+      "compile_seconds": 0.010420250007882714,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_53",
+      "seconds": 0.05455745803192258,
+      "compile_seconds": 0.010575624997727573,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_54",
+      "seconds": 0.05240212508942932,
+      "compile_seconds": 0.01301924989093095,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_55",
+      "seconds": 0.054520250065252185,
+      "compile_seconds": 0.013572791940532625,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_56",
+      "seconds": 0.0008353749290108681,
+      "compile_seconds": 0.002818542066961527,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_57",
+      "seconds": 0.053498500026762486,
+      "compile_seconds": 0.014118333929218352,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_58",
+      "seconds": 0.0008029160089790821,
+      "compile_seconds": 0.0026116659864783287,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_59",
+      "seconds": 0.0015218330081552267,
+      "compile_seconds": 0.004043249995447695,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_60",
+      "seconds": 0.005960374954156578,
+      "compile_seconds": 0.0025432079564779997,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_61",
+      "seconds": 0.05861554201692343,
+      "compile_seconds": 0.009700166992843151,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_62",
+      "seconds": 0.051567915943451226,
+      "compile_seconds": 0.01130879099946469,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_63_part_0",
+      "seconds": 0.06273645907640457,
+      "compile_seconds": 0.01316566695459187,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_63",
+      "seconds": 0.0006960000609979033,
+      "compile_seconds": 0.001643582945689559,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_64",
+      "seconds": 0.017440584022551775,
+      "compile_seconds": 0.0028496660524979234,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_65",
+      "seconds": 0.06134970800485462,
+      "compile_seconds": 0.011415999964810908,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_66",
+      "seconds": 0.05696291709318757,
+      "compile_seconds": 0.012642832938581705,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_67_part_0",
+      "seconds": 2.1999934688210487e-05,
+      "compile_seconds": 0.0015259579522535205,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_67",
+      "seconds": 0.08472491696011275,
+      "compile_seconds": 0.015915750060230494,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_68_part_0",
+      "seconds": 2.3499946109950542e-05,
+      "compile_seconds": 0.001605625031515956,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_68",
+      "seconds": 0.07972091704141349,
+      "compile_seconds": 0.015865791938267648,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_69",
+      "seconds": 0.0009352500783279538,
+      "compile_seconds": 0.002799249952659011,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_70_part_0",
+      "seconds": 1.954101026058197e-05,
+      "compile_seconds": 0.0014436669880524278,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_70",
+      "seconds": 0.07359195896424353,
+      "compile_seconds": 0.014270124956965446,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_71",
+      "seconds": 0.0007327500497922301,
+      "compile_seconds": 0.002424667007289827,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_72",
+      "seconds": 0.00169945799279958,
+      "compile_seconds": 0.0041219169506803155,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_73",
+      "seconds": 0.005134207895025611,
+      "compile_seconds": 0.0026177919935435057,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_74",
+      "seconds": 0.05470154108479619,
+      "compile_seconds": 0.012403458938933909,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_75",
+      "seconds": 0.05315379204694182,
+      "compile_seconds": 0.012195499963127077,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_76_part_0",
+      "seconds": 1.8874998204410076e-05,
+      "compile_seconds": 0.0014263750053942204,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_76",
+      "seconds": 0.11953041702508926,
+      "compile_seconds": 0.017187958932481706,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_77",
+      "seconds": 0.019182375050149858,
+      "compile_seconds": 0.0032188750337809324,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_78",
+      "seconds": 0.06053770799189806,
+      "compile_seconds": 0.014517750008963048,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_79_part_0",
+      "seconds": 0.05902054090984166,
+      "compile_seconds": 0.014215332921594381,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_79",
+      "seconds": 0.0004983330145478249,
+      "compile_seconds": 0.00175762502476573,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_80_part_0",
+      "seconds": 2.154102548956871e-05,
+      "compile_seconds": 0.001450291951186955,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_80",
+      "seconds": 0.07504270796198398,
+      "compile_seconds": 0.016939957975409925,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_81_part_0",
+      "seconds": 2.0625069737434387e-05,
+      "compile_seconds": 0.0015538750449195504,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_81",
+      "seconds": 0.07734462502412498,
+      "compile_seconds": 0.017020458006300032,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_82",
+      "seconds": 0.0009088750230148435,
+      "compile_seconds": 0.0030365410493686795,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_83_part_0",
+      "seconds": 2.6124995201826096e-05,
+      "compile_seconds": 0.0015622499631717801,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_83",
+      "seconds": 0.0809478749288246,
+      "compile_seconds": 0.01777970790863037,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_84",
+      "seconds": 0.0007779999868944287,
+      "compile_seconds": 0.0027065000031143427,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_85",
+      "seconds": 0.001550624961964786,
+      "compile_seconds": 0.004074541968293488,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_86",
+      "seconds": 0.00504458392970264,
+      "compile_seconds": 0.002626959001645446,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_87_part_0",
+      "seconds": 0.05858916603028774,
+      "compile_seconds": 0.013078500051051378,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_87",
+      "seconds": 0.0023463749093934894,
+      "compile_seconds": 0.00188045809045434,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_88_part_0",
+      "seconds": 1.9458006136119366e-05,
+      "compile_seconds": 0.0014139999402686954,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_88",
+      "seconds": 0.057106415973976254,
+      "compile_seconds": 0.014472250011749566,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_89_part_0",
+      "seconds": 2.0209001377224922e-05,
+      "compile_seconds": 0.0014980420237407088,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_89",
+      "seconds": 0.1176451250212267,
+      "compile_seconds": 0.01937649992760271,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_90",
+      "seconds": 0.0184882499743253,
+      "compile_seconds": 0.0033029590267688036,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_91_part_0",
+      "seconds": 2.1249987185001373e-05,
+      "compile_seconds": 0.001444583060219884,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_91",
+      "seconds": 0.06738783291075379,
+      "compile_seconds": 0.014661167049780488,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_92_part_0",
+      "seconds": 2.0749983377754688e-05,
+      "compile_seconds": 0.0015021669678390026,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_92",
+      "seconds": 0.060717875021509826,
+      "compile_seconds": 0.017558999941684306,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_93_part_0",
+      "seconds": 2.0582927390933037e-05,
+      "compile_seconds": 0.0014643750619143248,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_93",
+      "seconds": 0.08012904098723084,
+      "compile_seconds": 0.01925441692583263,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_94_part_0",
+      "seconds": 2.53340695053339e-05,
+      "compile_seconds": 0.0015880001010373235,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_94",
+      "seconds": 0.08035737508907914,
+      "compile_seconds": 0.0236563750077039,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_95",
+      "seconds": 0.0007972500752657652,
+      "compile_seconds": 0.0026308329543098807,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_96_part_0",
+      "seconds": 2.166605554521084e-05,
+      "compile_seconds": 0.0014783339574933052,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_96",
+      "seconds": 0.07718183402903378,
+      "compile_seconds": 0.01936279097571969,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_97",
+      "seconds": 0.0007686669705435634,
+      "compile_seconds": 0.0025952080031856894,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_98",
+      "seconds": 0.00141587492544204,
+      "compile_seconds": 0.003882999997586012,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_99",
+      "seconds": 0.005173791898414493,
+      "compile_seconds": 0.002454542089253664,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_100_part_0",
+      "seconds": 2.0875013433396816e-05,
+      "compile_seconds": 0.0014902499970048666,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_100",
+      "seconds": 0.05924170801881701,
+      "compile_seconds": 0.016229374916292727,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_101_part_0",
+      "seconds": 2.0249979570508003e-05,
+      "compile_seconds": 0.0014751249691471457,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_101",
+      "seconds": 0.05841391708236188,
+      "compile_seconds": 0.016520250006578863,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_102_part_0",
+      "seconds": 2.2582942619919777e-05,
+      "compile_seconds": 0.001438500010408461,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_102",
+      "seconds": 0.12608712504152209,
+      "compile_seconds": 0.02300650009419769,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_103",
+      "seconds": 0.018111290992237628,
+      "compile_seconds": 0.0031458749435842037,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_104_part_0",
+      "seconds": 2.4666893295943737e-05,
+      "compile_seconds": 0.0015657920157536864,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_104",
+      "seconds": 0.06421841692645103,
+      "compile_seconds": 0.018554375041276217,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_105_part_0",
+      "seconds": 2.037500962615013e-05,
+      "compile_seconds": 0.0015566250076517463,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_105",
+      "seconds": 0.0615038750693202,
+      "compile_seconds": 0.018063166993670166,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_106_part_0",
+      "seconds": 1.9666040316224098e-05,
+      "compile_seconds": 0.001452583004720509,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_106",
+      "seconds": 0.07896025001537055,
+      "compile_seconds": 0.021436374983750284,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_107_part_0",
+      "seconds": 1.9082915969192982e-05,
+      "compile_seconds": 0.0014262920012697577,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_107",
+      "seconds": 0.0745100419735536,
+      "compile_seconds": 0.02112545899581164,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_108",
+      "seconds": 0.0007736249826848507,
+      "compile_seconds": 0.002623375039547682,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_109_part_0",
+      "seconds": 1.7459038645029068e-05,
+      "compile_seconds": 0.0013612080365419388,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_109",
+      "seconds": 0.07880845793988556,
+      "compile_seconds": 0.02091479196678847,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_110",
+      "seconds": 0.0007120410446077585,
+      "compile_seconds": 0.0024127919459715486,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_111",
+      "seconds": 0.0014529579784721136,
+      "compile_seconds": 0.003952958039008081,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_112",
+      "seconds": 0.004962582956068218,
+      "compile_seconds": 0.0024466669419780374,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_113_part_0",
+      "seconds": 1.9999919459223747e-05,
+      "compile_seconds": 0.0014387089759111404,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_113",
+      "seconds": 0.05711387493647635,
+      "compile_seconds": 0.017955083050765097,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_114_part_0",
+      "seconds": 2.0082923583686352e-05,
+      "compile_seconds": 0.0014420829247683287,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_114",
+      "seconds": 0.05365895794238895,
+      "compile_seconds": 0.01870116696227342,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_115_part_0",
+      "seconds": 2.0749983377754688e-05,
+      "compile_seconds": 0.001509249908849597,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_115",
+      "seconds": 0.12159687501844019,
+      "compile_seconds": 0.02498570899479091,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_116",
+      "seconds": 0.01710716704837978,
+      "compile_seconds": 0.0034953750437125564,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_117_part_0",
+      "seconds": 2.145790494978428e-05,
+      "compile_seconds": 0.001499667065218091,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_117",
+      "seconds": 0.06690058298408985,
+      "compile_seconds": 0.02076904207933694,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_118_part_0",
+      "seconds": 2.0165927708148956e-05,
+      "compile_seconds": 0.0015129579696804285,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_118",
+      "seconds": 0.054969207965768874,
+      "compile_seconds": 0.02009350003208965,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_119_part_0",
+      "seconds": 2.0125065930187702e-05,
+      "compile_seconds": 0.0014895410276949406,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_119",
+      "seconds": 0.0781761669786647,
+      "compile_seconds": 0.02682908298447728,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_120_part_0",
+      "seconds": 2.0042061805725098e-05,
+      "compile_seconds": 0.0014812499284744263,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_120",
+      "seconds": 0.07781291601713747,
+      "compile_seconds": 0.023626541951671243,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_121",
+      "seconds": 0.000795625033788383,
+      "compile_seconds": 0.0027032920625060797,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_122_part_0",
+      "seconds": 1.825008075684309e-05,
+      "compile_seconds": 0.001378374989144504,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_122",
+      "seconds": 0.08042933396063745,
+      "compile_seconds": 0.023630290990695357,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_123",
+      "seconds": 0.0007453750586137176,
+      "compile_seconds": 0.002522749942727387,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_124",
+      "seconds": 0.0015254170866683125,
+      "compile_seconds": 0.0037977920146659017,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_125",
+      "seconds": 0.00478404201567173,
+      "compile_seconds": 0.002424375037662685,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_126_part_0",
+      "seconds": 1.9915984012186527e-05,
+      "compile_seconds": 0.0014588750200346112,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_126",
+      "seconds": 0.054853832931257784,
+      "compile_seconds": 0.019299666048027575,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_127_part_0",
+      "seconds": 1.9042054191231728e-05,
+      "compile_seconds": 0.0014787079999223351,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_127",
+      "seconds": 0.0594222079962492,
+      "compile_seconds": 0.02076245890930295,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_128_part_0",
+      "seconds": 1.8208054825663567e-05,
+      "compile_seconds": 0.0014424169203266501,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_128",
+      "seconds": 0.11392916704062372,
+      "compile_seconds": 0.024782249936833978,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_129",
+      "seconds": 0.017257834086194634,
+      "compile_seconds": 0.0031429160153493285,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_130_part_0",
+      "seconds": 2.025009598582983e-05,
+      "compile_seconds": 0.0014459999511018395,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_130",
+      "seconds": 0.05996866710484028,
+      "compile_seconds": 0.02237400005105883,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_131_part_0",
+      "seconds": 1.7874990589916706e-05,
+      "compile_seconds": 0.001482499996200204,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_131",
+      "seconds": 0.05600533296819776,
+      "compile_seconds": 0.021665708045475185,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_132_part_0",
+      "seconds": 1.9332976080477238e-05,
+      "compile_seconds": 0.0014520410913974047,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_132",
+      "seconds": 0.09680150006897748,
+      "compile_seconds": 0.029319250024855137,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_133_part_0",
+      "seconds": 1.9832979887723923e-05,
+      "compile_seconds": 0.0014745410298928618,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_133",
+      "seconds": 0.07702995906583965,
+      "compile_seconds": 0.026825082954019308,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_134",
+      "seconds": 0.0008926669834181666,
+      "compile_seconds": 0.0026455840561538935,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_135_part_0",
+      "seconds": 1.7457990907132626e-05,
+      "compile_seconds": 0.001384790986776352,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_135",
+      "seconds": 0.07823824998922646,
+      "compile_seconds": 0.025803458993323147,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_136",
+      "seconds": 0.0006571249105036259,
+      "compile_seconds": 0.0024697909830138087,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_137",
+      "seconds": 0.0015913749812170863,
+      "compile_seconds": 0.003896875074133277,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_138",
+      "seconds": 0.004804749973118305,
+      "compile_seconds": 0.0024987499928101897,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_139_part_0",
+      "seconds": 1.8666964024305344e-05,
+      "compile_seconds": 0.001446707989089191,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_139",
+      "seconds": 0.057325667003169656,
+      "compile_seconds": 0.022502582985907793,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_140_part_0",
+      "seconds": 1.9249971956014633e-05,
+      "compile_seconds": 0.0014639999717473984,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_140",
+      "seconds": 0.05669745791237801,
+      "compile_seconds": 0.022868208005093038,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_141_part_0",
+      "seconds": 2.0666979253292084e-05,
+      "compile_seconds": 0.00145800004247576,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_141",
+      "seconds": 0.12026929203420877,
+      "compile_seconds": 0.029101249994710088,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_142",
+      "seconds": 0.016605834010988474,
+      "compile_seconds": 0.0031705000437796116,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_143_part_0",
+      "seconds": 1.9875005818903446e-05,
+      "compile_seconds": 0.0014593329979106784,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_143",
+      "seconds": 0.06324304093141109,
+      "compile_seconds": 0.025186541955918074,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_144_part_0",
+      "seconds": 2.0749983377754688e-05,
+      "compile_seconds": 0.0014678339939564466,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_144",
+      "seconds": 0.058321750024333596,
+      "compile_seconds": 0.02417183294892311,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_145_part_0",
+      "seconds": 2.0332983694970608e-05,
+      "compile_seconds": 0.0014711669646203518,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_145",
+      "seconds": 0.07919845799915493,
+      "compile_seconds": 0.03544483392033726,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_146_part_0",
+      "seconds": 1.9583036191761494e-05,
+      "compile_seconds": 0.001467707916162908,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_146",
+      "seconds": 0.0800856250571087,
+      "compile_seconds": 0.028771250043064356,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_147",
+      "seconds": 0.00076299998909235,
+      "compile_seconds": 0.002632667077705264,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_148_part_0",
+      "seconds": 1.979200169444084e-05,
+      "compile_seconds": 0.0013979169307276607,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_148",
+      "seconds": 0.07911212497856468,
+      "compile_seconds": 0.028708167024888098,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_149",
+      "seconds": 0.0007784159388393164,
+      "compile_seconds": 0.002472874941304326,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_150",
+      "seconds": 0.0013545829569920897,
+      "compile_seconds": 0.0038694579852744937,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_151",
+      "seconds": 0.005703542032279074,
+      "compile_seconds": 0.0024008749751374125,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_152_part_0",
+      "seconds": 1.9083963707089424e-05,
+      "compile_seconds": 0.0014087919844314456,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_152",
+      "seconds": 0.06190299999434501,
+      "compile_seconds": 0.024998834007419646,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_153_part_0",
+      "seconds": 1.895800232887268e-05,
+      "compile_seconds": 0.0014729580143466592,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_153",
+      "seconds": 0.05785020801704377,
+      "compile_seconds": 0.02721991704311222,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_154_part_0",
+      "seconds": 2.0125065930187702e-05,
+      "compile_seconds": 0.0014526669401675463,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_154",
+      "seconds": 0.11779062496498227,
+      "compile_seconds": 0.030219540931284428,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_155",
+      "seconds": 0.020701292087323964,
+      "compile_seconds": 0.0031356250401586294,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_156_part_0",
+      "seconds": 1.9915984012186527e-05,
+      "compile_seconds": 0.001437624916434288,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_156",
+      "seconds": 0.06392541597597301,
+      "compile_seconds": 0.028020833036862314,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_157_part_0",
+      "seconds": 2.004194539040327e-05,
+      "compile_seconds": 0.0014643330359831452,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_157",
+      "seconds": 0.06477587495464832,
+      "compile_seconds": 0.02722004195675254,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_158_part_0",
+      "seconds": 1.979200169444084e-05,
+      "compile_seconds": 0.0014601250877603889,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_158",
+      "seconds": 0.5678354169940576,
+      "compile_seconds": 0.030550166964530945,
+      "deferred": false,
+      "graph": false,
+      "rows": 804112,
+      "bytes": 25731584,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_159",
+      "seconds": 0.03626533399801701,
+      "compile_seconds": 0.0024101249873638153,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 512
+    },
+    {
+      "name": "__ddx_77668c50_1_saved_160",
+      "seconds": 0.0016221250407397747,
+      "compile_seconds": 0.0029980839462950826,
+      "deferred": false,
+      "graph": false,
+      "rows": 1,
+      "bytes": 8
+    },
+    {
+      "name": "__ddx_77668c50_1_value",
+      "seconds": 0.00034991593565791845,
+      "compile_seconds": 0.0009661660296842456,
+      "deferred": false,
+      "graph": false,
+      "rows": 1,
+      "bytes": 8
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_160",
+      "seconds": 0.00034370901994407177,
+      "compile_seconds": 0.0010902909561991692,
+      "deferred": false,
+      "graph": false,
+      "rows": 1,
+      "bytes": 8
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_159",
+      "seconds": 0.002033500000834465,
+      "compile_seconds": 0.003444415982812643,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 512
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_158",
+      "seconds": 0.13599233294371516,
+      "compile_seconds": 0.02805329207330942,
+      "deferred": false,
+      "graph": false,
+      "rows": 804112,
+      "bytes": 25731584
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_1",
+      "seconds": 0.22918816597666591,
+      "compile_seconds": 0.003110458957962692,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_region_2_part_0",
+      "seconds": 2.4957931600511074e-05,
+      "compile_seconds": 0.002741917036473751,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_2_part_1",
+      "seconds": 3.0082999728620052e-05,
+      "compile_seconds": 0.04550204204861075,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_2",
+      "seconds": 1.737498678267002e-05,
+      "compile_seconds": 0.008734249975532293,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_157",
+      "seconds": 0.057705708080902696,
+      "compile_seconds": 0.039392041973769665,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_3_part_0",
+      "seconds": 2.7542002499103546e-05,
+      "compile_seconds": 0.011706082965247333,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_3",
+      "seconds": 0.08386504207737744,
+      "compile_seconds": 0.12162016704678535,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 10321920
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_156",
+      "seconds": 0.06506649998482317,
+      "compile_seconds": 0.040028166957199574,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_4_part_0",
+      "seconds": 3.0791969038546085e-05,
+      "compile_seconds": 0.011789124924689531,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_4",
+      "seconds": 0.07941408397164196,
+      "compile_seconds": 0.1038732910528779,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 10027008
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_155",
+      "seconds": 0.07148295792285353,
+      "compile_seconds": 0.04229179199319333,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_154",
+      "seconds": 0.051860042032785714,
+      "compile_seconds": 0.0066067499574273825,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_5",
+      "seconds": 0.04317337495740503,
+      "compile_seconds": 0.003544667037203908,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_6_part_0",
+      "seconds": 3.162503708153963e-05,
+      "compile_seconds": 0.012305042007938027,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_6_part_1",
+      "seconds": 2.9999995604157448e-05,
+      "compile_seconds": 0.05828016600571573,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_6",
+      "seconds": 1.579197123646736e-05,
+      "compile_seconds": 0.004509374964982271,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_153",
+      "seconds": 0.06272958300542086,
+      "compile_seconds": 0.041380624985322356,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_7_part_0",
+      "seconds": 2.6499968953430653e-05,
+      "compile_seconds": 0.011626124964095652,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_7",
+      "seconds": 0.0973525830777362,
+      "compile_seconds": 0.10750408296007663,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 9928704
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_152",
+      "seconds": 0.06466041703242809,
+      "compile_seconds": 0.04502995905932039,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_8_part_0",
+      "seconds": 2.8665992431342602e-05,
+      "compile_seconds": 0.011971750063821673,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_8",
+      "seconds": 0.07794387510512024,
+      "compile_seconds": 0.09400124999228865,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 9633792
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_151",
+      "seconds": 0.13767904206179082,
+      "compile_seconds": 0.086554916924797,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_150",
+      "seconds": 0.02812570903915912,
+      "compile_seconds": 0.0052417919505387545,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_9",
+      "seconds": 0.010312624974176288,
+      "compile_seconds": 0.003735874895937741,
+      "deferred": false,
+      "graph": false,
+      "rows": 3072,
+      "bytes": 122880
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_149",
+      "seconds": 0.0009931669337674975,
+      "compile_seconds": 0.005610583000816405,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_148",
+      "seconds": 0.011217292048968375,
+      "compile_seconds": 0.007307792082428932,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_12",
+      "seconds": 0.025719125056639314,
+      "compile_seconds": 0.003098333952948451,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_13_part_0",
+      "seconds": 2.38749198615551e-05,
+      "compile_seconds": 0.011664208024740219,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_13",
+      "seconds": 2.7499976567924023e-05,
+      "compile_seconds": 0.052580458926968277,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_147",
+      "seconds": 0.008898917003534734,
+      "compile_seconds": 0.029386417008936405,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_146",
+      "seconds": 0.010533542023040354,
+      "compile_seconds": 0.005343124968931079,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_14",
+      "seconds": 0.026544541004113853,
+      "compile_seconds": 0.0031235830392688513,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_15_part_0",
+      "seconds": 2.6250025257468224e-05,
+      "compile_seconds": 0.01138891710434109,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_15",
+      "seconds": 2.9957969672977924e-05,
+      "compile_seconds": 0.051680166041478515,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_145",
+      "seconds": 0.01141758298035711,
+      "compile_seconds": 0.005365290911868215,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_16",
+      "seconds": 0.025995583971962333,
+      "compile_seconds": 0.003113916958682239,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_17_part_0",
+      "seconds": 2.3707980290055275e-05,
+      "compile_seconds": 0.011320333927869797,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_17",
+      "seconds": 2.7499976567924023e-05,
+      "compile_seconds": 0.05143624998163432,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_144",
+      "seconds": 0.19908858300186694,
+      "compile_seconds": 0.11194199998863041,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_18_part_0",
+      "seconds": 2.7207890525460243e-05,
+      "compile_seconds": 0.011791791068390012,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_18",
+      "seconds": 0.09256537503097206,
+      "compile_seconds": 0.09934608300682157,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 9535488
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_143",
+      "seconds": 0.17266795900650322,
+      "compile_seconds": 0.12144662509672344,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_19_part_0",
+      "seconds": 2.74579506367445e-05,
+      "compile_seconds": 0.011669666040688753,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_19",
+      "seconds": 0.07691554189659655,
+      "compile_seconds": 0.08884816593490541,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 9240576
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_142",
+      "seconds": 0.3228439169470221,
+      "compile_seconds": 0.206687374971807,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_141",
+      "seconds": 0.05171054194215685,
+      "compile_seconds": 0.006638082908466458,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_20",
+      "seconds": 0.04569295793771744,
+      "compile_seconds": 0.0036437910748645663,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_21_part_0",
+      "seconds": 2.9333052225410938e-05,
+      "compile_seconds": 0.011750624980777502,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_21",
+      "seconds": 2.970895729959011e-05,
+      "compile_seconds": 0.04634245904162526,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_140",
+      "seconds": 0.0652399999089539,
+      "compile_seconds": 0.03665616700891405,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_22_part_0",
+      "seconds": 2.7250032871961594e-05,
+      "compile_seconds": 0.011776083032600582,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_22",
+      "seconds": 0.07569837500341237,
+      "compile_seconds": 0.09046620898880064,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 9142272
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_139",
+      "seconds": 0.05956666695419699,
+      "compile_seconds": 0.04097700002603233,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_23_part_0",
+      "seconds": 3.133295103907585e-05,
+      "compile_seconds": 0.011853582924231887,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_23",
+      "seconds": 0.07251979201100767,
+      "compile_seconds": 0.07906654197722673,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 8847360
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_138",
+      "seconds": 0.3728405419969931,
+      "compile_seconds": 0.2539528749184683,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_137",
+      "seconds": 0.03157075005583465,
+      "compile_seconds": 0.0055565000511705875,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_24",
+      "seconds": 0.0093461669748649,
+      "compile_seconds": 0.0035052080638706684,
+      "deferred": false,
+      "graph": false,
+      "rows": 3072,
+      "bytes": 122880
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_136",
+      "seconds": 0.0009614999871701002,
+      "compile_seconds": 0.00556495797354728,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_135",
+      "seconds": 0.010936209000647068,
+      "compile_seconds": 0.00849070807453245,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_27",
+      "seconds": 0.02625533298123628,
+      "compile_seconds": 0.0032344170613214374,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_28_part_0",
+      "seconds": 2.5916961021721363e-05,
+      "compile_seconds": 0.011628375039435923,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_28",
+      "seconds": 3.14170029014349e-05,
+      "compile_seconds": 0.04145387501921505,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_134",
+      "seconds": 0.009425833006389439,
+      "compile_seconds": 0.028511333046481013,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_133",
+      "seconds": 0.01087650004774332,
+      "compile_seconds": 0.00521733402274549,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_29",
+      "seconds": 0.026591750094667077,
+      "compile_seconds": 0.003663124982267618,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_30_part_0",
+      "seconds": 2.6291003450751305e-05,
+      "compile_seconds": 0.011572540970519185,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_30",
+      "seconds": 2.995808608829975e-05,
+      "compile_seconds": 0.04069595807231963,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_132",
+      "seconds": 0.011079875053837895,
+      "compile_seconds": 0.005590750020928681,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_31",
+      "seconds": 0.025288415956310928,
+      "compile_seconds": 0.003247041953727603,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_32_part_0",
+      "seconds": 2.7749920263886452e-05,
+      "compile_seconds": 0.011588708031922579,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_32",
+      "seconds": 2.462498378008604e-05,
+      "compile_seconds": 0.04063608392607421,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_131",
+      "seconds": 0.18548504100181162,
+      "compile_seconds": 0.10335533297620714,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_33_part_0",
+      "seconds": 3.074994310736656e-05,
+      "compile_seconds": 0.012400500010699034,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_33",
+      "seconds": 0.07831391599029303,
+      "compile_seconds": 0.08260212501045316,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 8749056
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_130",
+      "seconds": 0.17859341704752296,
+      "compile_seconds": 0.10871195804793388,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_34_part_0",
+      "seconds": 2.675002906471491e-05,
+      "compile_seconds": 0.011790041928179562,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_34",
+      "seconds": 0.07308904093224555,
+      "compile_seconds": 0.07053470809478313,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 8454144
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_129",
+      "seconds": 0.6042519160546362,
+      "compile_seconds": 0.35767175001092255,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_128",
+      "seconds": 0.053498624940402806,
+      "compile_seconds": 0.006516291992738843,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_35",
+      "seconds": 0.04020279203541577,
+      "compile_seconds": 0.0036590000381693244,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_36_part_0",
+      "seconds": 2.6834080927073956e-05,
+      "compile_seconds": 0.011683457996696234,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_36",
+      "seconds": 2.595805563032627e-05,
+      "compile_seconds": 0.035845624981448054,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_127",
+      "seconds": 0.06694491696543992,
+      "compile_seconds": 0.03464375005569309,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_37_part_0",
+      "seconds": 3.0374969355762005e-05,
+      "compile_seconds": 0.011699041933752596,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_37",
+      "seconds": 0.07562120794318616,
+      "compile_seconds": 0.07609829097054899,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 8355840
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_126",
+      "seconds": 0.06294774997513741,
+      "compile_seconds": 0.03713737509679049,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_38_part_0",
+      "seconds": 2.6416033506393433e-05,
+      "compile_seconds": 0.011579374899156392,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_38",
+      "seconds": 0.07143750006798655,
+      "compile_seconds": 0.0653774170204997,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 8060928
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_125",
+      "seconds": 0.6721989169018343,
+      "compile_seconds": 0.406039834022522,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_124",
+      "seconds": 0.03276158298831433,
+      "compile_seconds": 0.005526917055249214,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_39",
+      "seconds": 0.010723292012698948,
+      "compile_seconds": 0.0036303329980000854,
+      "deferred": false,
+      "graph": false,
+      "rows": 3072,
+      "bytes": 122880
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_123",
+      "seconds": 0.000927999964915216,
+      "compile_seconds": 0.005670208018273115,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_122",
+      "seconds": 0.012553540989756584,
+      "compile_seconds": 0.007388082914985716,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_42",
+      "seconds": 0.026480833999812603,
+      "compile_seconds": 0.003238750039599836,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_43_part_0",
+      "seconds": 3.0290917493402958e-05,
+      "compile_seconds": 0.011769999982789159,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_43",
+      "seconds": 2.8250040486454964e-05,
+      "compile_seconds": 0.031140792067162693,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_121",
+      "seconds": 0.00952016597148031,
+      "compile_seconds": 0.02955070894677192,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_120",
+      "seconds": 0.01110208302270621,
+      "compile_seconds": 0.005223874934017658,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_44",
+      "seconds": 0.02635954099241644,
+      "compile_seconds": 0.00316062499769032,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_45_part_0",
+      "seconds": 2.4792039766907692e-05,
+      "compile_seconds": 0.01149324991274625,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_45",
+      "seconds": 2.5916029699146748e-05,
+      "compile_seconds": 0.03130391601007432,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_119",
+      "seconds": 0.011356958071701229,
+      "compile_seconds": 0.005437541054561734,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_46",
+      "seconds": 0.026319041964598,
+      "compile_seconds": 0.0031440419843420386,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_47_part_0",
+      "seconds": 2.350006252527237e-05,
+      "compile_seconds": 0.011348792002536356,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_47",
+      "seconds": 2.437504008412361e-05,
+      "compile_seconds": 0.030942499986849725,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_118",
+      "seconds": 0.20648729102686048,
+      "compile_seconds": 0.09259179094806314,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_region_48_part_0",
+      "seconds": 2.916704397648573e-05,
+      "compile_seconds": 0.011826374917291105,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_48",
+      "seconds": 0.076638541999273,
+      "compile_seconds": 0.06782650004606694,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 7962624
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_117",
+      "seconds": 0.21248766605276614,
+      "compile_seconds": 0.09813037503045052,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_region_49_part_0",
+      "seconds": 2.862501423805952e-05,
+      "compile_seconds": 0.011744917021133006,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_49",
+      "seconds": 0.07313508295919746,
+      "compile_seconds": 0.05785570794250816,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 7667712
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_116",
+      "seconds": 0.9251605829922482,
+      "compile_seconds": 0.5073600000469014,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_115",
+      "seconds": 0.06705462501849979,
+      "compile_seconds": 0.006723625003360212,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_50",
+      "seconds": 0.04027845896780491,
+      "compile_seconds": 0.0036059579579159617,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_51_part_0",
+      "seconds": 2.8083915822207928e-05,
+      "compile_seconds": 0.011772749945521355,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_51",
+      "seconds": 2.5042099878191948e-05,
+      "compile_seconds": 0.027346292044967413,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_114",
+      "seconds": 0.06475766689982265,
+      "compile_seconds": 0.032758458983153105,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_52_part_0",
+      "seconds": 2.6499968953430653e-05,
+      "compile_seconds": 0.011563125066459179,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_52",
+      "seconds": 0.06857654196210206,
+      "compile_seconds": 0.06209483300335705,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 7569408
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_113",
+      "seconds": 0.06009624991565943,
+      "compile_seconds": 0.033519208896905184,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_53_part_0",
+      "seconds": 2.9666000045835972e-05,
+      "compile_seconds": 0.01210299995727837,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_53",
+      "seconds": 0.06808991695288569,
+      "compile_seconds": 0.05267820798326284,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 7274496
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_112",
+      "seconds": 0.9887757909018546,
+      "compile_seconds": 0.543890458997339,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_111",
+      "seconds": 0.036072000046260655,
+      "compile_seconds": 0.005328958970494568,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_54",
+      "seconds": 0.009716957923956215,
+      "compile_seconds": 0.0035917910281568766,
+      "deferred": false,
+      "graph": false,
+      "rows": 3072,
+      "bytes": 122880
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_110",
+      "seconds": 0.000960333039984107,
+      "compile_seconds": 0.00548270798753947,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_109",
+      "seconds": 0.012180833029560745,
+      "compile_seconds": 0.007668665959499776,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_57",
+      "seconds": 0.027386458008550107,
+      "compile_seconds": 0.003232083050534129,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_58_part_0",
+      "seconds": 2.7791946195065975e-05,
+      "compile_seconds": 0.011548458016477525,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_58",
+      "seconds": 3.1458097510039806e-05,
+      "compile_seconds": 0.02353120897896588,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_108",
+      "seconds": 0.008764583035372198,
+      "compile_seconds": 0.02999112498946488,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_107",
+      "seconds": 0.01332791696768254,
+      "compile_seconds": 0.005306417006067932,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_59",
+      "seconds": 0.027412874973379076,
+      "compile_seconds": 0.003244832972995937,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_60_part_0",
+      "seconds": 2.5707995519042015e-05,
+      "compile_seconds": 0.011522958986461163,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_60",
+      "seconds": 2.6124995201826096e-05,
+      "compile_seconds": 0.02305033290758729,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_106",
+      "seconds": 0.012232374981977046,
+      "compile_seconds": 0.005339875002391636,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_61",
+      "seconds": 0.025628041941672564,
+      "compile_seconds": 0.0032557910308241844,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_62_part_0",
+      "seconds": 2.6250025257468224e-05,
+      "compile_seconds": 0.011404791963286698,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_62",
+      "seconds": 2.762500662356615e-05,
+      "compile_seconds": 0.022924666991457343,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_105",
+      "seconds": 0.17379587492905557,
+      "compile_seconds": 0.0856778749730438,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_63_part_0",
+      "seconds": 2.879102248698473e-05,
+      "compile_seconds": 0.011745000025257468,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_63",
+      "seconds": 0.07283958292100579,
+      "compile_seconds": 0.05498354195151478,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 7176192
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_104",
+      "seconds": 0.16518420807551593,
+      "compile_seconds": 0.0893152920762077,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_64_part_0",
+      "seconds": 2.7709058485925198e-05,
+      "compile_seconds": 0.011845041066408157,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_64",
+      "seconds": 0.07042208395432681,
+      "compile_seconds": 0.04594945802818984,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 6881280
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_103",
+      "seconds": 1.8376121249748394,
+      "compile_seconds": 0.03470079193357378,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_102",
+      "seconds": 0.06407316704280674,
+      "compile_seconds": 0.007088124984875321,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_65",
+      "seconds": 0.04242841701488942,
+      "compile_seconds": 0.00468758400529623,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_66_part_0",
+      "seconds": 2.9582995921373367e-05,
+      "compile_seconds": 0.011704874923452735,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_66",
+      "seconds": 3.0458904802799225e-05,
+      "compile_seconds": 0.01934754103422165,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_101",
+      "seconds": 0.06234683294314891,
+      "compile_seconds": 0.02772925002500415,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_67_part_0",
+      "seconds": 2.6332912966609e-05,
+      "compile_seconds": 0.011643540929071605,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_67",
+      "seconds": 0.0691028330475092,
+      "compile_seconds": 0.0486531670903787,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 6782976
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_100",
+      "seconds": 0.06059570796787739,
+      "compile_seconds": 0.03069904202129692,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_68_part_0",
+      "seconds": 2.720800694078207e-05,
+      "compile_seconds": 0.011584958992898464,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_68",
+      "seconds": 0.06989633396733552,
+      "compile_seconds": 0.04107229202054441,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 6488064
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_99",
+      "seconds": 1.9933694589417428,
+      "compile_seconds": 0.03675045899581164,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_98",
+      "seconds": 0.029232957982458174,
+      "compile_seconds": 0.0057004590053111315,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_69",
+      "seconds": 0.010601499932818115,
+      "compile_seconds": 0.003769458970054984,
+      "deferred": false,
+      "graph": false,
+      "rows": 3072,
+      "bytes": 122880
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_97",
+      "seconds": 0.0009832920040935278,
+      "compile_seconds": 0.005755042075179517,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_96",
+      "seconds": 0.010922832996584475,
+      "compile_seconds": 0.007701499969698489,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_72",
+      "seconds": 0.02666370803490281,
+      "compile_seconds": 0.0032403749646618962,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_73_part_0",
+      "seconds": 2.6875059120357037e-05,
+      "compile_seconds": 0.011619584052823484,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_73",
+      "seconds": 2.791709266602993e-05,
+      "compile_seconds": 0.016496207914315164,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_95",
+      "seconds": 0.00900787499267608,
+      "compile_seconds": 0.029762167017906904,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_94",
+      "seconds": 0.010672166012227535,
+      "compile_seconds": 0.005437292042188346,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_74",
+      "seconds": 0.02639195800293237,
+      "compile_seconds": 0.003215332981199026,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_75_part_0",
+      "seconds": 2.537504769861698e-05,
+      "compile_seconds": 0.011409249971620739,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_75",
+      "seconds": 2.437504008412361e-05,
+      "compile_seconds": 0.01625533401966095,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_93",
+      "seconds": 0.010961374966427684,
+      "compile_seconds": 0.00520704104565084,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_76",
+      "seconds": 0.02626679209060967,
+      "compile_seconds": 0.003199749975465238,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_77_part_0",
+      "seconds": 2.8709066100418568e-05,
+      "compile_seconds": 0.011888708919286728,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_77",
+      "seconds": 2.9209069907665253e-05,
+      "compile_seconds": 0.016578500042669475,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_92",
+      "seconds": 0.1962049170397222,
+      "compile_seconds": 0.07689724990632385,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_78_part_0",
+      "seconds": 2.90420139208436e-05,
+      "compile_seconds": 0.011646167025901377,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_78",
+      "seconds": 0.06969262508209795,
+      "compile_seconds": 0.04352429194841534,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 6389760
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_91",
+      "seconds": 0.170298625016585,
+      "compile_seconds": 0.08065458305645734,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_79_part_0",
+      "seconds": 2.650008536875248e-05,
+      "compile_seconds": 0.011797291925176978,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_79",
+      "seconds": 0.06789029203355312,
+      "compile_seconds": 0.03733595903031528,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 6094848
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_90",
+      "seconds": 2.2552877909038216,
+      "compile_seconds": 0.041345917037688196,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_89",
+      "seconds": 0.050599750014953315,
+      "compile_seconds": 0.006371792056597769,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_80",
+      "seconds": 0.04058629192877561,
+      "compile_seconds": 0.0036297079641371965,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_81_part_0",
+      "seconds": 2.74579506367445e-05,
+      "compile_seconds": 0.011559000005945563,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_81",
+      "seconds": 3.12920892611146e-05,
+      "compile_seconds": 0.013845834066160023,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_88",
+      "seconds": 0.058036250062286854,
+      "compile_seconds": 0.024539084057323635,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_82_part_0",
+      "seconds": 2.775003667920828e-05,
+      "compile_seconds": 0.011498917010612786,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_82",
+      "seconds": 0.06511633307673037,
+      "compile_seconds": 0.03824333392549306,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 5996544
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_87",
+      "seconds": 0.05621399998199195,
+      "compile_seconds": 0.027035792008973658,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_83_part_0",
+      "seconds": 0.06669704196974635,
+      "compile_seconds": 0.03458187496289611,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 4620288
+    },
+    {
+      "name": "__ddx_77668c50_1_region_83",
+      "seconds": 2.0832987502217293e-05,
+      "compile_seconds": 0.0019288749899715185,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_86",
+      "seconds": 2.363810332957655,
+      "compile_seconds": 0.04275016696192324,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_85",
+      "seconds": 0.027546625002287328,
+      "compile_seconds": 0.005023041972890496,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_84",
+      "seconds": 0.009953915956430137,
+      "compile_seconds": 0.003416249994188547,
+      "deferred": false,
+      "graph": false,
+      "rows": 3072,
+      "bytes": 122880
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_84",
+      "seconds": 0.002023500041104853,
+      "compile_seconds": 0.006091917050071061,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_83",
+      "seconds": 0.010290708974935114,
+      "compile_seconds": 0.007447166950441897,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_87",
+      "seconds": 0.026293499977327883,
+      "compile_seconds": 0.003218207973986864,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_88_part_0",
+      "seconds": 2.7875066734850407e-05,
+      "compile_seconds": 0.011983415926806629,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_88",
+      "seconds": 1.750001683831215e-05,
+      "compile_seconds": 0.010475084069184959,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_82",
+      "seconds": 0.008754208101890981,
+      "compile_seconds": 0.028206625021994114,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_81",
+      "seconds": 0.01026749995071441,
+      "compile_seconds": 0.00510745809879154,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_89",
+      "seconds": 0.025893959100358188,
+      "compile_seconds": 0.00315091700758785,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_90_part_0",
+      "seconds": 2.4374923668801785e-05,
+      "compile_seconds": 0.011387709062546492,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_90",
+      "seconds": 1.6666948795318604e-05,
+      "compile_seconds": 0.010333458078093827,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_80",
+      "seconds": 0.010728333028964698,
+      "compile_seconds": 0.00529170804657042,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_91",
+      "seconds": 0.025848207995295525,
+      "compile_seconds": 0.0030550839146599174,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_92_part_0",
+      "seconds": 2.3417058400809765e-05,
+      "compile_seconds": 0.011448750039562583,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_92",
+      "seconds": 2.1124957129359245e-05,
+      "compile_seconds": 0.010592291015200317,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_79",
+      "seconds": 0.17710591608192772,
+      "compile_seconds": 0.06626916700042784,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_93_part_0",
+      "seconds": 0.06697737495414913,
+      "compile_seconds": 0.034610125003382564,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 4718592
+    },
+    {
+      "name": "__ddx_77668c50_1_region_93",
+      "seconds": 2.0416919142007828e-05,
+      "compile_seconds": 0.0024646249366924167,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_78",
+      "seconds": 0.16314199997577816,
+      "compile_seconds": 0.07332362502347678,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_94_part_0",
+      "seconds": 0.07889883301686496,
+      "compile_seconds": 0.033951333025470376,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 4030464
+    },
+    {
+      "name": "__ddx_77668c50_1_region_94",
+      "seconds": 0.0018761249957606196,
+      "compile_seconds": 0.0030290830181911588,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 5308416
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_77",
+      "seconds": 2.63158937508706,
+      "compile_seconds": 0.04782091605011374,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_76",
+      "seconds": 0.06362154195085168,
+      "compile_seconds": 0.014570208033546805,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_95",
+      "seconds": 0.04376295895781368,
+      "compile_seconds": 0.004724459024146199,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_96_part_0",
+      "seconds": 4.02920413762331e-05,
+      "compile_seconds": 0.013322958024218678,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_96",
+      "seconds": 2.679100725799799e-05,
+      "compile_seconds": 0.00901024998165667,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_75",
+      "seconds": 0.06775716692209244,
+      "compile_seconds": 0.025390333961695433,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_97_part_0",
+      "seconds": 0.07081891596317291,
+      "compile_seconds": 0.03714045905508101,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 4128768
+    },
+    {
+      "name": "__ddx_77668c50_1_region_97",
+      "seconds": 0.008294790983200073,
+      "compile_seconds": 0.0045278751058503985,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 5210112
+    },
+    {
+      "name": "__ddx_77668c50_1_region_98",
+      "seconds": 0.1231116660637781,
+      "compile_seconds": 0.061827249941416085,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 4915200
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_73",
+      "seconds": 2.7597610409138724,
+      "compile_seconds": 0.05152237508445978,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_72",
+      "seconds": 0.027777082985267043,
+      "compile_seconds": 0.005162208923138678,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_99",
+      "seconds": 0.009504959103651345,
+      "compile_seconds": 0.0035467089619487524,
+      "deferred": false,
+      "graph": false,
+      "rows": 3072,
+      "bytes": 122880
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_71",
+      "seconds": 0.0009360420517623425,
+      "compile_seconds": 0.005569417029619217,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_70",
+      "seconds": 0.010849666083231568,
+      "compile_seconds": 0.007470250013284385,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_102",
+      "seconds": 0.026070208987221122,
+      "compile_seconds": 0.003215541015379131,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_103_part_0",
+      "seconds": 2.833292819559574e-05,
+      "compile_seconds": 0.011425624950788915,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_103",
+      "seconds": 1.579197123646736e-05,
+      "compile_seconds": 0.005781750078313053,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_69",
+      "seconds": 0.00907666701823473,
+      "compile_seconds": 0.028724542004056275,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_68",
+      "seconds": 0.01040354196447879,
+      "compile_seconds": 0.005442208028398454,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_104",
+      "seconds": 0.026295042014680803,
+      "compile_seconds": 0.0033749579451978207,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_105_part_0",
+      "seconds": 2.4250010028481483e-05,
+      "compile_seconds": 0.011232167016714811,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_105",
+      "seconds": 2.091703936457634e-05,
+      "compile_seconds": 0.0058536670403555036,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_67",
+      "seconds": 0.012566374964080751,
+      "compile_seconds": 0.005404957919381559,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_106",
+      "seconds": 0.026038791052997112,
+      "compile_seconds": 0.003160750027745962,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_107_part_0",
+      "seconds": 2.762500662356615e-05,
+      "compile_seconds": 0.011432458064518869,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_107",
+      "seconds": 1.3708020560443401e-05,
+      "compile_seconds": 0.005714417085982859,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_66",
+      "seconds": 0.17567620798945427,
+      "compile_seconds": 0.05783370905555785,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_108_part_0",
+      "seconds": 0.06950541702099144,
+      "compile_seconds": 0.034653250011615455,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 4816896
+    },
+    {
+      "name": "__ddx_77668c50_1_region_108",
+      "seconds": 0.0024469579802826047,
+      "compile_seconds": 0.0025826250202953815,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 4816896
+    },
+    {
+      "name": "__ddx_77668c50_1_region_109",
+      "seconds": 0.24583500006701797,
+      "compile_seconds": 0.10360699996817857,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 4521984,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_64",
+      "seconds": 2.99034879100509,
+      "compile_seconds": 0.05448579101357609,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_63",
+      "seconds": 0.06042691704351455,
+      "compile_seconds": 0.006627541966736317,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_110",
+      "seconds": 0.0385143329622224,
+      "compile_seconds": 0.003515958902426064,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_111_part_0",
+      "seconds": 2.8165988624095917e-05,
+      "compile_seconds": 0.011423000018112361,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_111",
+      "seconds": 1.4542019926011562e-05,
+      "compile_seconds": 0.003562791971489787,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_112",
+      "seconds": 0.1062448329757899,
+      "compile_seconds": 0.04903666605241597,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 4423680
+    },
+    {
+      "name": "__ddx_77668c50_1_region_113",
+      "seconds": 0.10739079199265689,
+      "compile_seconds": 0.04750866605900228,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 4128768
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_60",
+      "seconds": 3.0548657500185072,
+      "compile_seconds": 0.054998665931634605,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_59",
+      "seconds": 0.029375583049841225,
+      "compile_seconds": 0.004981667036190629,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_114",
+      "seconds": 0.01032187498640269,
+      "compile_seconds": 0.0036512919468805194,
+      "deferred": false,
+      "graph": false,
+      "rows": 3072,
+      "bytes": 122880
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_58",
+      "seconds": 0.0009709169389680028,
+      "compile_seconds": 0.005776125006377697,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_57",
+      "seconds": 0.01194716605823487,
+      "compile_seconds": 0.007706957985647023,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_117",
+      "seconds": 0.026498667080886662,
+      "compile_seconds": 0.0032870410941541195,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_118_part_0",
+      "seconds": 2.6165973395109177e-05,
+      "compile_seconds": 0.011207666946575046,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_118",
+      "seconds": 1.108401920646429e-05,
+      "compile_seconds": 0.0017679999582469463,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_56",
+      "seconds": 0.009193707956001163,
+      "compile_seconds": 0.02843512501567602,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_55",
+      "seconds": 0.010250957915559411,
+      "compile_seconds": 0.005305167054757476,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_119",
+      "seconds": 0.026454624952748418,
+      "compile_seconds": 0.003257708973251283,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_120_part_0",
+      "seconds": 2.3667002096772194e-05,
+      "compile_seconds": 0.011236999998800457,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_120",
+      "seconds": 1.108401920646429e-05,
+      "compile_seconds": 0.0017364999512210488,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_54",
+      "seconds": 0.012044292059727013,
+      "compile_seconds": 0.005392666906118393,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_121",
+      "seconds": 0.026352624990977347,
+      "compile_seconds": 0.003366874996572733,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_region_122_part_0",
+      "seconds": 3.0791969038546085e-05,
+      "compile_seconds": 0.011377666960470378,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_122",
+      "seconds": 1.1625001206994057e-05,
+      "compile_seconds": 0.0017608749913051724,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_region_123",
+      "seconds": 0.26778837491292506,
+      "compile_seconds": 0.08040733309462667,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 4030464,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_region_124",
+      "seconds": 0.23227116593625396,
+      "compile_seconds": 0.0782474169973284,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 3735552,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_51",
+      "seconds": 3.34633904194925,
+      "compile_seconds": 0.05778675002511591,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_50",
+      "seconds": 0.0507029170403257,
+      "compile_seconds": 0.006459833006374538,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_region_126",
+      "seconds": 0.09893162501975894,
+      "compile_seconds": 0.03097762493416667,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 4227072
+    },
+    {
+      "name": "__ddx_77668c50_1_region_127",
+      "seconds": 0.061002292088232934,
+      "compile_seconds": 0.023876375053077936,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 3637248
+    },
+    {
+      "name": "__ddx_77668c50_1_region_128",
+      "seconds": 0.058004042017273605,
+      "compile_seconds": 0.021266708965413272,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 3342336
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_47",
+      "seconds": 3.381214957917109,
+      "compile_seconds": 0.05891899997368455,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_46",
+      "seconds": 0.02793266694061458,
+      "compile_seconds": 0.005083916941657662,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_129",
+      "seconds": 0.009574875002726912,
+      "compile_seconds": 0.003459500032477081,
+      "deferred": false,
+      "graph": false,
+      "rows": 3072,
+      "bytes": 122880
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_45",
+      "seconds": 0.0009919999865815043,
+      "compile_seconds": 0.0055542909540236,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_44",
+      "seconds": 0.011616250034421682,
+      "compile_seconds": 0.007256333017721772,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_region_133",
+      "seconds": 0.07911391602829099,
+      "compile_seconds": 0.029719957965426147,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 3833856
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_43",
+      "seconds": 0.009020666941069067,
+      "compile_seconds": 0.028833790915086865,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_42",
+      "seconds": 0.010508999926969409,
+      "compile_seconds": 0.005333125009201467,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_region_135",
+      "seconds": 0.08656133397016674,
+      "compile_seconds": 0.027415249962359667,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 3833856
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_41",
+      "seconds": 0.011059666983783245,
+      "compile_seconds": 0.005785749992355704,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_region_137",
+      "seconds": 0.08138579095248133,
+      "compile_seconds": 0.02805308299139142,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 3833856
+    },
+    {
+      "name": "__ddx_77668c50_1_region_138",
+      "seconds": 0.057322915992699564,
+      "compile_seconds": 0.022695333929732442,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 3244032
+    },
+    {
+      "name": "__ddx_77668c50_1_region_139",
+      "seconds": 0.06327116605825722,
+      "compile_seconds": 0.020586917060427368,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 2949120
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_38",
+      "seconds": 3.414045708021149,
+      "compile_seconds": 0.05989945901092142,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_37",
+      "seconds": 0.06071445799898356,
+      "compile_seconds": 0.0064308339497074485,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_region_141",
+      "seconds": 0.10015566693618894,
+      "compile_seconds": 0.024487041984684765,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 3440640
+    },
+    {
+      "name": "__ddx_77668c50_1_region_142",
+      "seconds": 0.058600957971066236,
+      "compile_seconds": 0.017650291905738413,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 2850816
+    },
+    {
+      "name": "__ddx_77668c50_1_region_143",
+      "seconds": 0.05597191606648266,
+      "compile_seconds": 0.01613041607197374,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 2555904
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_34",
+      "seconds": 3.444257374969311,
+      "compile_seconds": 0.06056887505110353,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_33",
+      "seconds": 0.027718459023162723,
+      "compile_seconds": 0.0052541670156642795,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_144",
+      "seconds": 0.009659832925535738,
+      "compile_seconds": 0.003527207998558879,
+      "deferred": false,
+      "graph": false,
+      "rows": 3072,
+      "bytes": 122880
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_32",
+      "seconds": 0.0011042499681934714,
+      "compile_seconds": 0.005674332962371409,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_31",
+      "seconds": 0.011012959061190486,
+      "compile_seconds": 0.007521667052060366,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_region_148",
+      "seconds": 0.08023829106241465,
+      "compile_seconds": 0.02160674997139722,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 3047424
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_30",
+      "seconds": 0.009136374923400581,
+      "compile_seconds": 0.029007208067923784,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_29",
+      "seconds": 0.010522959055379033,
+      "compile_seconds": 0.005348958075046539,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_region_150",
+      "seconds": 0.07610620791092515,
+      "compile_seconds": 0.021843124995939434,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 3047424
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_28",
+      "seconds": 0.011425500037148595,
+      "compile_seconds": 0.0058180829510092735,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_region_152",
+      "seconds": 0.07607670791912824,
+      "compile_seconds": 0.021466000005602837,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 3047424
+    },
+    {
+      "name": "__ddx_77668c50_1_region_153",
+      "seconds": 0.062334165908396244,
+      "compile_seconds": 0.017567124916240573,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 2457600
+    },
+    {
+      "name": "__ddx_77668c50_1_region_154",
+      "seconds": 0.05879200005438179,
+      "compile_seconds": 0.01708087499719113,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 2162688
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_25",
+      "seconds": 3.748901999904774,
+      "compile_seconds": 0.06500524992588907,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_24",
+      "seconds": 0.06139124999754131,
+      "compile_seconds": 0.00659308407921344,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_region_156",
+      "seconds": 0.10600324999541044,
+      "compile_seconds": 0.02058308303821832,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 2654208
+    },
+    {
+      "name": "__ddx_77668c50_1_region_157",
+      "seconds": 0.058738791034556925,
+      "compile_seconds": 0.01392395794391632,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 2064384
+    },
+    {
+      "name": "__ddx_77668c50_1_region_158",
+      "seconds": 0.05971570801921189,
+      "compile_seconds": 0.012444458086974919,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 1769472
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_21",
+      "seconds": 3.78360225004144,
+      "compile_seconds": 0.06185545795597136,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_20",
+      "seconds": 0.033147166948765516,
+      "compile_seconds": 0.0058624999364838,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_159",
+      "seconds": 0.01250512502156198,
+      "compile_seconds": 0.0045458750100806355,
+      "deferred": false,
+      "graph": false,
+      "rows": 3072,
+      "bytes": 122880
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_19",
+      "seconds": 0.0014916249783709645,
+      "compile_seconds": 0.006031458033248782,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_18",
+      "seconds": 0.010886540985666215,
+      "compile_seconds": 0.008245042059570551,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_region_163",
+      "seconds": 0.08381516602821648,
+      "compile_seconds": 0.020811166032217443,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 2260992
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_17",
+      "seconds": 0.011634666938334703,
+      "compile_seconds": 0.03308783296961337,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_16",
+      "seconds": 0.011490958044305444,
+      "compile_seconds": 0.00705700006801635,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_region_165",
+      "seconds": 0.09473212494049221,
+      "compile_seconds": 0.021300625056028366,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 2260992
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_15",
+      "seconds": 0.012906749965623021,
+      "compile_seconds": 0.006430084002204239,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_region_167",
+      "seconds": 0.09221333300229162,
+      "compile_seconds": 0.022528458037413657,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 2260992
+    },
+    {
+      "name": "__ddx_77668c50_1_region_168",
+      "seconds": 0.06276095798239112,
+      "compile_seconds": 0.015548708033747971,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 1671168
+    },
+    {
+      "name": "__ddx_77668c50_1_region_169",
+      "seconds": 0.0598087910329923,
+      "compile_seconds": 0.012990999966859818,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 1376256
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_12",
+      "seconds": 3.8010427500121295,
+      "compile_seconds": 0.07009562500752509,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_11",
+      "seconds": 0.06231862504500896,
+      "compile_seconds": 0.006643209024332464,
+      "deferred": false,
+      "graph": false,
+      "rows": 49152,
+      "bytes": 1572864
+    },
+    {
+      "name": "__ddx_77668c50_1_region_171",
+      "seconds": 0.09283883403986692,
+      "compile_seconds": 0.014934042003005743,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 1867776
+    },
+    {
+      "name": "__ddx_77668c50_1_region_172",
+      "seconds": 0.05955383402761072,
+      "compile_seconds": 0.009208125062286854,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 1277952
+    },
+    {
+      "name": "__ddx_77668c50_1_region_173",
+      "seconds": 0.049293708987534046,
+      "compile_seconds": 0.009170499979518354,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 983040
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_8",
+      "seconds": 3.5893434589961544,
+      "compile_seconds": 0.06416683399584144,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 393216
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_7",
+      "seconds": 0.0292200839612633,
+      "compile_seconds": 0.00515641609672457,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_contraction_174",
+      "seconds": 0.009429875062778592,
+      "compile_seconds": 0.003512584022246301,
+      "deferred": false,
+      "graph": false,
+      "rows": 3072,
+      "bytes": 122880
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_6",
+      "seconds": 0.000930874957703054,
+      "compile_seconds": 0.005673832958564162,
+      "deferred": false,
+      "graph": false,
+      "rows": 192,
+      "bytes": 6144
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_5",
+      "seconds": 0.010891583049669862,
+      "compile_seconds": 0.007465333095751703,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_region_178",
+      "seconds": 0.07440466701518744,
+      "compile_seconds": 0.011995582957752049,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 1474560
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_4",
+      "seconds": 0.009021625039167702,
+      "compile_seconds": 0.029010333004407585,
+      "deferred": false,
+      "graph": false,
+      "rows": 1632,
+      "bytes": 65280
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_3",
+      "seconds": 0.010404875036329031,
+      "compile_seconds": 0.005516084027476609,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_region_180",
+      "seconds": 0.07736595906317234,
+      "compile_seconds": 0.012461874983273447,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 1474560
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_2",
+      "seconds": 0.01177833299152553,
+      "compile_seconds": 0.0060718749882653356,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 491520
+    },
+    {
+      "name": "__ddx_77668c50_1_region_182",
+      "seconds": 0.07210104097612202,
+      "compile_seconds": 0.012475040974095464,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 1474560
+    },
+    {
+      "name": "__ddx_77668c50_1_region_183",
+      "seconds": 0.057141083059832454,
+      "compile_seconds": 0.009619582910090685,
+      "deferred": false,
+      "graph": false,
+      "rows": 12288,
+      "bytes": 884736
+    },
+    {
+      "name": "__ddx_77668c50_1_cotangent_0",
+      "seconds": 0.008561374968849123,
+      "compile_seconds": 0.0049606249667704105,
+      "deferred": false,
+      "graph": false,
+      "rows": 16,
+      "bytes": 384
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_0_wte_part_0",
+      "seconds": 2.1709012798964977e-05,
+      "compile_seconds": 0.003888209001161158,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_0_wte_part_1",
+      "seconds": 16.806742792017758,
+      "compile_seconds": 0.043255291995592415,
+      "deferred": false,
+      "graph": false,
+      "rows": 38597376,
+      "bytes": 926337024,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_0_wte",
+      "seconds": 18.579415083979256,
+      "compile_seconds": 0.0926483339862898,
+      "deferred": false,
+      "graph": true,
+      "rows": 38597376,
+      "bytes": 926337024
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_1_wpe",
+      "seconds": 3.673719041980803,
+      "compile_seconds": 0.07160525000654161,
+      "deferred": false,
+      "graph": true,
+      "rows": 12288,
+      "bytes": 294912
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_2_ln_1",
+      "seconds": 2.2079905829159543,
+      "compile_seconds": 0.045101875090040267,
+      "deferred": false,
+      "graph": true,
+      "rows": 9216,
+      "bytes": 221184
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_3_wq_part_0",
+      "seconds": 2.90420139208436e-05,
+      "compile_seconds": 0.0040955409640446305,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_3_wq_part_1",
+      "seconds": 0.2470030830008909,
+      "compile_seconds": 0.04245795798487961,
+      "deferred": false,
+      "graph": false,
+      "rows": 589824,
+      "bytes": 23592960,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_3_wq_part_2",
+      "seconds": 2.629193477332592e-05,
+      "compile_seconds": 0.004128750064410269,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_3_wq_part_3",
+      "seconds": 2.3083994165062904e-05,
+      "compile_seconds": 0.0038661659928038716,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_3_wq_part_4",
+      "seconds": 2.0708073861896992e-05,
+      "compile_seconds": 0.0036420420510694385,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_3_wq_part_5",
+      "seconds": 1.825008075684309e-05,
+      "compile_seconds": 0.0037308750906959176,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_3_wq_part_6",
+      "seconds": 1.7417012713849545e-05,
+      "compile_seconds": 0.0036279159830883145,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_3_wq_part_7",
+      "seconds": 1.3915938325226307e-05,
+      "compile_seconds": 0.0036509999772533774,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_3_wq_part_8",
+      "seconds": 0.17627004103269428,
+      "compile_seconds": 0.02181895903777331,
+      "deferred": false,
+      "graph": false,
+      "rows": 589824,
+      "bytes": 42467328
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_3_wq_part_9",
+      "seconds": 0.22835233400110155,
+      "compile_seconds": 0.019840375054627657,
+      "deferred": false,
+      "graph": false,
+      "rows": 589824,
+      "bytes": 23592960,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_3_wq_part_10",
+      "seconds": 1.7885197499999776,
+      "compile_seconds": 0.224489290965721,
+      "deferred": false,
+      "graph": false,
+      "rows": 7077888,
+      "bytes": 566231040,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_3_wq",
+      "seconds": 0.32888204196933657,
+      "compile_seconds": 0.002308333059772849,
+      "deferred": false,
+      "graph": false,
+      "rows": 7077888,
+      "bytes": 283115520,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_4_wk_part_0",
+      "seconds": 2.4458044208586216e-05,
+      "compile_seconds": 0.004090667003765702,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_4_wk_part_1",
+      "seconds": 0.2516533749876544,
+      "compile_seconds": 0.048214040929451585,
+      "deferred": false,
+      "graph": false,
+      "rows": 589824,
+      "bytes": 23592960,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_4_wk_part_2",
+      "seconds": 2.279097680002451e-05,
+      "compile_seconds": 0.004125542007386684,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_4_wk_part_3",
+      "seconds": 2.0041014067828655e-05,
+      "compile_seconds": 0.0038715829141438007,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_4_wk_part_4",
+      "seconds": 1.750001683831215e-05,
+      "compile_seconds": 0.0037531660636886954,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_4_wk_part_5",
+      "seconds": 1.5583005733788013e-05,
+      "compile_seconds": 0.0038021670188754797,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_4_wk_part_6",
+      "seconds": 1.5458092093467712e-05,
+      "compile_seconds": 0.0037269999738782644,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_4_wk_part_7",
+      "seconds": 2.1125073544681072e-05,
+      "compile_seconds": 0.003829624969512224,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_4_wk_part_8",
+      "seconds": 0.16841829207260162,
+      "compile_seconds": 0.02176437503658235,
+      "deferred": false,
+      "graph": false,
+      "rows": 589824,
+      "bytes": 42467328
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_4_wk_part_9",
+      "seconds": 0.23982133297249675,
+      "compile_seconds": 0.019535915926098824,
+      "deferred": false,
+      "graph": false,
+      "rows": 589824,
+      "bytes": 23592960,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_4_wk_part_10",
+      "seconds": 1.844542457954958,
+      "compile_seconds": 0.22304433293174952,
+      "deferred": false,
+      "graph": false,
+      "rows": 7077888,
+      "bytes": 566231040,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_4_wk",
+      "seconds": 0.3327935839770362,
+      "compile_seconds": 0.00220512505620718,
+      "deferred": false,
+      "graph": false,
+      "rows": 7077888,
+      "bytes": 283115520,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_5_wv_part_0",
+      "seconds": 2.4290988221764565e-05,
+      "compile_seconds": 0.004074417054653168,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_5_wv_part_1",
+      "seconds": 0.2448859999421984,
+      "compile_seconds": 0.04944137507118285,
+      "deferred": false,
+      "graph": false,
+      "rows": 589824,
+      "bytes": 23592960,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_5_wv_part_2",
+      "seconds": 2.266606315970421e-05,
+      "compile_seconds": 0.004057083977386355,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_5_wv_part_3",
+      "seconds": 2.7499976567924023e-05,
+      "compile_seconds": 0.003940667025744915,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_5_wv_part_4",
+      "seconds": 1.7666956409811974e-05,
+      "compile_seconds": 0.0038107080617919564,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_5_wv_part_5",
+      "seconds": 2.0832987502217293e-05,
+      "compile_seconds": 0.0038120420649647713,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_5_wv_part_6",
+      "seconds": 1.6584061086177826e-05,
+      "compile_seconds": 0.0037594590103253722,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_5_wv_part_7",
+      "seconds": 1.3541080988943577e-05,
+      "compile_seconds": 0.003660332993604243,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_5_wv_part_8",
+      "seconds": 0.1656713749980554,
+      "compile_seconds": 0.02324887504801154,
+      "deferred": false,
+      "graph": false,
+      "rows": 589824,
+      "bytes": 42467328
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_5_wv_part_9",
+      "seconds": 0.25231537502259016,
+      "compile_seconds": 0.019424165948294103,
+      "deferred": false,
+      "graph": false,
+      "rows": 589824,
+      "bytes": 23592960,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_5_wv_part_10",
+      "seconds": 1.7878661249997094,
+      "compile_seconds": 0.22105375002138317,
+      "deferred": false,
+      "graph": false,
+      "rows": 7077888,
+      "bytes": 566231040,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_5_wv",
+      "seconds": 0.3340878749731928,
+      "compile_seconds": 0.002158166957087815,
+      "deferred": false,
+      "graph": false,
+      "rows": 7077888,
+      "bytes": 283115520,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_6_wo",
+      "seconds": 1.5174185830401257,
+      "compile_seconds": 0.05680670798756182,
+      "deferred": false,
+      "graph": false,
+      "rows": 7077888,
+      "bytes": 283115520,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_7_ln_2",
+      "seconds": 0.4984346659621224,
+      "compile_seconds": 0.2459673749981448,
+      "deferred": false,
+      "graph": false,
+      "rows": 9216,
+      "bytes": 221184,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_8_w_fc_part_0",
+      "seconds": 2.8000096790492535e-05,
+      "compile_seconds": 0.004188999999314547,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_8_w_fc_part_1",
+      "seconds": 0.3908048749435693,
+      "compile_seconds": 0.04449691600166261,
+      "deferred": false,
+      "graph": false,
+      "rows": 2359296,
+      "bytes": 75497472,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_8_w_fc_part_2",
+      "seconds": 2.4292035959661007e-05,
+      "compile_seconds": 0.004078416037373245,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_8_w_fc_part_3",
+      "seconds": 2.4958979338407516e-05,
+      "compile_seconds": 0.004094708012416959,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_8_w_fc_part_4",
+      "seconds": 1.9415980204939842e-05,
+      "compile_seconds": 0.0038844170048832893,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_8_w_fc_part_5",
+      "seconds": 2.60830856859684e-05,
+      "compile_seconds": 0.00402324995957315,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_8_w_fc_part_6",
+      "seconds": 1.6291975043714046e-05,
+      "compile_seconds": 0.003976207925006747,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_8_w_fc_part_7",
+      "seconds": 1.8749968148767948e-05,
+      "compile_seconds": 0.003908250015228987,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_8_w_fc_part_8",
+      "seconds": 1.9042054191231728e-05,
+      "compile_seconds": 0.0037055419525131583,
+      "deferred": true,
+      "graph": false,
+      "rows": null,
+      "bytes": null
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_8_w_fc_part_9",
+      "seconds": 0.37979208305478096,
+      "compile_seconds": 0.019957208074629307,
+      "deferred": false,
+      "graph": false,
+      "rows": 2359296,
+      "bytes": 75497472,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_8_w_fc_part_10",
+      "seconds": 5.487648917012848,
+      "compile_seconds": 0.2593871250282973,
+      "deferred": false,
+      "graph": false,
+      "rows": 28311552,
+      "bytes": 905969664,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_8_w_fc",
+      "seconds": 3.759419917012565,
+      "compile_seconds": 0.0035656249383464456,
+      "deferred": false,
+      "graph": false,
+      "rows": 28311552,
+      "bytes": 905969664,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_9_w_proj",
+      "seconds": 6.316149958991446,
+      "compile_seconds": 0.05333429202437401,
+      "deferred": false,
+      "graph": false,
+      "rows": 28311552,
+      "bytes": 905969664,
+      "physical": "FFI_ExecutionPlan: einfold, number_of_children=0\n"
+    },
+    {
+      "name": "__ddx_77668c50_1_grad_10_ln_f",
+      "seconds": 0.09902308299206197,
+      "compile_seconds": 0.03932916698977351,
+      "deferred": false,
+      "graph": false,
+      "rows": 768,
+      "bytes": 12288
+    }
+  ],
+  "statistics": {
+    "table_registers": 12,
+    "query_preparations": 1,
+    "gradient_preparations": 1,
+    "cpu_matmul": 142,
+    "gpu_matmul": 0,
+    "gpu_attention": 0,
+    "declined": 12,
+    "physical_plans": 1804,
+    "plan_executions": 1804,
+    "stage_buffer_allocations": 1781,
+    "key_cache_hits": 7356,
+    "key_copy_bytes_avoided": 4976716160,
+    "forward_stages": 65,
+    "deferred_stages": 175,
+    "union_reduction_graphs": 19,
+    "reduction_stage_executions": 1291,
+    "planning_seconds": 29.620746106491424,
+    "execution_seconds": 98.48422984522767,
+    "stage_storage_seconds": 33.43930972169619,
+    "key_cache_bytes": 2890244224
+  },
+  "source_sha256": "fec8936a632b9e9cb9dffee237118e0bde0c30c75b0e557b819c03387c28d8a7",
+  "scope": "Original stage timings, shapes and statistics; generated SQL text omitted."
+}

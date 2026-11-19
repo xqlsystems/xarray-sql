@@ -1,0 +1,9 @@
+# Benchmark scratch output stays local. Reports explicitly retain their
+# referenced text evidence; new runs must not silently stage checkpoints.
+*.log
+*.csv
+*.json
+*.jsonl
+*.txt
+*.pstats
+*.npz

@@ -1,0 +1,32 @@
+{
+  "python": "3.12.14",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "cpu_count": 30,
+  "machine_cpu": "Apple M5 Ultra",
+  "memory_bytes": 274877906944,
+  "git_head": "b05eac34d1293e1d43ab9a83ef8b4c1a444fdf72",
+  "uncommitted_work": true,
+  "versions": {
+    "numpy": "2.5.4",
+    "pyarrow": "26.0.0",
+    "xarray": "2026.9.0",
+    "datafusion": "55.0.0",
+    "einfold": "0.2.0+xqlmlx.4",
+    "ddxdb": "0.4.6",
+    "mlx": "0.32.4",
+    "jax": "0.12.0.1",
+    "duckdb": "1.5.6"
+  },
+  "source_sha256": {
+    "accelerators/einfold_mlx/dense_program.py": "cbc024270fcb2021509dab7598bc285649ea41a786e20e5b1c760b0e12f16dfe",
+    "accelerators/einfold_mlx/dense-backend.patch": "a8836032a0fe06554145f00510f3d0a54ec0229f3ed371db397576b3950abfb2",
+    "accelerators/einfold_mlx/build.py": "457de5434290cc0ad7574babee15e98d2a44e3fb7b9c0568e5a1f40927b511b7",
+    "xarray_sql/dense.py": "7fea6bd1f83872ff96cb4e0ee2979de2d2d25d7722fde64f9009d7a7111be14e",
+    "xarray_sql/_dense_mlx.py": "d17677d824219264bf97e44e11b88ea9dc925ef8dc9bb0db2024d96619ed243f",
+    "xarray_sql/shared.py": "3f8ad3f0366d5a5677a487d169ed17818e70993141ae1be6ff4d5bda039bac8c",
+    "xarray_sql/sql.py": "a3981e362badfc41300ad5730360be016ad7875924710e6acb9c4c1cf89245b8",
+    "benchmarks/ml/02_nanogpt.py": "80a5a55b39161f7e45fa717ec2d60aabaeee3edf90d19ef8ad736afa3c678841",
+    "benchmarks/ml/_hosts.py": "e6132bd0e65330ae4413f86aa7fa1d958863aa331a291f8ea70bb38b36069f78"
+  },
+  "installed_dense_module_sha256": "cbc024270fcb2021509dab7598bc285649ea41a786e20e5b1c760b0e12f16dfe"
+}

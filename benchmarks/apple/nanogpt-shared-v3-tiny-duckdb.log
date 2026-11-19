@@ -1,0 +1,27 @@
+  1-layer GPT, vocab 65, 4,416 parameters: the loss is 123 lines of SQL
+  steps=5, optimizer=sgd, context=16, heads=2, embed=16, forward_only=False
+  loss, step 0                 duckdb      batch=4         0.031s
+  train (sgd), step 0          duckdb      batch=4         0.306s
+  loss, step 1                 duckdb      batch=4         0.027s
+  train (sgd), step 1          duckdb      batch=4         0.291s
+  loss, step 2                 duckdb      batch=4         0.027s
+  train (sgd), step 2          duckdb      batch=4         0.284s
+  loss, step 3                 duckdb      batch=4         0.032s
+  train (sgd), step 3          duckdb      batch=4         0.277s
+  loss, step 4                 duckdb      batch=4         0.027s
+  train (sgd), step 4          duckdb      batch=4         0.258s
+
+| demo | step | host | batch | seconds | check | loss | operators | rtol | atol | layers | embed | heads | context | vocab | parameters | optimizer | sgd_learning_rate | forward_only | load_seconds | model_seconds |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| nanogpt | loss, step 0 | duckdb | 4 | 0.031 | ok (0e+00) | 4.179 | 126 | 1e-09 | 1e-09 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | n/a | n/a |
+| nanogpt | train (sgd), step 0 | duckdb | 4 | 0.306 | ok (6e-16) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 0.012 | 0.001 |
+| nanogpt | loss, step 1 | duckdb | 4 | 0.027 | ok (0e+00) | 4.105 | 126 | 1e-09 | 1e-09 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | n/a | n/a |
+| nanogpt | train (sgd), step 1 | duckdb | 4 | 0.291 | ok (6e-16) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 0.018 | 0.002 |
+| nanogpt | loss, step 2 | duckdb | 4 | 0.027 | ok (1e-16) | 3.884 | 126 | 1e-09 | 1e-09 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | n/a | n/a |
+| nanogpt | train (sgd), step 2 | duckdb | 4 | 0.284 | ok (5e-16) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 0.025 | 0.003 |
+| nanogpt | loss, step 3 | duckdb | 4 | 0.032 | ok (1e-16) | 3.642 | 126 | 1e-09 | 1e-09 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | n/a | n/a |
+| nanogpt | train (sgd), step 3 | duckdb | 4 | 0.277 | ok (7e-16) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 0.032 | 0.005 |
+| nanogpt | loss, step 4 | duckdb | 4 | 0.027 | ok (1e-16) | 3.842 | 126 | 1e-09 | 1e-09 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | n/a | n/a |
+| nanogpt | train (sgd), step 4 | duckdb | 4 | 0.258 | ok (1e-15) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 0.037 | 0.006 |
+
+wrote /Users/cromwellian/xql/xarray-sql/benchmarks/apple/nanogpt-shared-v3-tiny-duckdb.csv

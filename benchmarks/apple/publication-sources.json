@@ -1,0 +1,41 @@
+{
+  "xarray-sql": {
+    "head": "8982f419793508f057475a3a6e43ba34fb29b99a",
+    "branch": "codex/resident-sql-training"
+  },
+  "ddx": {
+    "head": "953b78ecfc8bce2b1c1a71f0d4c7300444d00cc7",
+    "branch": "codex/prepared-primal-values"
+  },
+  "einfold": {
+    "head": "9feb8e5a7efaecf6322afc436d0cac60814ef842",
+    "branch": "codex/compact-array-programs"
+  },
+  "note": "Publication commits; performance records retain their original build versions and source hashes. The EinFold publication stack includes the subsequently merged upstream runtime changes.",
+  "source_sha256": {
+    "xarray_sql/training.py": "9f56ce5b65615f3aefae6a740e9c991207b89c6dd7610513f02cf95f2a6b3997",
+    "xarray_sql/dense.py": "c5c0e431f6c872022eff1089000e5cd2c67038910a13d23e248d62ad525ebc86",
+    "xarray_sql/_dense_mlx.py": "21e8f37e393e0bb026f31fc0f85375a9af2b323456cd4949d1c690474fda1385",
+    "benchmarks/ml/03_shakespeare.py": "5d17a05d2821d1717c73ecb23c226d710a4f01edb5d9c8aeb291cae4972800ec",
+    "benchmarks/ml/_shakespeare_torch.py": "f341fc1ff6c3c70c368b78fca2efa21cbbe9521b00e14a3996aed602b7d8d9e0",
+    "accelerators/einfold_mlx/build.py": "5b64b5f85aea72e9b6c223c6e984ae2ff92edd5144f664ca769ab8375700200c",
+    "accelerators/ddx_math/build.py": "31c472ab6e63b746775ee0b6238c03cc3e8c6a123eb7a479a248a1ff7ef618ca"
+  },
+  "pull_requests": {
+    "xarray-sql": [
+      301,
+      302,
+      303,
+      305,
+      304
+    ],
+    "ddx": [
+      256,
+      257
+    ],
+    "einfold": [
+      156,
+      157
+    ]
+  }
+}

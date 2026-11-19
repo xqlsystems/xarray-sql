@@ -1,0 +1,53 @@
+/Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/pyarrow/compute.py:231: FutureWarning: Specifying null_placement in SortOptions is deprecated as of 25.0.0. Specify null_placement per sort_key instead.
+  return options_class(*args, **kwargs)
+         8994777 function calls (8623284 primitive calls) in 10.319 seconds
+
+   Ordered by: cumulative time
+   List reduced from 390 to 45 due to restriction <45>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000   10.321   10.321 _hosts.py:341(query_all)
+        1    0.000    0.000   10.321   10.321 dense.py:217(<lambda>)
+        1    0.000    0.000   10.321   10.321 dense.py:154(_invoke)
+        1    0.000    0.000   10.321   10.321 dense.py:203(execute)
+       11    0.000    0.000    8.742    0.795 dense_program.py:930(arrow)
+       22    0.670    0.030    5.282    0.240 dense_program.py:299(arrow)
+143079/1095    0.627    0.000    4.502    0.004 dense_program.py:56(get)
+       11    3.302    0.300    3.302    0.300 compute.py:257(wrapper)
+   168/94    1.685    0.010    2.710    0.029 dense_program.py:848(compute)
+11570/982    0.192    0.000    1.801    0.002 dense_program.py:385(compute)
+    84/10    0.747    0.009    1.513    0.151 dense_program.py:898(valid_count)
+  300/297    0.001    0.000    1.340    0.005 dense_program.py:770(compute)
+        1    0.000    0.000    1.314    1.314 __init__.py:270(run)
+        1    0.030    0.030    1.314    1.314 {method 'run' of 'ddxdb._Prepared' objects}
+      620    0.000    0.000    1.187    0.002 dense.py:65(materialize_compiled)
+      642    0.001    0.000    1.177    0.002 dense.py:49(run)
+      642    0.001    0.000    1.176    0.002 dense_program.py:963(run)
+27458/642    0.062    0.000    1.175    0.002 dense_program.py:964(visit)
+    11570    0.023    0.000    0.662    0.000 einsumfunc.py:1242(einsum)
+    13204    0.288    0.000    0.427    0.000 einsumfunc.py:1144(bmm_einsum)
+    21991    0.008    0.000    0.405    0.000 dense_program.py:692(_map)
+     4580    0.023    0.000    0.389    0.000 dense_program.py:590(_join)
+    11424    0.027    0.000    0.296    0.000 dense_program.py:999(<lambda>)
+186165/151211    0.084    0.000    0.268    0.000 dense_program.py:471(_expr)
+    16387    0.020    0.000    0.236    0.000 dense_program.py:254(rename)
+       11    0.227    0.021    0.227    0.021 compute.py:468(take)
+     3767    0.015    0.000    0.217    0.000 dense_program.py:700(_aggregate)
+    77363    0.101    0.000    0.196    0.000 dense_program.py:40(_align)
+    11570    0.057    0.000    0.194    0.000 einsumfunc.py:634(einsum_path)
+    42206    0.010    0.000    0.185    0.000 fromnumeric.py:48(_wrapfunc)
+  125/101    0.003    0.000    0.180    0.002 dense_program.py:432(compute)
+    63788    0.020    0.000    0.180    0.000 dense_program.py:217(rename)
+   143963    0.068    0.000    0.178    0.000 dense_program.py:109(rename)
+   283529    0.081    0.000    0.160    0.000 dense_program.py:463(_key)
+      620    0.156    0.000    0.159    0.000 dense.py:74(drop_table)
+        1    0.000    0.000    0.155    0.155 __init__.py:198(__exit__)
+        1    0.000    0.000    0.155    0.155 __init__.py:187(release)
+        1    0.000    0.000    0.155    0.155 {method 'release' of 'ddxdb._Release' objects}
+     4086    0.132    0.000    0.132    0.000 {built-in method numpy._core._multiarray_umath.c_einsum}
+       84    0.001    0.000    0.129    0.002 dense_program.py:826(_aggregate_bag)
+44833/44591    0.040    0.000    0.127    0.000 dense_program.py:137(_op)
+     3898    0.004    0.000    0.119    0.000 dense_program.py:418(_reduce)
+       11    0.106    0.010    0.106    0.010 shared.py:83(_snapshot)
+      744    0.106    0.000    0.106    0.000 {method 'ravel' of 'numpy.ndarray' objects}
+   186400    0.029    0.000    0.102    0.000 {built-in method builtins.any}

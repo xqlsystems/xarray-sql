@@ -1,0 +1,882 @@
+{
+  "native": [
+    {
+      "file": "framework-gpt2-1024-forward-jax_eager.json",
+      "backend": "jax_eager",
+      "context": 1024,
+      "parameters": 124337664,
+      "steps": 5,
+      "batch": 1,
+      "learning_rate": 0.01,
+      "optimizer": "sgd",
+      "gelu": "tanh",
+      "forward_only": true,
+      "rtol": 1e-09,
+      "atol": 1e-09,
+      "python": "3.12.14",
+      "jax_version": "0.12.0.1",
+      "reference_sha256": "80a5a55b39161f7e45fa717ec2d60aabaeee3edf90d19ef8ad736afa3c678841",
+      "rows": [
+        {
+          "step": 0,
+          "seconds": 1.035269625019282,
+          "loss": 10.783063169305695,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 1,
+          "seconds": 0.4574369170004502,
+          "loss": 10.804215487348133,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 2,
+          "seconds": 0.48019329202361405,
+          "loss": 10.841585972493611,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 3,
+          "seconds": 0.46009145909920335,
+          "loss": 10.872348942052431,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 4,
+          "seconds": 0.45806304190773517,
+          "loss": 10.87314253629185,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        }
+      ],
+      "compile_seconds": 0.0,
+      "scope": "One loss forward and, for training, its backward and SGD update; synchronization included; validation and input/state setup excluded.",
+      "devices": [
+        "cpu:0"
+      ],
+      "setup_seconds_including_compile": 0.0806786670582369,
+      "warm_seconds": 0.4639461775077507,
+      "five_step_seconds": 2.891054335050285,
+      "five_steps_with_setup_compile_seconds": 2.9717330021085218
+    },
+    {
+      "file": "framework-gpt2-1024-forward-jax_jit.json",
+      "backend": "jax_jit",
+      "context": 1024,
+      "parameters": 124337664,
+      "steps": 5,
+      "batch": 1,
+      "learning_rate": 0.01,
+      "optimizer": "sgd",
+      "gelu": "tanh",
+      "forward_only": true,
+      "rtol": 1e-09,
+      "atol": 1e-09,
+      "python": "3.12.14",
+      "jax_version": "0.12.0.1",
+      "reference_sha256": "80a5a55b39161f7e45fa717ec2d60aabaeee3edf90d19ef8ad736afa3c678841",
+      "rows": [
+        {
+          "step": 0,
+          "seconds": 0.4770496250130236,
+          "loss": 10.783063169305695,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 1,
+          "seconds": 0.32251091592479497,
+          "loss": 10.804215487348133,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 2,
+          "seconds": 0.3207364999689162,
+          "loss": 10.841585972493611,
+          "check": "ok",
+          "max_scaled_error": 1.6384658516817357e-16
+        },
+        {
+          "step": 3,
+          "seconds": 0.3164084159070626,
+          "loss": 10.872348942052431,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 4,
+          "seconds": 0.3200405000243336,
+          "loss": 10.87314253629185,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        }
+      ],
+      "compile_seconds": 0.1769480420043692,
+      "scope": "One loss forward and, for training, its backward and SGD update; synchronization included; validation and input/state setup excluded.",
+      "devices": [
+        "cpu:0"
+      ],
+      "setup_seconds_including_compile": 0.2612458330113441,
+      "warm_seconds": 0.31992408295627683,
+      "five_step_seconds": 1.756745956838131,
+      "five_steps_with_setup_compile_seconds": 2.017991789849475
+    },
+    {
+      "file": "framework-gpt2-1024-forward-torch_cpu.json",
+      "backend": "torch_cpu",
+      "context": 1024,
+      "parameters": 124337664,
+      "steps": 5,
+      "batch": 1,
+      "learning_rate": 0.01,
+      "optimizer": "sgd",
+      "gelu": "tanh",
+      "forward_only": true,
+      "rtol": 1e-09,
+      "atol": 1e-09,
+      "python": "3.12.14",
+      "jax_version": "0.12.0.1",
+      "reference_sha256": "80a5a55b39161f7e45fa717ec2d60aabaeee3edf90d19ef8ad736afa3c678841",
+      "rows": [
+        {
+          "step": 0,
+          "seconds": 0.38666091696359217,
+          "loss": 10.783063169305695,
+          "check": "ok",
+          "max_scaled_error": 1.647358279840836e-16
+        },
+        {
+          "step": 1,
+          "seconds": 0.32166445802431554,
+          "loss": 10.804215487348133,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 2,
+          "seconds": 0.35894229100085795,
+          "loss": 10.841585972493611,
+          "check": "ok",
+          "max_scaled_error": 1.6384658516817357e-16
+        },
+        {
+          "step": 3,
+          "seconds": 0.3645232500275597,
+          "loss": 10.872348942052431,
+          "check": "ok",
+          "max_scaled_error": 1.633829864059641e-16
+        },
+        {
+          "step": 4,
+          "seconds": 0.3359561249380931,
+          "loss": 10.87314253629185,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        }
+      ],
+      "compile_seconds": 0.0,
+      "scope": "One loss forward and, for training, its backward and SGD update; synchronization included; validation and input/state setup excluded.",
+      "nanogpt_revision": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291",
+      "nanogpt_model_sha256": "7c01703240dbec5d554527dc666e35b3df8391d0b117fddc07afcf325a21d11c",
+      "torch_version": "2.15.0",
+      "devices": [
+        "cpu"
+      ],
+      "torch_threads": 30,
+      "setup_seconds_including_compile": 2.160730791045353,
+      "warm_seconds": 0.3452715309977066,
+      "five_step_seconds": 1.7677470409544185,
+      "five_steps_with_setup_compile_seconds": 3.9284778319997713
+    },
+    {
+      "file": "framework-gpt2-1024-forward-torch_mps.json",
+      "backend": "torch_mps",
+      "context": 1024,
+      "parameters": 124337664,
+      "steps": 5,
+      "batch": 1,
+      "learning_rate": 0.01,
+      "optimizer": "sgd",
+      "gelu": "tanh",
+      "forward_only": true,
+      "rtol": 3e-05,
+      "atol": 3e-05,
+      "python": "3.12.14",
+      "jax_version": "0.12.0.1",
+      "reference_sha256": "80a5a55b39161f7e45fa717ec2d60aabaeee3edf90d19ef8ad736afa3c678841",
+      "rows": [
+        {
+          "step": 0,
+          "seconds": 0.2647716250503436,
+          "loss": 10.783063169305695,
+          "check": "ok",
+          "max_scaled_error": 2.1740594775497947e-08
+        },
+        {
+          "step": 1,
+          "seconds": 0.02600145898759365,
+          "loss": 10.804215487348133,
+          "check": "ok",
+          "max_scaled_error": 5.195634407695925e-09
+        },
+        {
+          "step": 2,
+          "seconds": 0.03451741603203118,
+          "loss": 10.841585972493611,
+          "check": "ok",
+          "max_scaled_error": 1.29577409940046e-08
+        },
+        {
+          "step": 3,
+          "seconds": 0.030054125003516674,
+          "loss": 10.872348942052431,
+          "check": "ok",
+          "max_scaled_error": 1.4408297738376235e-08
+        },
+        {
+          "step": 4,
+          "seconds": 0.034106959006749094,
+          "loss": 10.87314253629185,
+          "check": "ok",
+          "max_scaled_error": 2.7026244535502437e-08
+        }
+      ],
+      "compile_seconds": 0.0,
+      "scope": "One loss forward and, for training, its backward and SGD update; synchronization included; validation and input/state setup excluded.",
+      "nanogpt_revision": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291",
+      "nanogpt_model_sha256": "7c01703240dbec5d554527dc666e35b3df8391d0b117fddc07afcf325a21d11c",
+      "torch_version": "2.15.0",
+      "devices": [
+        "mps"
+      ],
+      "torch_threads": 30,
+      "setup_seconds_including_compile": 2.078200125019066,
+      "warm_seconds": 0.03116998975747265,
+      "five_step_seconds": 0.38945158408023417,
+      "five_steps_with_setup_compile_seconds": 2.4676517090993
+    },
+    {
+      "file": "framework-gpt2-16-jax_eager.json",
+      "backend": "jax_eager",
+      "context": 16,
+      "parameters": 123563520,
+      "steps": 5,
+      "batch": 1,
+      "learning_rate": 0.01,
+      "optimizer": "sgd",
+      "gelu": "tanh",
+      "forward_only": false,
+      "rtol": 1e-09,
+      "atol": 1e-09,
+      "python": "3.12.14",
+      "jax_version": "0.12.0.1",
+      "reference_sha256": "80a5a55b39161f7e45fa717ec2d60aabaeee3edf90d19ef8ad736afa3c678841",
+      "rows": [
+        {
+          "step": 0,
+          "seconds": 2.9766601249575615,
+          "loss": 11.218448458220333,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 1,
+          "seconds": 0.3764039580710232,
+          "loss": 9.443567400904483,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 2,
+          "seconds": 0.31518250005319715,
+          "loss": 7.050589630335465,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 3,
+          "seconds": 0.3376008750637993,
+          "loss": 8.57805561725344,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 4,
+          "seconds": 0.30860195797868073,
+          "loss": 6.7450402840490185,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        }
+      ],
+      "compile_seconds": 0.0,
+      "scope": "One loss forward and, for training, its backward and SGD update; synchronization included; validation and input/state setup excluded.",
+      "devices": [
+        "cpu:0"
+      ],
+      "setup_seconds_including_compile": 0.11831612489186227,
+      "warm_seconds": 0.3344473227916751,
+      "five_step_seconds": 4.314449416124262,
+      "five_steps_with_setup_compile_seconds": 4.432765541016124
+    },
+    {
+      "file": "framework-gpt2-16-jax_jit.json",
+      "backend": "jax_jit",
+      "context": 16,
+      "parameters": 123563520,
+      "steps": 5,
+      "batch": 1,
+      "learning_rate": 0.01,
+      "optimizer": "sgd",
+      "gelu": "tanh",
+      "forward_only": false,
+      "rtol": 1e-09,
+      "atol": 1e-09,
+      "python": "3.12.14",
+      "jax_version": "0.12.0.1",
+      "reference_sha256": "80a5a55b39161f7e45fa717ec2d60aabaeee3edf90d19ef8ad736afa3c678841",
+      "rows": [
+        {
+          "step": 0,
+          "seconds": 0.25373025005683303,
+          "loss": 11.218448458220333,
+          "check": "ok",
+          "max_scaled_error": 3.4880647602577323e-16
+        },
+        {
+          "step": 1,
+          "seconds": 0.1414729580283165,
+          "loss": 9.443567400904483,
+          "check": "ok",
+          "max_scaled_error": 3.5790513615769393e-16
+        },
+        {
+          "step": 2,
+          "seconds": 0.1349089159630239,
+          "loss": 7.050589630335465,
+          "check": "ok",
+          "max_scaled_error": 3.5737750783812467e-16
+        },
+        {
+          "step": 3,
+          "seconds": 0.1352096670307219,
+          "loss": 8.57805561725344,
+          "check": "ok",
+          "max_scaled_error": 3.571484214546241e-16
+        },
+        {
+          "step": 4,
+          "seconds": 0.13392283394932747,
+          "loss": 6.7450402840490185,
+          "check": "ok",
+          "max_scaled_error": 3.5720036936486486e-16
+        }
+      ],
+      "compile_seconds": 3.0000361249549314,
+      "scope": "One loss forward and, for training, its backward and SGD update; synchronization included; validation and input/state setup excluded.",
+      "devices": [
+        "cpu:0"
+      ],
+      "setup_seconds_including_compile": 3.084211624925956,
+      "warm_seconds": 0.13637859374284744,
+      "five_step_seconds": 0.7992446250282228,
+      "five_steps_with_setup_compile_seconds": 3.883456249954179
+    },
+    {
+      "file": "framework-gpt2-16-jax_separate.json",
+      "backend": "jax_separate",
+      "context": 16,
+      "parameters": 123563520,
+      "steps": 5,
+      "batch": 1,
+      "learning_rate": 0.01,
+      "optimizer": "sgd",
+      "gelu": "tanh",
+      "forward_only": false,
+      "rtol": 1e-09,
+      "atol": 1e-09,
+      "python": "3.12.14",
+      "jax_version": "0.12.0.1",
+      "reference_sha256": "80a5a55b39161f7e45fa717ec2d60aabaeee3edf90d19ef8ad736afa3c678841",
+      "rows": [
+        {
+          "step": 0,
+          "seconds": 3.103274374967441,
+          "loss": 11.218448458220333,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 1,
+          "seconds": 0.4117213749559596,
+          "loss": 9.443567400904483,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 2,
+          "seconds": 0.3880377080058679,
+          "loss": 7.050589630335465,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 3,
+          "seconds": 0.3956522080115974,
+          "loss": 8.57805561725344,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        },
+        {
+          "step": 4,
+          "seconds": 0.3818153750617057,
+          "loss": 6.7450402840490185,
+          "check": "ok",
+          "max_scaled_error": 0.0
+        }
+      ],
+      "compile_seconds": 0.0,
+      "scope": "One loss forward and, for training, its backward and SGD update; synchronization included; validation and input/state setup excluded.",
+      "devices": [
+        "cpu:0"
+      ],
+      "setup_seconds_including_compile": 0.08685445797163993,
+      "warm_seconds": 0.39430666650878266,
+      "five_step_seconds": 4.680501041002572,
+      "five_steps_with_setup_compile_seconds": 4.7673554989742115
+    },
+    {
+      "file": "framework-gpt2-16-torch_cpu.json",
+      "backend": "torch_cpu",
+      "context": 16,
+      "parameters": 123563520,
+      "steps": 5,
+      "batch": 1,
+      "learning_rate": 0.01,
+      "optimizer": "sgd",
+      "gelu": "tanh",
+      "forward_only": false,
+      "rtol": 1e-09,
+      "atol": 1e-09,
+      "python": "3.12.14",
+      "jax_version": "0.12.0.1",
+      "reference_sha256": "80a5a55b39161f7e45fa717ec2d60aabaeee3edf90d19ef8ad736afa3c678841",
+      "rows": [
+        {
+          "step": 0,
+          "seconds": 0.1971114999614656,
+          "loss": 11.218448458220333,
+          "check": "ok",
+          "max_scaled_error": 1.6506898020374621e-15
+        },
+        {
+          "step": 1,
+          "seconds": 0.09883254196029156,
+          "loss": 9.443567400904483,
+          "check": "ok",
+          "max_scaled_error": 1.6277329480048546e-15
+        },
+        {
+          "step": 2,
+          "seconds": 0.09388387494254857,
+          "loss": 7.050589630335465,
+          "check": "ok",
+          "max_scaled_error": 1.6253333233185944e-15
+        },
+        {
+          "step": 3,
+          "seconds": 0.0943373340414837,
+          "loss": 8.57805561725344,
+          "check": "ok",
+          "max_scaled_error": 1.6047216744810507e-15
+        },
+        {
+          "step": 4,
+          "seconds": 0.09407875000033528,
+          "loss": 6.7450402840490185,
+          "check": "ok",
+          "max_scaled_error": 1.6049550842695296e-15
+        }
+      ],
+      "compile_seconds": 0.0,
+      "scope": "One loss forward and, for training, its backward and SGD update; synchronization included; validation and input/state setup excluded.",
+      "nanogpt_revision": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291",
+      "nanogpt_model_sha256": "7c01703240dbec5d554527dc666e35b3df8391d0b117fddc07afcf325a21d11c",
+      "torch_version": "2.15.0",
+      "devices": [
+        "cpu"
+      ],
+      "torch_threads": 30,
+      "setup_seconds_including_compile": 3.5439498749328777,
+      "warm_seconds": 0.09528312523616478,
+      "five_step_seconds": 0.5782440009061247,
+      "five_steps_with_setup_compile_seconds": 4.122193875839002
+    },
+    {
+      "file": "framework-gpt2-16-torch_mps.json",
+      "backend": "torch_mps",
+      "context": 16,
+      "parameters": 123563520,
+      "steps": 5,
+      "batch": 1,
+      "learning_rate": 0.01,
+      "optimizer": "sgd",
+      "gelu": "tanh",
+      "forward_only": false,
+      "rtol": 3e-05,
+      "atol": 3e-05,
+      "python": "3.12.14",
+      "jax_version": "0.12.0.1",
+      "reference_sha256": "80a5a55b39161f7e45fa717ec2d60aabaeee3edf90d19ef8ad736afa3c678841",
+      "rows": [
+        {
+          "step": 0,
+          "seconds": 0.876074375002645,
+          "loss": 11.218448458220333,
+          "check": "ok",
+          "max_scaled_error": 2.466638482282098e-07
+        },
+        {
+          "step": 1,
+          "seconds": 0.025007624994032085,
+          "loss": 9.443567400904483,
+          "check": "ok",
+          "max_scaled_error": 2.4429602051829147e-07
+        },
+        {
+          "step": 2,
+          "seconds": 0.0235599169973284,
+          "loss": 7.050589630335465,
+          "check": "ok",
+          "max_scaled_error": 2.4332607268461294e-07
+        },
+        {
+          "step": 3,
+          "seconds": 0.02224191604182124,
+          "loss": 8.57805561725344,
+          "check": "ok",
+          "max_scaled_error": 2.5501415047442646e-07
+        },
+        {
+          "step": 4,
+          "seconds": 0.02418895799200982,
+          "loss": 6.7450402840490185,
+          "check": "ok",
+          "max_scaled_error": 2.5291695020020007e-07
+        }
+      ],
+      "compile_seconds": 0.0,
+      "scope": "One loss forward and, for training, its backward and SGD update; synchronization included; validation and input/state setup excluded.",
+      "nanogpt_revision": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291",
+      "nanogpt_model_sha256": "7c01703240dbec5d554527dc666e35b3df8391d0b117fddc07afcf325a21d11c",
+      "torch_version": "2.15.0",
+      "devices": [
+        "mps"
+      ],
+      "torch_threads": 30,
+      "setup_seconds_including_compile": 2.113612666958943,
+      "warm_seconds": 0.023749604006297886,
+      "five_step_seconds": 0.9710727910278365,
+      "five_steps_with_setup_compile_seconds": 3.0846854579867795
+    }
+  ],
+  "sql": [
+    {
+      "host": "shared_gpu",
+      "command": [
+        "/Users/cromwellian/xql/xarray-sql/.venv/bin/python",
+        "-u",
+        "benchmarks/ml/02_nanogpt.py",
+        "--preset",
+        "gpt2",
+        "--steps",
+        "5",
+        "--sizes",
+        "1",
+        "--optimizer",
+        "sgd",
+        "--learning-rate",
+        "0.01",
+        "--hosts",
+        "shared_gpu",
+        "--csv",
+        "/Users/cromwellian/xql/xarray-sql/benchmarks/apple/nanogpt-shared-v3-gpt2-16-shared_gpu.csv",
+        "--context",
+        "16",
+        "--vocab-size",
+        "50257"
+      ],
+      "contended": false,
+      "log": "nanogpt-shared-v3-gpt2-16-shared_gpu.log",
+      "csv": "nanogpt-shared-v3-gpt2-16-shared_gpu.csv",
+      "peak_rss_gib": 40.02874755859375,
+      "status": "passed",
+      "started_utc": "2026-11-01T10:54:32.541752+00:00",
+      "exit_code": 0,
+      "wall_seconds": 846.1769028330455,
+      "checked_rows": 10,
+      "case": "gpt2-16",
+      "loss_warm_seconds": 1.3720009690150619,
+      "loss_all_seconds": 7.187280835118145,
+      "train_warm_seconds": 162.27428429198335,
+      "train_all_seconds": 822.448966667871,
+      "warm_seconds": 163.6462852609984,
+      "all_api_seconds": 829.6362475029891,
+      "measured_total_seconds": 829.9728821297176,
+      "config": {
+        "layers": "12",
+        "embed": "768",
+        "heads": "12",
+        "context": "16",
+        "vocab": "50257",
+        "parameters": "123563520",
+        "batch": "1",
+        "optimizer": "sgd",
+        "sgd_learning_rate": "0.01",
+        "rtol": "3e-05",
+        "atol": "3e-05"
+      },
+      "counters": {
+        "cpu_matmul": 0.0,
+        "gpu_matmul": 710.0,
+        "gpu_attention": 60.0,
+        "physical_plans": 7148.0,
+        "plan_executions": 9020.0,
+        "planning_seconds": 131.42177372181322,
+        "execution_seconds": 504.44527716143057,
+        "stage_storage_seconds": 169.1986960049253,
+        "key_cache_bytes": 2892210304.0,
+        "key_copy_bytes_avoided": 6005381504.0
+      }
+    },
+    {
+      "host": "shared_cpu",
+      "command": [
+        "/Users/cromwellian/xql/xarray-sql/.venv/bin/python",
+        "-u",
+        "benchmarks/ml/02_nanogpt.py",
+        "--preset",
+        "gpt2",
+        "--steps",
+        "5",
+        "--sizes",
+        "1",
+        "--optimizer",
+        "sgd",
+        "--learning-rate",
+        "0.01",
+        "--hosts",
+        "shared_cpu",
+        "--csv",
+        "/Users/cromwellian/xql/xarray-sql/benchmarks/apple/nanogpt-shared-v3-gpt2-16-shared_cpu.csv",
+        "--context",
+        "16",
+        "--vocab-size",
+        "50257"
+      ],
+      "contended": false,
+      "log": "nanogpt-shared-v3-gpt2-16-shared_cpu.log",
+      "csv": "nanogpt-shared-v3-gpt2-16-shared_cpu.csv",
+      "peak_rss_gib": 38.71354675292969,
+      "status": "passed",
+      "started_utc": "2026-11-01T11:08:38.723798+00:00",
+      "exit_code": 0,
+      "wall_seconds": 846.0968177500181,
+      "checked_rows": 10,
+      "case": "gpt2-16",
+      "loss_warm_seconds": 1.1682787809986621,
+      "loss_all_seconds": 6.23576199891977,
+      "train_warm_seconds": 162.86555686450447,
+      "train_all_seconds": 823.4401903749676,
+      "warm_seconds": 164.03383564550313,
+      "all_api_seconds": 829.6759523738874,
+      "measured_total_seconds": 829.991804452613,
+      "config": {
+        "layers": "12",
+        "embed": "768",
+        "heads": "12",
+        "context": "16",
+        "vocab": "50257",
+        "parameters": "123563520",
+        "batch": "1",
+        "optimizer": "sgd",
+        "sgd_learning_rate": "0.01",
+        "rtol": "1e-09",
+        "atol": "1e-09"
+      },
+      "counters": {
+        "cpu_matmul": 710.0,
+        "gpu_matmul": 0.0,
+        "gpu_attention": 0.0,
+        "physical_plans": 7148.0,
+        "plan_executions": 9020.0,
+        "planning_seconds": 130.0049377027899,
+        "execution_seconds": 505.680548057775,
+        "stage_storage_seconds": 169.5953018902801,
+        "key_cache_bytes": 2892210304.0,
+        "key_copy_bytes_avoided": 6005381504.0
+      }
+    },
+    {
+      "host": "shared_cpu",
+      "command": [
+        "/Users/cromwellian/xql/xarray-sql/.venv/bin/python",
+        "-u",
+        "benchmarks/ml/02_nanogpt.py",
+        "--preset",
+        "gpt2",
+        "--steps",
+        "5",
+        "--sizes",
+        "1",
+        "--optimizer",
+        "sgd",
+        "--learning-rate",
+        "0.01",
+        "--hosts",
+        "shared_cpu",
+        "--csv",
+        "/Users/cromwellian/xql/xarray-sql/benchmarks/apple/nanogpt-shared-v3-gpt2-forward-shared_cpu.csv",
+        "--forward-only",
+        "--vocab-size",
+        "50257"
+      ],
+      "contended": false,
+      "log": "nanogpt-shared-v3-gpt2-forward-shared_cpu.log",
+      "csv": "nanogpt-shared-v3-gpt2-forward-shared_cpu.csv",
+      "peak_rss_gib": 15.54058837890625,
+      "status": "passed",
+      "started_utc": "2026-11-01T11:22:44.844329+00:00",
+      "exit_code": 0,
+      "wall_seconds": 38.22789254190866,
+      "checked_rows": 5,
+      "case": "gpt2-forward",
+      "loss_warm_seconds": 6.572556927247206,
+      "loss_all_seconds": 33.19323650095612,
+      "warm_seconds": 6.572556927247206,
+      "all_api_seconds": 33.19323650095612,
+      "measured_total_seconds": 33.268904172233306,
+      "config": {
+        "layers": "12",
+        "embed": "768",
+        "heads": "12",
+        "context": "1024",
+        "vocab": "50257",
+        "parameters": "124337664",
+        "batch": "1",
+        "optimizer": "sgd",
+        "sgd_learning_rate": "0.01",
+        "rtol": "1e-09",
+        "atol": "1e-09"
+      },
+      "counters": {
+        "cpu_matmul": 365.0,
+        "gpu_matmul": 0.0,
+        "gpu_attention": 0.0,
+        "physical_plans": 65.0,
+        "plan_executions": 325.0,
+        "planning_seconds": 0.3588349998462945,
+        "execution_seconds": 20.173762080725282,
+        "stage_storage_seconds": 12.39298641658388,
+        "key_cache_bytes": 1254006784.0,
+        "key_copy_bytes_avoided": 1914986496.0
+      }
+    },
+    {
+      "host": "shared_gpu",
+      "command": [
+        "/Users/cromwellian/xql/xarray-sql/.venv/bin/python",
+        "-u",
+        "benchmarks/ml/02_nanogpt.py",
+        "--preset",
+        "gpt2",
+        "--steps",
+        "5",
+        "--sizes",
+        "1",
+        "--optimizer",
+        "sgd",
+        "--learning-rate",
+        "0.01",
+        "--hosts",
+        "shared_gpu",
+        "--csv",
+        "/Users/cromwellian/xql/xarray-sql/benchmarks/apple/nanogpt-shared-v3-gpt2-forward-shared_gpu.csv",
+        "--forward-only",
+        "--vocab-size",
+        "50257"
+      ],
+      "contended": false,
+      "log": "nanogpt-shared-v3-gpt2-forward-shared_gpu.log",
+      "csv": "nanogpt-shared-v3-gpt2-forward-shared_gpu.csv",
+      "peak_rss_gib": 15.64544677734375,
+      "status": "passed",
+      "started_utc": "2026-11-01T11:23:23.073032+00:00",
+      "exit_code": 0,
+      "wall_seconds": 39.74374524992891,
+      "checked_rows": 5,
+      "case": "gpt2-forward",
+      "loss_warm_seconds": 6.857087958022021,
+      "loss_all_seconds": 34.839587540132925,
+      "warm_seconds": 6.857087958022021,
+      "all_api_seconds": 34.839587540132925,
+      "measured_total_seconds": 34.920842704945244,
+      "config": {
+        "layers": "12",
+        "embed": "768",
+        "heads": "12",
+        "context": "1024",
+        "vocab": "50257",
+        "parameters": "124337664",
+        "batch": "1",
+        "optimizer": "sgd",
+        "sgd_learning_rate": "0.01",
+        "rtol": "3e-05",
+        "atol": "3e-05"
+      },
+      "counters": {
+        "cpu_matmul": 0.0,
+        "gpu_matmul": 365.0,
+        "gpu_attention": 60.0,
+        "physical_plans": 65.0,
+        "plan_executions": 325.0,
+        "planning_seconds": 0.372420794214122,
+        "execution_seconds": 21.33640320203267,
+        "stage_storage_seconds": 12.807666914421134,
+        "key_cache_bytes": 1254006784.0,
+        "key_copy_bytes_avoided": 1914986496.0
+      }
+    }
+  ],
+  "notes": [
+    "Native training uses one forward/backward and SGD; jax_separate recomputes backward after a separate forward to match SQL call structure.",
+    "JAX runs on CPU; PyTorch CPU uses float64 with 30 threads; PyTorch MPS uses float32. SQL MLX retains float64 Arrow storage around float32 GPU kernels.",
+    "All cases use five steps, batch 1, 12 layers, 12 heads, width 768, vocabulary 50257, identical NumPy seed-0 weights, seed-1 Shakespeare batches and SGD lr=0.01.",
+    "Device synchronization is inside each timer; JAX reference loss and every updated weight are checked outside timers. Native parameter readback for checks is excluded; SQL query outputs are collected to Arrow inside SQL timings.",
+    "nanoGPT model is configured with bias=False/dropout=0 and tanh GELU to match SQL; stock bench.py uses AdamW, exact GELU, larger batch/context and CUDA."
+  ],
+  "ratios": {
+    "gpt2-forward:shared_cpu/jax_eager": 14.16663666150672,
+    "gpt2-forward:shared_gpu/jax_eager": 14.779921228917694,
+    "gpt2-forward:shared_cpu/jax_jit": 20.54411429897092,
+    "gpt2-forward:shared_gpu/jax_jit": 21.433484765068968,
+    "gpt2-forward:shared_cpu/torch_cpu": 19.035907502292343,
+    "gpt2-forward:shared_gpu/torch_cpu": 19.859986539311773,
+    "gpt2-forward:shared_cpu/torch_mps": 210.8616967277479,
+    "gpt2-forward:shared_gpu/torch_mps": 219.9900613178133,
+    "gpt2-16:shared_gpu/jax_eager": 489.303618563969,
+    "gpt2-16:shared_cpu/jax_eager": 490.4623971162079,
+    "gpt2-16:shared_gpu/jax_jit": 1199.9411400997897,
+    "gpt2-16:shared_cpu/jax_jit": 1202.7828645513225,
+    "gpt2-16:shared_gpu/jax_separate": 415.0228721972506,
+    "gpt2-16:shared_cpu/jax_separate": 416.005737609941,
+    "gpt2-16:shared_gpu/torch_cpu": 1717.4739478306526,
+    "gpt2-16:shared_cpu/torch_cpu": 1721.5413037611404,
+    "gpt2-16:shared_gpu/torch_mps": 6890.484793666577,
+    "gpt2-16:shared_cpu/torch_mps": 6906.802976672995
+  }
+}

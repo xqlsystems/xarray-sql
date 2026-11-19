@@ -1,0 +1,19 @@
+demo,step,host,tokens,seconds,check,operators
+attention,forward (window),datafusion,16,0.002329750102944672,ok (2e-16),24
+attention,gradient (window),datafusion,16,0.02357399999164045,ok (7e-16),
+attention,forward (group by),datafusion,16,0.002127207932062447,ok (2e-16),36
+attention,gradient (group by),datafusion,16,0.017093332950025797,ok (9e-16),
+attention,forward (window),einfold,16,0.002680541016161442,ok (2e-16),1
+attention,gradient (window),einfold,16,0.05557191697880626,ok (8e-16),
+attention,forward (group by),einfold,16,0.003269708016887307,ok (2e-16),1
+attention,gradient (group by),einfold,16,0.05157554196193814,ok (9e-16),
+attention,forward (window),datafusion,64,0.006661833031103015,ok (3e-16),24
+attention,gradient (window),datafusion,64,0.03245445899665356,ok (1e-15),
+attention,forward (group by),datafusion,64,0.010099084000103176,ok (2e-16),36
+attention,gradient (group by),datafusion,64,0.027367457980290055,ok (1e-15),
+attention,forward (window),einfold,64,0.002633958007209003,ok (3e-16),1
+attention,gradient (window),einfold,64,0.06518874992616475,ok (2e-15),
+attention,forward (group by),einfold,64,0.003470374969765544,ok (3e-16),1
+attention,gradient (group by),einfold,64,0.06482166599016637,ok (1e-15),
+attention,nadaraya-watson (256 sources),datafusion,64,0.004530707956291735,ok (1e-15),
+attention,nadaraya-watson (256 sources),einfold,64,0.004136291914619505,ok (4e-16),

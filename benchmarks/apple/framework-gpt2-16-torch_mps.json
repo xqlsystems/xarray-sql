@@ -1,0 +1,66 @@
+{
+  "backend": "torch_mps",
+  "context": 16,
+  "parameters": 123563520,
+  "steps": 5,
+  "batch": 1,
+  "learning_rate": 0.01,
+  "optimizer": "sgd",
+  "gelu": "tanh",
+  "forward_only": false,
+  "rtol": 3e-05,
+  "atol": 3e-05,
+  "python": "3.12.14",
+  "jax_version": "0.12.0.1",
+  "reference_sha256": "80a5a55b39161f7e45fa717ec2d60aabaeee3edf90d19ef8ad736afa3c678841",
+  "rows": [
+    {
+      "step": 0,
+      "seconds": 0.876074375002645,
+      "loss": 11.218448458220333,
+      "check": "ok",
+      "max_scaled_error": 2.466638482282098e-07
+    },
+    {
+      "step": 1,
+      "seconds": 0.025007624994032085,
+      "loss": 9.443567400904483,
+      "check": "ok",
+      "max_scaled_error": 2.4429602051829147e-07
+    },
+    {
+      "step": 2,
+      "seconds": 0.0235599169973284,
+      "loss": 7.050589630335465,
+      "check": "ok",
+      "max_scaled_error": 2.4332607268461294e-07
+    },
+    {
+      "step": 3,
+      "seconds": 0.02224191604182124,
+      "loss": 8.57805561725344,
+      "check": "ok",
+      "max_scaled_error": 2.5501415047442646e-07
+    },
+    {
+      "step": 4,
+      "seconds": 0.02418895799200982,
+      "loss": 6.7450402840490185,
+      "check": "ok",
+      "max_scaled_error": 2.5291695020020007e-07
+    }
+  ],
+  "compile_seconds": 0.0,
+  "scope": "One loss forward and, for training, its backward and SGD update; synchronization included; validation and input/state setup excluded.",
+  "nanogpt_revision": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291",
+  "nanogpt_model_sha256": "7c01703240dbec5d554527dc666e35b3df8391d0b117fddc07afcf325a21d11c",
+  "torch_version": "2.15.0",
+  "devices": [
+    "mps"
+  ],
+  "torch_threads": 30,
+  "setup_seconds_including_compile": 2.113612666958943,
+  "warm_seconds": 0.023749604006297886,
+  "five_step_seconds": 0.9710727910278365,
+  "five_steps_with_setup_compile_seconds": 3.0846854579867795
+}

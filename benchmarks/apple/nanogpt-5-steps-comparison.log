@@ -1,0 +1,146 @@
+  1-layer GPT, vocab 65, 4,416 parameters: the loss is 123 lines of SQL
+  loss, step 0                 datafusion  batch=4         1.069s
+  train (sgd), step 0          datafusion  batch=4         0.396s
+  loss, step 1                 datafusion  batch=4         1.053s
+  train (sgd), step 1          datafusion  batch=4         0.163s
+  loss, step 2                 datafusion  batch=4         1.100s
+  train (sgd), step 2          datafusion  batch=4         0.161s
+  loss, step 3                 datafusion  batch=4         1.053s
+  train (sgd), step 3          datafusion  batch=4         0.163s
+  loss, step 4                 datafusion  batch=4         1.056s
+  train (sgd), step 4          datafusion  batch=4         0.161s
+  loss, step 0                 einfold     batch=4         1.159s
+  train (sgd), step 0          einfold     batch=4         0.570s
+  loss, step 1                 einfold     batch=4         1.162s
+  train (sgd), step 1          einfold     batch=4         0.333s
+  loss, step 2                 einfold     batch=4         1.176s
+  train (sgd), step 2          einfold     batch=4         0.329s
+  loss, step 3                 einfold     batch=4         1.162s
+  train (sgd), step 3          einfold     batch=4         0.331s
+  loss, step 4                 einfold     batch=4         1.172s
+  train (sgd), step 4          einfold     batch=4         0.331s
+  loss, step 0                 duckdb      batch=4         0.029s
+  train (sgd), step 0          duckdb      batch=4         0.299s
+  loss, step 1                 duckdb      batch=4         0.024s
+  train (sgd), step 1          duckdb      batch=4         0.257s
+  loss, step 2                 duckdb      batch=4         0.025s
+  train (sgd), step 2          duckdb      batch=4         0.253s
+  loss, step 3                 duckdb      batch=4         0.024s
+  train (sgd), step 3          duckdb      batch=4         0.254s
+  loss, step 4                 duckdb      batch=4         0.024s
+  train (sgd), step 4          duckdb      batch=4         0.252s
+  loss, step 0                 datafusion_prepared batch=4         2.183s
+  train (sgd), step 0          datafusion_prepared batch=4         0.406s
+  loss, step 1                 datafusion_prepared batch=4         0.977s
+  train (sgd), step 1          datafusion_prepared batch=4         0.125s
+  loss, step 2                 datafusion_prepared batch=4         0.977s
+  train (sgd), step 2          datafusion_prepared batch=4         0.131s
+  loss, step 3                 datafusion_prepared batch=4         0.975s
+  train (sgd), step 3          datafusion_prepared batch=4         0.123s
+  loss, step 4                 datafusion_prepared batch=4         0.979s
+  train (sgd), step 4          datafusion_prepared batch=4         0.125s
+  loss, step 0                 cpu_optimized batch=4         2.409s
+  train (sgd), step 0          cpu_optimized batch=4         0.574s
+  loss, step 1                 cpu_optimized batch=4         1.081s
+  train (sgd), step 1          cpu_optimized batch=4         0.259s
+  loss, step 2                 cpu_optimized batch=4         1.077s
+  train (sgd), step 2          cpu_optimized batch=4         0.259s
+  loss, step 3                 cpu_optimized batch=4         1.085s
+  train (sgd), step 3          cpu_optimized batch=4         0.265s
+  loss, step 4                 cpu_optimized batch=4         1.083s
+  train (sgd), step 4          cpu_optimized batch=4         0.263s
+  loss, step 0                 gpu_optimized batch=4         2.407s
+  train (sgd), step 0          gpu_optimized batch=4         0.561s
+  loss, step 1                 gpu_optimized batch=4         1.083s
+  train (sgd), step 1          gpu_optimized batch=4         0.260s
+  loss, step 2                 gpu_optimized batch=4         1.081s
+  train (sgd), step 2          gpu_optimized batch=4         0.270s
+  loss, step 3                 gpu_optimized batch=4         1.089s
+  train (sgd), step 3          gpu_optimized batch=4         0.261s
+  loss, step 4                 gpu_optimized batch=4         1.080s
+  train (sgd), step 4          gpu_optimized batch=4         0.259s
+  loss, step 0                 gpu_forced  batch=4         2.605s
+  train (sgd), step 0          gpu_forced  batch=4         0.743s
+  loss, step 1                 gpu_forced  batch=4         1.191s
+  train (sgd), step 1          gpu_forced  batch=4         0.308s
+  loss, step 2                 gpu_forced  batch=4         1.189s
+  train (sgd), step 2          gpu_forced  batch=4         0.291s
+  loss, step 3                 gpu_forced  batch=4         1.166s
+  train (sgd), step 3          gpu_forced  batch=4         0.293s
+  loss, step 4                 gpu_forced  batch=4         1.166s
+  train (sgd), step 4          gpu_forced  batch=4         0.319s
+
+| demo | step | host | batch | seconds | check | loss | operators | rtol | atol | load_seconds | model_seconds | table_registers | query_preparations | gradient_preparations | inplace_updates | gpu_matmul |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| nanogpt | loss, step 0 | datafusion | 4 | 1.069 | ok (4e-16) | 4.179 | 9882 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 0 | datafusion | 4 | 0.396 | ok (5e-16) | n/a | n/a | n/a | n/a | 0.004 | 0.025 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | loss, step 1 | datafusion | 4 | 1.053 | ok (2e-16) | 4.105 | 9882 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 1 | datafusion | 4 | 0.163 | ok (5e-16) | n/a | n/a | n/a | n/a | 0.006 | 0.047 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | loss, step 2 | datafusion | 4 | 1.100 | ok (0e+00) | 3.884 | 9882 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 2 | datafusion | 4 | 0.161 | ok (6e-16) | n/a | n/a | n/a | n/a | 0.008 | 0.072 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | loss, step 3 | datafusion | 4 | 1.053 | ok (1e-16) | 3.642 | 9882 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 3 | datafusion | 4 | 0.163 | ok (6e-16) | n/a | n/a | n/a | n/a | 0.010 | 0.095 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | loss, step 4 | datafusion | 4 | 1.056 | ok (5e-16) | 3.842 | 9882 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 4 | datafusion | 4 | 0.161 | ok (8e-16) | n/a | n/a | n/a | n/a | 0.012 | 0.118 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | loss, step 0 | einfold | 4 | 1.159 | ok (2e-16) | 4.179 | 1 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 0 | einfold | 4 | 0.570 | ok (4e-16) | n/a | n/a | n/a | n/a | 0.003 | 0.023 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | loss, step 1 | einfold | 4 | 1.162 | ok (0e+00) | 4.105 | 1 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 1 | einfold | 4 | 0.333 | ok (4e-16) | n/a | n/a | n/a | n/a | 0.005 | 0.047 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | loss, step 2 | einfold | 4 | 1.176 | ok (1e-16) | 3.884 | 1 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 2 | einfold | 4 | 0.329 | ok (5e-16) | n/a | n/a | n/a | n/a | 0.007 | 0.071 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | loss, step 3 | einfold | 4 | 1.162 | ok (1e-16) | 3.642 | 1 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 3 | einfold | 4 | 0.331 | ok (5e-16) | n/a | n/a | n/a | n/a | 0.009 | 0.095 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | loss, step 4 | einfold | 4 | 1.172 | ok (3e-16) | 3.842 | 1 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 4 | einfold | 4 | 0.331 | ok (8e-16) | n/a | n/a | n/a | n/a | 0.011 | 0.119 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | loss, step 0 | duckdb | 4 | 0.029 | ok (2e-16) | 4.179 | 126 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 0 | duckdb | 4 | 0.299 | ok (5e-16) | n/a | n/a | n/a | n/a | 0.011 | 0.001 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | loss, step 1 | duckdb | 4 | 0.024 | ok (0e+00) | 4.105 | 126 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 1 | duckdb | 4 | 0.257 | ok (5e-16) | n/a | n/a | n/a | n/a | 0.017 | 0.002 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | loss, step 2 | duckdb | 4 | 0.025 | ok (0e+00) | 3.884 | 126 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 2 | duckdb | 4 | 0.253 | ok (6e-16) | n/a | n/a | n/a | n/a | 0.023 | 0.003 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | loss, step 3 | duckdb | 4 | 0.024 | ok (0e+00) | 3.642 | 126 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 3 | duckdb | 4 | 0.254 | ok (6e-16) | n/a | n/a | n/a | n/a | 0.029 | 0.004 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | loss, step 4 | duckdb | 4 | 0.024 | ok (0e+00) | 3.842 | 126 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 4 | duckdb | 4 | 0.252 | ok (1e-15) | n/a | n/a | n/a | n/a | 0.034 | 0.005 | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | loss, step 0 | datafusion_prepared | 4 | 2.183 | ok (4e-16) | 4.179 | 9882 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 0 | datafusion_prepared | 4 | 0.406 | ok (5e-16) | n/a | n/a | n/a | n/a | 0.004 | 0.023 | 13 | 1 | 1 | 11 | n/a |
+| nanogpt | loss, step 1 | datafusion_prepared | 4 | 0.977 | ok (2e-16) | 4.105 | 9882 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 12 | n/a |
+| nanogpt | train (sgd), step 1 | datafusion_prepared | 4 | 0.125 | ok (5e-16) | n/a | n/a | n/a | n/a | 0.006 | 0.023 | 13 | 1 | 1 | 23 | n/a |
+| nanogpt | loss, step 2 | datafusion_prepared | 4 | 0.977 | ok (1e-16) | 3.884 | 9882 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 24 | n/a |
+| nanogpt | train (sgd), step 2 | datafusion_prepared | 4 | 0.131 | ok (9e-16) | n/a | n/a | n/a | n/a | 0.007 | 0.023 | 13 | 1 | 1 | 35 | n/a |
+| nanogpt | loss, step 3 | datafusion_prepared | 4 | 0.975 | ok (1e-16) | 3.642 | 9882 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 36 | n/a |
+| nanogpt | train (sgd), step 3 | datafusion_prepared | 4 | 0.123 | ok (7e-16) | n/a | n/a | n/a | n/a | 0.009 | 0.023 | 13 | 1 | 1 | 47 | n/a |
+| nanogpt | loss, step 4 | datafusion_prepared | 4 | 0.979 | ok (5e-16) | 3.842 | 9882 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 48 | n/a |
+| nanogpt | train (sgd), step 4 | datafusion_prepared | 4 | 0.125 | ok (1e-15) | n/a | n/a | n/a | n/a | 0.011 | 0.023 | 13 | 1 | 1 | 59 | n/a |
+| nanogpt | loss, step 0 | cpu_optimized | 4 | 2.409 | ok (2e-16) | 4.179 | 1 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 0 | cpu_optimized | 4 | 0.574 | ok (3e-16) | n/a | n/a | n/a | n/a | 0.004 | 0.024 | 13 | 1 | 1 | 11 | n/a |
+| nanogpt | loss, step 1 | cpu_optimized | 4 | 1.081 | ok (2e-16) | 4.105 | 1 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 12 | n/a |
+| nanogpt | train (sgd), step 1 | cpu_optimized | 4 | 0.259 | ok (3e-16) | n/a | n/a | n/a | n/a | 0.006 | 0.024 | 13 | 1 | 1 | 23 | n/a |
+| nanogpt | loss, step 2 | cpu_optimized | 4 | 1.077 | ok (1e-16) | 3.884 | 1 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 24 | n/a |
+| nanogpt | train (sgd), step 2 | cpu_optimized | 4 | 0.259 | ok (4e-16) | n/a | n/a | n/a | n/a | 0.007 | 0.024 | 13 | 1 | 1 | 35 | n/a |
+| nanogpt | loss, step 3 | cpu_optimized | 4 | 1.085 | ok (1e-16) | 3.642 | 1 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 36 | n/a |
+| nanogpt | train (sgd), step 3 | cpu_optimized | 4 | 0.265 | ok (5e-16) | n/a | n/a | n/a | n/a | 0.009 | 0.024 | 13 | 1 | 1 | 47 | n/a |
+| nanogpt | loss, step 4 | cpu_optimized | 4 | 1.083 | ok (3e-16) | 3.842 | 1 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 48 | n/a |
+| nanogpt | train (sgd), step 4 | cpu_optimized | 4 | 0.263 | ok (9e-16) | n/a | n/a | n/a | n/a | 0.011 | 0.024 | 13 | 1 | 1 | 59 | n/a |
+| nanogpt | loss, step 0 | gpu_optimized | 4 | 2.407 | ok (2e-16) | 4.179 | 1 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 0 | gpu_optimized | 4 | 0.561 | ok (3e-16) | n/a | n/a | n/a | n/a | 0.004 | 0.023 | 13 | 1 | 1 | 11 | n/a |
+| nanogpt | loss, step 1 | gpu_optimized | 4 | 1.083 | ok (0e+00) | 4.105 | 1 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 12 | n/a |
+| nanogpt | train (sgd), step 1 | gpu_optimized | 4 | 0.260 | ok (4e-16) | n/a | n/a | n/a | n/a | 0.006 | 0.023 | 13 | 1 | 1 | 23 | n/a |
+| nanogpt | loss, step 2 | gpu_optimized | 4 | 1.081 | ok (1e-16) | 3.884 | 1 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 24 | n/a |
+| nanogpt | train (sgd), step 2 | gpu_optimized | 4 | 0.270 | ok (5e-16) | n/a | n/a | n/a | n/a | 0.008 | 0.023 | 13 | 1 | 1 | 35 | n/a |
+| nanogpt | loss, step 3 | gpu_optimized | 4 | 1.089 | ok (1e-16) | 3.642 | 1 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 36 | n/a |
+| nanogpt | train (sgd), step 3 | gpu_optimized | 4 | 0.261 | ok (5e-16) | n/a | n/a | n/a | n/a | 0.009 | 0.023 | 13 | 1 | 1 | 47 | n/a |
+| nanogpt | loss, step 4 | gpu_optimized | 4 | 1.080 | ok (3e-16) | 3.842 | 1 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 48 | n/a |
+| nanogpt | train (sgd), step 4 | gpu_optimized | 4 | 0.259 | ok (8e-16) | n/a | n/a | n/a | n/a | 0.011 | 0.023 | 13 | 1 | 1 | 59 | n/a |
+| nanogpt | loss, step 0 | gpu_forced | 4 | 2.605 | ok (3e-10) | 4.179 | 1 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | n/a | n/a | 378 |
+| nanogpt | train (sgd), step 0 | gpu_forced | 4 | 0.743 | ok (1e-07) | n/a | n/a | n/a | n/a | 0.004 | 0.023 | 13 | 1 | 1 | 11 | 403 |
+| nanogpt | loss, step 1 | gpu_forced | 4 | 1.191 | ok (9e-10) | 4.105 | 1 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 12 | 781 |
+| nanogpt | train (sgd), step 1 | gpu_forced | 4 | 0.308 | ok (2e-07) | n/a | n/a | n/a | n/a | 0.006 | 0.023 | 13 | 1 | 1 | 23 | 806 |
+| nanogpt | loss, step 2 | gpu_forced | 4 | 1.189 | ok (3e-10) | 3.884 | 1 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 24 | 1184 |
+| nanogpt | train (sgd), step 2 | gpu_forced | 4 | 0.291 | ok (2e-07) | n/a | n/a | n/a | n/a | 0.008 | 0.023 | 13 | 1 | 1 | 35 | 1209 |
+| nanogpt | loss, step 3 | gpu_forced | 4 | 1.166 | ok (5e-09) | 3.642 | 1 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 36 | 1587 |
+| nanogpt | train (sgd), step 3 | gpu_forced | 4 | 0.293 | ok (2e-07) | n/a | n/a | n/a | n/a | 0.009 | 0.023 | 13 | 1 | 1 | 47 | 1612 |
+| nanogpt | loss, step 4 | gpu_forced | 4 | 1.166 | ok (5e-10) | 3.842 | 1 | 0.000 | 0.000 | n/a | n/a | 13 | 1 | 1 | 48 | 1990 |
+| nanogpt | train (sgd), step 4 | gpu_forced | 4 | 0.319 | ok (3e-07) | n/a | n/a | n/a | n/a | 0.011 | 0.023 | 13 | 1 | 1 | 59 | 2015 |
+
+wrote benchmarks/apple/nanogpt-5-steps-comparison.csv

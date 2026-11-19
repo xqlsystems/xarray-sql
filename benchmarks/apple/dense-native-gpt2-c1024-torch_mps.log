@@ -1,0 +1,6 @@
+number of parameters: 123.55M
+torch_mps {'step': 0, 'seconds': 0.4004810000769794, 'loss': 10.783063169305695, 'check': 'ok', 'max_scaled_error': 1.521540289056585e-07}
+torch_mps {'step': 1, 'seconds': 0.12742812500800937, 'loss': 8.782007900424375, 'check': 'ok', 'max_scaled_error': 1.5396272019241336e-07}
+torch_mps {'step': 2, 'seconds': 0.08607137494254857, 'loss': 7.639927209727933, 'check': 'ok', 'max_scaled_error': 1.7109354215391967e-07}
+torch_mps {'step': 3, 'seconds': 0.08894479100126773, 'loss': 6.953781219773996, 'check': 'ok', 'max_scaled_error': 2.2278449722128608e-07}
+torch_mps {'step': 4, 'seconds': 0.09160724992398173, 'loss': 6.847608614444603, 'check': 'ok', 'max_scaled_error': 2.4998383965869387e-07}

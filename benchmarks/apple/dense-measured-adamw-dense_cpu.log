@@ -1,0 +1,54 @@
+  1-layer GPT, vocab 65, 213,504 parameters: the loss is 123 lines of SQL
+  steps=5, optimizer=adamw, context=64, heads=4, embed=128, forward_only=False
+  loss, step 0                 dense_cpu   batch=12        0.018s
+Traceback (most recent call last):
+  File "/Users/cromwellian/xql/xarray-sql/benchmarks/ml/02_nanogpt.py", line 792, in <module>
+    main()
+  File "/Users/cromwellian/xql/xarray-sql/benchmarks/ml/02_nanogpt.py", line 719, in main
+    updated = report.attempt(
+              ^^^^^^^^^^^^^^^
+  File "/Users/cromwellian/xql/xarray-sql/benchmarks/ml/_bench.py", line 127, in attempt
+    return self.time(step, host, size, run, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cromwellian/xql/xarray-sql/benchmarks/ml/_bench.py", line 91, in time
+    result = run(*args)
+             ^^^^^^^^^^
+  File "/Users/cromwellian/xql/xarray-sql/benchmarks/ml/02_nanogpt.py", line 524, in adamw_step
+    gradients = host.query_all(gradient_statements())
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cromwellian/xql/xarray-sql/benchmarks/ml/_hosts.py", line 347, in query_all
+    return self._programs[key]()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cromwellian/xql/xarray-sql/xarray_sql/dense.py", line 268, in <lambda>
+    return lambda **tables: self._invoke(execute, fallback, tables)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cromwellian/xql/xarray-sql/xarray_sql/dense.py", line 207, in _invoke
+    return execute()
+           ^^^^^^^^^
+  File "/Users/cromwellian/xql/xarray-sql/xarray_sql/dense.py", line 255, in execute
+    with prepared.run() as rewritten:
+         ^^^^^^^^^^^^^^
+  File "/Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/ddxdb/__init__.py", line 279, in run
+    prepared, out, tables, release = _prepare(self.backend, self.statements, self.dialect)
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cromwellian/xql/xarray-sql/xarray_sql/dense.py", line 74, in returns_rows_compiled
+    table = compiled.run(self.owner)
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cromwellian/xql/xarray-sql/xarray_sql/dense.py", line 56, in run
+    result = self.program.run(owner._read)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/einfold/dense_program.py", line 1454, in run
+    return visit(self.plan)
+           ^^^^^^^^^^^^^^^^
+  File "/Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/einfold/dense_program.py", line 1348, in visit
+    inputs = [visit(p) for p in plan.inputs()]
+              ^^^^^^^^
+  File "/Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/einfold/dense_program.py", line 1348, in visit
+    inputs = [visit(p) for p in plan.inputs()]
+              ^^^^^^^^
+  File "/Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/einfold/dense_program.py", line 1396, in visit
+    return _aggregate(
+           ^^^^^^^^^^^
+  File "/Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/einfold/dense_program.py", line 953, in _aggregate
+    raise _Decline("aggregation by multiple dependent or nullable keys")
+einfold.dense_program._Decline: aggregation by multiple dependent or nullable keys

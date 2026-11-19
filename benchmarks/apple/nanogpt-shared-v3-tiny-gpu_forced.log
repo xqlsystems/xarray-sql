@@ -1,0 +1,27 @@
+  1-layer GPT, vocab 65, 4,416 parameters: the loss is 123 lines of SQL
+  steps=5, optimizer=sgd, context=16, heads=2, embed=16, forward_only=False
+  loss, step 0                 gpu_forced  batch=4         1.260s
+  train (sgd), step 0          gpu_forced  batch=4         0.639s
+  loss, step 1                 gpu_forced  batch=4         0.090s
+  train (sgd), step 1          gpu_forced  batch=4         0.277s
+  loss, step 2                 gpu_forced  batch=4         0.083s
+  train (sgd), step 2          gpu_forced  batch=4         0.274s
+  loss, step 3                 gpu_forced  batch=4         0.082s
+  train (sgd), step 3          gpu_forced  batch=4         0.276s
+  loss, step 4                 gpu_forced  batch=4         0.085s
+  train (sgd), step 4          gpu_forced  batch=4         0.316s
+
+| demo | step | host | batch | seconds | check | loss | operators | rtol | atol | layers | embed | heads | context | vocab | parameters | optimizer | sgd_learning_rate | forward_only | table_registers | query_preparations | cpu_matmul | gpu_matmul | gpu_attention | declined | load_seconds | model_seconds | gradient_preparations | inplace_updates |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| nanogpt | loss, step 0 | gpu_forced | 4 | 1.260 | ok (5e-10) | 4.179 | n/a | 3e-05 | 3e-05 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 0 | 178 | 40 | 0 | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 0 | gpu_forced | 4 | 0.639 | ok (1e-07) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 0 | 203 | 40 | 0 | 0.004 | 0.023 | 1 | 11 |
+| nanogpt | loss, step 1 | gpu_forced | 4 | 0.090 | ok (1e-09) | 4.105 | n/a | 3e-05 | 3e-05 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 0 | 381 | 80 | 0 | n/a | n/a | 1 | 12 |
+| nanogpt | train (sgd), step 1 | gpu_forced | 4 | 0.277 | ok (2e-07) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 0 | 406 | 80 | 0 | 0.006 | 0.023 | 1 | 23 |
+| nanogpt | loss, step 2 | gpu_forced | 4 | 0.083 | ok (7e-10) | 3.884 | n/a | 3e-05 | 3e-05 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 0 | 584 | 120 | 0 | n/a | n/a | 1 | 24 |
+| nanogpt | train (sgd), step 2 | gpu_forced | 4 | 0.274 | ok (2e-07) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 0 | 609 | 120 | 0 | 0.008 | 0.023 | 1 | 35 |
+| nanogpt | loss, step 3 | gpu_forced | 4 | 0.082 | ok (4e-09) | 3.642 | n/a | 3e-05 | 3e-05 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 0 | 787 | 160 | 0 | n/a | n/a | 1 | 36 |
+| nanogpt | train (sgd), step 3 | gpu_forced | 4 | 0.276 | ok (2e-07) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 0 | 812 | 160 | 0 | 0.009 | 0.023 | 1 | 47 |
+| nanogpt | loss, step 4 | gpu_forced | 4 | 0.085 | ok (2e-09) | 3.842 | n/a | 3e-05 | 3e-05 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 0 | 990 | 200 | 0 | n/a | n/a | 1 | 48 |
+| nanogpt | train (sgd), step 4 | gpu_forced | 4 | 0.316 | ok (3e-07) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 0 | 1015 | 200 | 0 | 0.011 | 0.023 | 1 | 59 |
+
+wrote /Users/cromwellian/xql/xarray-sql/benchmarks/apple/nanogpt-shared-v3-tiny-gpu_forced.csv

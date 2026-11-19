@@ -1,0 +1,62 @@
+{
+  "backend": "jax_separate",
+  "context": 16,
+  "parameters": 123563520,
+  "steps": 5,
+  "batch": 1,
+  "learning_rate": 0.01,
+  "optimizer": "sgd",
+  "gelu": "tanh",
+  "forward_only": false,
+  "rtol": 1e-09,
+  "atol": 1e-09,
+  "python": "3.12.14",
+  "jax_version": "0.12.0.1",
+  "reference_sha256": "80a5a55b39161f7e45fa717ec2d60aabaeee3edf90d19ef8ad736afa3c678841",
+  "rows": [
+    {
+      "step": 0,
+      "seconds": 3.103274374967441,
+      "loss": 11.218448458220333,
+      "check": "ok",
+      "max_scaled_error": 0.0
+    },
+    {
+      "step": 1,
+      "seconds": 0.4117213749559596,
+      "loss": 9.443567400904483,
+      "check": "ok",
+      "max_scaled_error": 0.0
+    },
+    {
+      "step": 2,
+      "seconds": 0.3880377080058679,
+      "loss": 7.050589630335465,
+      "check": "ok",
+      "max_scaled_error": 0.0
+    },
+    {
+      "step": 3,
+      "seconds": 0.3956522080115974,
+      "loss": 8.57805561725344,
+      "check": "ok",
+      "max_scaled_error": 0.0
+    },
+    {
+      "step": 4,
+      "seconds": 0.3818153750617057,
+      "loss": 6.7450402840490185,
+      "check": "ok",
+      "max_scaled_error": 0.0
+    }
+  ],
+  "compile_seconds": 0.0,
+  "scope": "One loss forward and, for training, its backward and SGD update; synchronization included; validation and input/state setup excluded.",
+  "devices": [
+    "cpu:0"
+  ],
+  "setup_seconds_including_compile": 0.08685445797163993,
+  "warm_seconds": 0.39430666650878266,
+  "five_step_seconds": 4.680501041002572,
+  "five_steps_with_setup_compile_seconds": 4.7673554989742115
+}

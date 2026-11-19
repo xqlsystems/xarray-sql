@@ -1,0 +1,16 @@
+🍹 Building a mixed python/rust project
+🐍 Found CPython 3.12 at /Users/cromwellian/xql/xarray-sql/.venv/bin/python
+🔗 Found pyo3 bindings with abi3-py3.10 support
+📡 Using build options features from pyproject.toml
+💻 Using `MACOSX_DEPLOYMENT_TARGET=11.0` for aarch64-apple-darwin by default
+warning: constant `MAIN_STACK` is never used
+  --> src/stack.rs:25:18
+   |
+25 | pub(crate) const MAIN_STACK: u64 = 64 << 20;
+   |                  ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `einfold-python` (lib) generated 1 warning
+    Finished `release` profile [optimized] target(s) in 0.09s
+📦 Built wheel for abi3 Python ≥ 3.10 to /private/tmp/xql-mlx-wheels/einfold-0.2.0+xqlmlx.4-cp310-abi3-macosx_11_0_arm64.whl

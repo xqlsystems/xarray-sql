@@ -1,0 +1,31 @@
+demo,step,host,batch,seconds,check,loss,operators
+nanogpt,"loss, step 0",datafusion,4,1.0857603329932317,ok (4e-16),4.179251,9882
+nanogpt,"train (sgd), step 0",datafusion,4,0.401873541995883,ok (5e-16),,
+nanogpt,"loss, step 1",datafusion,4,1.067169375019148,ok (2e-16),4.104661,9882
+nanogpt,"train (sgd), step 1",datafusion,4,0.16367095906753093,ok (6e-16),,
+nanogpt,"loss, step 2",datafusion,4,1.06832433398813,ok (1e-16),3.883857,9882
+nanogpt,"train (sgd), step 2",datafusion,4,0.17810562497470528,ok (6e-16),,
+nanogpt,"loss, step 3",datafusion,4,1.1186981670325622,ok (1e-16),3.641763,9882
+nanogpt,"train (sgd), step 3",datafusion,4,0.17602383298799396,ok (6e-16),,
+nanogpt,"loss, step 4",datafusion,4,1.1557306670583785,ok (5e-16),3.842234,9882
+nanogpt,"train (sgd), step 4",datafusion,4,0.18496695801150054,ok (9e-16),,
+nanogpt,"loss, step 0",einfold,4,1.2271647920133546,ok (2e-16),4.179251,1
+nanogpt,"train (sgd), step 0",einfold,4,0.6224314590217546,ok (3e-16),,
+nanogpt,"loss, step 1",einfold,4,1.2855452080257237,ok (0e+00),4.104661,1
+nanogpt,"train (sgd), step 1",einfold,4,0.34117912501096725,ok (3e-16),,
+nanogpt,"loss, step 2",einfold,4,1.183204917004332,ok (1e-16),3.883857,1
+nanogpt,"train (sgd), step 2",einfold,4,0.3368055419996381,ok (7e-16),,
+nanogpt,"loss, step 3",einfold,4,1.1981873749755323,ok (1e-16),3.641763,1
+nanogpt,"train (sgd), step 3",einfold,4,0.3686611250741407,ok (5e-16),,
+nanogpt,"loss, step 4",einfold,4,1.218982332968153,ok (3e-16),3.842234,1
+nanogpt,"train (sgd), step 4",einfold,4,0.33348158304579556,ok (8e-16),,
+nanogpt,"loss, step 0",duckdb,4,0.028204041998833418,ok (0e+00),4.179251,126
+nanogpt,"train (sgd), step 0",duckdb,4,0.30877691705245525,ok (6e-16),,
+nanogpt,"loss, step 1",duckdb,4,0.02514837495982647,ok (2e-16),4.104661,126
+nanogpt,"train (sgd), step 1",duckdb,4,0.2552210410358384,ok (6e-16),,
+nanogpt,"loss, step 2",duckdb,4,0.02464066701941192,ok (1e-16),3.883857,126
+nanogpt,"train (sgd), step 2",duckdb,4,0.2527270830469206,ok (5e-16),,
+nanogpt,"loss, step 3",duckdb,4,0.02492891694419086,ok (0e+00),3.641763,126
+nanogpt,"train (sgd), step 3",duckdb,4,0.25987891701515764,ok (5e-16),,
+nanogpt,"loss, step 4",duckdb,4,0.024324666941538453,ok (0e+00),3.842234,126
+nanogpt,"train (sgd), step 4",duckdb,4,0.255693459068425,ok (1e-15),,

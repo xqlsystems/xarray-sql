@@ -1,0 +1,27 @@
+{
+  "diagnostic": true,
+  "host": "dense_cpu",
+  "context": 16,
+  "parameters": 123563520,
+  "cache_gib": 8,
+  "paired_seconds": 5.193765166099183,
+  "public_output_bytes": 3871488000,
+  "phases": {
+    "input_conversion_seconds": 0.0,
+    "device_wait_seconds": 0.0,
+    "numpy_view_seconds": 0.0
+  },
+  "statistics": {
+    "table_registers": 12,
+    "query_preparations": 1,
+    "gradient_preparations": 1,
+    "dense_programs": 707,
+    "dense_executions": 1414,
+    "dense_cache_evictions": 52510,
+    "dense_peak_cached_bytes": 8589934589,
+    "dense_lowering_seconds": 2.8820676773320884,
+    "dense_call_seconds": 10.176030291011557,
+    "key_cache_bytes": 0,
+    "dense_last_decline": null
+  }
+}

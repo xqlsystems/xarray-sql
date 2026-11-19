@@ -1,0 +1,27 @@
+  1-layer GPT, vocab 65, 4,416 parameters: the loss is 123 lines of SQL
+  steps=5, optimizer=sgd, context=16, heads=2, embed=16, forward_only=False
+  loss, step 0                 dense_gpu   batch=4         0.191s
+  train (sgd), step 0          dense_gpu   batch=4         0.164s
+  loss, step 1                 dense_gpu   batch=4         0.007s
+  train (sgd), step 1          dense_gpu   batch=4         0.082s
+  loss, step 2                 dense_gpu   batch=4         0.006s
+  train (sgd), step 2          dense_gpu   batch=4         0.059s
+  loss, step 3                 dense_gpu   batch=4         0.006s
+  train (sgd), step 3          dense_gpu   batch=4         0.057s
+  loss, step 4                 dense_gpu   batch=4         0.029s
+  train (sgd), step 4          dense_gpu   batch=4         0.063s
+
+| demo | step | host | batch | seconds | check | loss | operators | rtol | atol | layers | embed | heads | context | vocab | parameters | optimizer | sgd_learning_rate | forward_only | table_registers | query_preparations | dense_programs | dense_executions | dense_cache_evictions | dense_peak_cached_bytes | dense_lowering_seconds | dense_call_seconds | key_cache_bytes | gpu_input_arrays | gpu_input_bytes | gpu_fused_programs | gpu_fused_executions | gpu_contractions | gpu_readbacks | gpu_readback_bytes | dense_last_decline | load_seconds | model_seconds | gradient_preparations | inplace_updates | gpu_union_reductions | gpu_scatter_reductions |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| nanogpt | loss, step 0 | dense_gpu | 4 | 0.191 | ok (5e-08) | 4.179 | n/a | 3e-05 | 3e-05 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 10 | 10 | 0 | 221219 | 0.006 | 0.191 | 0 | 19 | 35392 | 9 | 23 | 21 | 1 | 4 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| nanogpt | train (sgd), step 0 | dense_gpu | 4 | 0.164 | ok (4e-07) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 86 | 86 | 0 | 1827051 | 0.035 | 0.355 | 0 | 214 | 72192 | 51 | 377 | 191 | 34 | 18746 | n/a | 0.005 | 0.001 | 1 | 11 | 22 | 23 |
+| nanogpt | loss, step 1 | dense_gpu | 4 | 0.007 | ok (2e-08) | 4.105 | n/a | 3e-05 | 3e-05 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 86 | 96 | 0 | 1827051 | 0.040 | 0.363 | 0 | 233 | 107584 | 51 | 400 | 212 | 35 | 18750 | n/a | n/a | n/a | 1 | 12 | 22 | 23 |
+| nanogpt | train (sgd), step 1 | dense_gpu | 4 | 0.082 | ok (3e-07) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 86 | 172 | 0 | 1885515 | 0.089 | 0.444 | 0 | 428 | 144384 | 51 | 754 | 382 | 68 | 37492 | n/a | 0.006 | 0.001 | 1 | 23 | 44 | 46 |
+| nanogpt | loss, step 2 | dense_gpu | 4 | 0.006 | ok (5e-08) | 3.884 | n/a | 3e-05 | 3e-05 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 86 | 182 | 0 | 1885515 | 0.094 | 0.450 | 0 | 447 | 179776 | 51 | 777 | 403 | 69 | 37496 | n/a | n/a | n/a | 1 | 24 | 44 | 46 |
+| nanogpt | train (sgd), step 2 | dense_gpu | 4 | 0.059 | ok (3e-07) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 86 | 258 | 0 | 1885515 | 0.121 | 0.509 | 0 | 642 | 216576 | 51 | 1131 | 573 | 102 | 56238 | n/a | 0.008 | 0.001 | 1 | 35 | 66 | 69 |
+| nanogpt | loss, step 3 | dense_gpu | 4 | 0.006 | ok (1e-08) | 3.642 | n/a | 3e-05 | 3e-05 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 86 | 268 | 0 | 1885515 | 0.126 | 0.515 | 0 | 661 | 251968 | 51 | 1154 | 594 | 103 | 56242 | n/a | n/a | n/a | 1 | 36 | 66 | 69 |
+| nanogpt | train (sgd), step 3 | dense_gpu | 4 | 0.057 | ok (4e-07) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 86 | 344 | 0 | 1885515 | 0.154 | 0.572 | 0 | 856 | 288768 | 51 | 1508 | 764 | 136 | 74984 | n/a | 0.010 | 0.001 | 1 | 47 | 88 | 92 |
+| nanogpt | loss, step 4 | dense_gpu | 4 | 0.029 | ok (3e-09) | 3.842 | n/a | 3e-05 | 3e-05 | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 86 | 354 | 0 | 1885515 | 0.182 | 0.602 | 0 | 875 | 324160 | 51 | 1531 | 785 | 137 | 74988 | n/a | n/a | n/a | 1 | 48 | 88 | 92 |
+| nanogpt | train (sgd), step 4 | dense_gpu | 4 | 0.063 | ok (8e-07) | n/a | n/a | n/a | n/a | 1 | 16 | 2 | 16 | 65 | 4416 | sgd | 0.500 | False | 13 | 1 | 86 | 430 | 0 | 1903979 | 0.210 | 0.665 | 0 | 1070 | 360960 | 51 | 1885 | 955 | 170 | 93730 | n/a | 0.012 | 0.001 | 1 | 59 | 110 | 115 |
+
+wrote /Users/cromwellian/xql/xarray-sql/benchmarks/apple/dense-measured-tiny-dense_gpu.csv

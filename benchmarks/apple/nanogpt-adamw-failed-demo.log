@@ -1,0 +1,39 @@
+  1-layer GPT, vocab 65, 213,504 parameters: the loss is 123 lines of SQL
+  steps=5, optimizer=adamw, context=64, heads=4, embed=128, forward_only=False
+  loss, step 0                 cpu_forced  batch=12        7.931s
+  train (adamw), step 0        cpu_forced  batch=12        3.832s
+  loss, step 1                 cpu_forced  batch=12        7.739s
+  train (adamw), step 1        cpu_forced  batch=12        3.465s
+  loss, step 2                 cpu_forced  batch=12        3.930s
+  train (adamw), step 2        cpu_forced  batch=12        1.621s
+  loss, step 3                 cpu_forced  batch=12        1.156s
+  train (adamw), step 3        cpu_forced  batch=12        1.128s
+  loss, step 4                 cpu_forced  batch=12        1.157s
+  train (adamw), step 4        cpu_forced  batch=12        1.025s
+  loss, step 0                 gpu_forced  batch=12        2.794s
+  train (adamw), step 0        gpu_forced  batch=12        1.442s
+Traceback (most recent call last):
+  File "/Users/cromwellian/xql/xarray-sql/benchmarks/ml/02_nanogpt.py", line 779, in <module>
+    main()
+  File "/Users/cromwellian/xql/xarray-sql/benchmarks/ml/02_nanogpt.py", line 738, in main
+    assert_close(
+  File "/Users/cromwellian/xql/xarray-sql/benchmarks/ml/_bench.py", line 66, in assert_close
+    np.testing.assert_allclose(
+  File "/Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/numpy/testing/_private/utils.py", line 1780, in assert_allclose
+    assert_array_compare(compare, actual, desired, err_msg=str(err_msg),
+  File "/Users/cromwellian/xql/xarray-sql/.venv/lib/python3.12/site-packages/numpy/testing/_private/utils.py", line 988, in assert_array_compare
+    raise AssertionError(msg)
+AssertionError:
+Not equal to tolerance rtol=3e-05, atol=3e-05
+wpe.w, step 0
+Mismatched elements: 1 / 8192 (0.0122%)
+Mismatch at index:
+ [48, 53]: 0.04073929672215308 (ACTUAL), 0.04069803292553674 (DESIRED)
+Max absolute difference among violations: 4.12637966e-05
+Max relative difference among violations: 0.0010139
+ ACTUAL: array([[-0.041635, -0.017197,  0.020464, ...,  0.023298,  0.022704,
+         0.000739],
+       [ 0.002403,  0.030883, -0.02728 , ..., -0.008039, -0.007208,...
+ DESIRED: array([[-0.041635, -0.017197,  0.020464, ...,  0.023298,  0.022704,
+         0.000739],
+       [ 0.002403,  0.030883, -0.02728 , ..., -0.008039, -0.007208,...

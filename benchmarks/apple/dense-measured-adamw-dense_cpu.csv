@@ -1,0 +1,2 @@
+demo,step,host,batch,seconds,check,loss,operators,rtol,atol,layers,embed,heads,context,vocab,parameters,optimizer,sgd_learning_rate,forward_only,table_registers,query_preparations,dense_programs,dense_executions,dense_cache_evictions,dense_peak_cached_bytes,dense_lowering_seconds,dense_call_seconds,key_cache_bytes,dense_last_decline
+nanogpt,"loss, step 0",dense_cpu,12,0.018254542024806142,ok (6e-16),4.178527,,1e-09,1e-09,1,128,4,64,65,213504,adamw,,False,13,1,10,10,0,61634251,0.014421955915167928,0.018121959059499204,0,

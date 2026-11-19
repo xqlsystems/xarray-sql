@@ -1,0 +1,182 @@
+[
+  {
+    "case": "gpt2-16",
+    "backend": "jax_separate",
+    "command": [
+      "/private/tmp/xql-framework-venv/bin/python",
+      "-u",
+      "benchmarks/apple/compare_nanogpt_frameworks.py",
+      "--backend",
+      "jax_separate",
+      "--context",
+      "16",
+      "--steps",
+      "5",
+      "--output",
+      "benchmarks/apple/framework-gpt2-16-jax_separate.json"
+    ],
+    "peak_rss_gib": 7.794158935546875,
+    "status": "passed",
+    "exit_code": 0,
+    "wall_seconds": 11.596209582989104
+  },
+  {
+    "case": "gpt2-16",
+    "backend": "jax_jit",
+    "command": [
+      "/private/tmp/xql-framework-venv/bin/python",
+      "-u",
+      "benchmarks/apple/compare_nanogpt_frameworks.py",
+      "--backend",
+      "jax_jit",
+      "--context",
+      "16",
+      "--steps",
+      "5",
+      "--output",
+      "benchmarks/apple/framework-gpt2-16-jax_jit.json"
+    ],
+    "peak_rss_gib": 7.4196929931640625,
+    "status": "passed",
+    "exit_code": 0,
+    "wall_seconds": 12.743993417010643
+  },
+  {
+    "case": "gpt2-16",
+    "backend": "torch_cpu",
+    "command": [
+      "/private/tmp/xql-framework-venv/bin/python",
+      "-u",
+      "benchmarks/apple/compare_nanogpt_frameworks.py",
+      "--backend",
+      "torch_cpu",
+      "--context",
+      "16",
+      "--steps",
+      "5",
+      "--output",
+      "benchmarks/apple/framework-gpt2-16-torch_cpu.json",
+      "--nanogpt-source",
+      "/private/tmp/xql-upstream-nanogpt"
+    ],
+    "peak_rss_gib": 8.059890747070312,
+    "status": "passed",
+    "exit_code": 0,
+    "wall_seconds": 14.431298207957298
+  },
+  {
+    "case": "gpt2-16",
+    "backend": "torch_mps",
+    "command": [
+      "/private/tmp/xql-framework-venv/bin/python",
+      "-u",
+      "benchmarks/apple/compare_nanogpt_frameworks.py",
+      "--backend",
+      "torch_mps",
+      "--context",
+      "16",
+      "--steps",
+      "5",
+      "--output",
+      "benchmarks/apple/framework-gpt2-16-torch_mps.json",
+      "--nanogpt-source",
+      "/private/tmp/xql-upstream-nanogpt"
+    ],
+    "peak_rss_gib": 6.3382415771484375,
+    "status": "passed",
+    "exit_code": 0,
+    "wall_seconds": 13.586361584020779
+  },
+  {
+    "case": "gpt2-1024-forward",
+    "backend": "jax_eager",
+    "command": [
+      "/private/tmp/xql-framework-venv/bin/python",
+      "-u",
+      "benchmarks/apple/compare_nanogpt_frameworks.py",
+      "--backend",
+      "jax_eager",
+      "--context",
+      "1024",
+      "--steps",
+      "5",
+      "--output",
+      "benchmarks/apple/framework-gpt2-1024-forward-jax_eager.json",
+      "--forward-only"
+    ],
+    "peak_rss_gib": 4.4201507568359375,
+    "status": "passed",
+    "exit_code": 0,
+    "wall_seconds": 7.088339874986559
+  },
+  {
+    "case": "gpt2-1024-forward",
+    "backend": "jax_jit",
+    "command": [
+      "/private/tmp/xql-framework-venv/bin/python",
+      "-u",
+      "benchmarks/apple/compare_nanogpt_frameworks.py",
+      "--backend",
+      "jax_jit",
+      "--context",
+      "1024",
+      "--steps",
+      "5",
+      "--output",
+      "benchmarks/apple/framework-gpt2-1024-forward-jax_jit.json",
+      "--forward-only"
+    ],
+    "peak_rss_gib": 5.3981475830078125,
+    "status": "passed",
+    "exit_code": 0,
+    "wall_seconds": 6.573438124964014
+  },
+  {
+    "case": "gpt2-1024-forward",
+    "backend": "torch_cpu",
+    "command": [
+      "/private/tmp/xql-framework-venv/bin/python",
+      "-u",
+      "benchmarks/apple/compare_nanogpt_frameworks.py",
+      "--backend",
+      "torch_cpu",
+      "--context",
+      "1024",
+      "--steps",
+      "5",
+      "--output",
+      "benchmarks/apple/framework-gpt2-1024-forward-torch_cpu.json",
+      "--forward-only",
+      "--nanogpt-source",
+      "/private/tmp/xql-upstream-nanogpt"
+    ],
+    "peak_rss_gib": 4.853973388671875,
+    "status": "passed",
+    "exit_code": 0,
+    "wall_seconds": 8.588310541934334
+  },
+  {
+    "case": "gpt2-1024-forward",
+    "backend": "torch_mps",
+    "command": [
+      "/private/tmp/xql-framework-venv/bin/python",
+      "-u",
+      "benchmarks/apple/compare_nanogpt_frameworks.py",
+      "--backend",
+      "torch_mps",
+      "--context",
+      "1024",
+      "--steps",
+      "5",
+      "--output",
+      "benchmarks/apple/framework-gpt2-1024-forward-torch_mps.json",
+      "--forward-only",
+      "--nanogpt-source",
+      "/private/tmp/xql-upstream-nanogpt"
+    ],
+    "peak_rss_gib": 4.019256591796875,
+    "status": "passed",
+    "exit_code": 0,
+    "wall_seconds": 7.17828550003469
+  }
+]
