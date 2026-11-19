@@ -1,4 +1,5 @@
 import itertools
+import os
 import sys
 from collections import defaultdict
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping
@@ -466,6 +467,17 @@ _LOADS = ThreadPoolExecutor() if _CAN_START_THREADS else None
 """Threads that read a partition's variables from storage at once."""
 
 
+def _new_loads() -> None:
+    """Gives a forked child its own threads, since none of the parent's
+    survive the fork."""
+    global _LOADS
+    _LOADS = ThreadPoolExecutor()
+
+
+if _CAN_START_THREADS:
+    os.register_at_fork(after_in_child=_new_loads)
+
+
 def _load(ds: xr.Dataset, names: list[str]) -> xr.Dataset:
     """Loads all of a partition's variables at once, rather than in turn.
 
@@ -475,12 +487,12 @@ def _load(ds: xr.Dataset, names: list[str]) -> xr.Dataset:
     Lazily indexed variables, as ``xr.open_zarr(chunks=None)`` gives, are
     read on threads, one each.
 
-    Only the variables named in *names*, and the dimension coordinates, are
-    loaded; a coordinate the scan doesn't emit, such as a 2-D latitude, is
-    dropped rather than read.
+    Only the variables named in *names*, and indexed coordinates, which are
+    already in memory, are loaded; a coordinate the scan doesn't emit, such
+    as a 2-D latitude, is dropped rather than read.
     """
     ds = ds.drop_vars(
-        [n for n in ds.variables if n not in names and n not in ds.dims]
+        [n for n in ds.variables if n not in names and n not in ds.xindexes]
     )
     variables = list(ds.variables.values())
     if _LOADS is None or any(v.chunks is not None for v in variables):
