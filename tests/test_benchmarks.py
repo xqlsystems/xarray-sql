@@ -83,7 +83,7 @@ def store(tmp_path_factory) -> str:
         },
     )
     path = str(tmp_path_factory.mktemp("zarr") / "ocean.zarr")
-    ds.chunk({"time": 1}).to_zarr(path, zarr_format=3, consolidated=False)
+    ds.chunk({"time": 1}).to_zarr(path, consolidated=False)
     return path
 
 

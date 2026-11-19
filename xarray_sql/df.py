@@ -466,7 +466,7 @@ _LOADS = ThreadPoolExecutor() if _CAN_START_THREADS else None
 """Threads that read a partition's variables from storage at once."""
 
 
-def _load(ds: xr.Dataset) -> xr.Dataset:
+def _load(ds: xr.Dataset, names: list[str]) -> xr.Dataset:
     """Loads all of a partition's variables at once, rather than in turn.
 
     Reading them one by one waits for each read before starting the next,
@@ -474,7 +474,14 @@ def _load(ds: xr.Dataset) -> xr.Dataset:
     loads in one compute, which schedules every variable's chunks together.
     Lazily indexed variables, as ``xr.open_zarr(chunks=None)`` gives, are
     read on threads, one each.
+
+    Only the variables named in *names*, and the dimension coordinates, are
+    loaded; a coordinate the scan doesn't emit, such as a 2-D latitude, is
+    dropped rather than read.
     """
+    ds = ds.drop_vars(
+        [n for n in ds.variables if n not in names and n not in ds.dims]
+    )
     variables = list(ds.variables.values())
     if _LOADS is None or any(v.chunks is not None for v in variables):
         return ds.load()
@@ -510,7 +517,7 @@ def iter_record_batches(
         RecordBatches in schema column order, covering all rows of the
         partition exactly once.
     """
-    ds = _load(ds)
+    ds = _load(ds, schema.names)
     if ds.data_vars:
         first_var = next(iter(ds.data_vars.values()))
         dim_names = list(first_var.dims)
