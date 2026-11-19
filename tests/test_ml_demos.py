@@ -24,6 +24,11 @@ DEMOS = {
         ["--steps", "1"],
         ["--steps", "1", "--optimizer", "adamw"],
     ],
+    # TODO(#291): run Samudra once CI installs its PyTorch reference.
+    "04_samudra.py": [],
+    # TODO(#291): run sparse Samudra once CI installs PyTorch, which trains
+    # it; its default run checks the SQL against PyTorch on a random grid.
+    "04_samudra_sparse.py": [],
 }
 
 
