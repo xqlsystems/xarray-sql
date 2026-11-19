@@ -846,3 +846,21 @@ def test_dimension_no_data_variable_has_registers():
     ctx.from_dataset("t", ds)
 
     assert "t" in ctx.catalog().schema().names()
+
+
+def test_a_multiindex_dimension_reads_as_its_levels():
+    index = pd.MultiIndex.from_arrays(
+        [[1, 1, 2], [10, 20, 10]], names=["a", "b"]
+    )
+    ds = xr.Dataset(
+        {"v": ("point", np.arange(3.0))},
+        coords=xr.Coordinates.from_pandas_multiindex(index, "point"),
+    )
+    ctx = XarrayContext()
+    ctx.from_dataset("m", ds)
+
+    rows = ctx.sql("SELECT point, v FROM m ORDER BY v").to_arrow_table()
+    assert rows.to_pydict() == {
+        "point": [[1, 10], [1, 20], [2, 10]],
+        "v": [0.0, 1.0, 2.0],
+    }
