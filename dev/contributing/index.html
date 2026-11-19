@@ -789,6 +789,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Benchmarks
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -940,6 +951,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Building for WebAssembly (Pyodide)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Benchmarks
       </span>
     </span>
   </a>
@@ -1116,6 +1138,21 @@ which <code>uv tool install --python</code> sets up. The <code>pyodide</code> co
 </span></code></pre></div>
 <p>On NixOS, run these commands in <code>nix run .#wasm-shell</code>. This shell is an
 FHS environment, which lets the prebuilt Emscripten and rustup binaries run.</p>
+<h3 id="benchmarks">Benchmarks<a class="headerlink" href="#benchmarks" title="Permanent link">&para;</a></h3>
+<p><code>tests/test_benchmarks.py</code> holds benchmarks written with
+<a href="https://github.com/ionelmc/pytest-benchmark">pytest-benchmark</a>, a pytest
+plugin that runs a function repeatedly and reports its timings. Each one
+also checks its result, so it's a test too. To time them locally:</p>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/test_benchmarks.py<span class="w"> </span>--benchmark-only
+</span></code></pre></div>
+<p>CI's unit run runs each benchmark once, untimed, with <code>--benchmark-disable</code>.
+On every push to main, the <code>benchmarks</code> job times them and stores the result
+on the <code>gh-pages</code> branch with
+<a href="https://github.com/benchmark-action/github-action-benchmark">github-action-benchmark</a>,
+which keeps the history, charts it at
+<a href="https://xql.systems/xarray-sql/benchmarks/">https://xql.systems/xarray-sql/benchmarks/</a>, and comments on a commit that
+looks like a regression. A new point appears on the chart when the docs are
+next published.</p>
 <h2 id="before-submitting-a-pull-request">Before submitting a pull request...<a class="headerlink" href="#before-submitting-a-pull-request" title="Permanent link">&para;</a></h2>
 <p>Thanks so much for your contribution! For a volunteer led project, we so
 appreciate your help. A few things to keep in mind:</p>
@@ -1179,8 +1216,8 @@ tag does not undo its docs deployment. To roll the docs back:</p>
    with the same pinned mike fork the workflow uses (the <code>mike</code> on PyPI is
    not Zensical-compatible):</li>
 </ol>
-<div class="language-shell highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>uvx<span class="w"> </span>--from<span class="w"> </span><span class="s2">"git+https://github.com/squidfunk/mike.git@2d4ad799442f4592db8ad53b179bfb33db8c69ac"</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--with<span class="w"> </span><span class="s2">"mkdocstrings[python]"</span><span class="w"> </span>mike<span class="w"> </span>delete<span class="w"> </span>--push<span class="w"> </span>XX.YY
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>uvx<span class="w"> </span>--from<span class="w"> </span><span class="s2">"git+https://github.com/squidfunk/mike.git@2d4ad799442f4592db8ad53b179bfb33db8c69ac"</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--with<span class="w"> </span><span class="s2">"mkdocstrings[python]"</span><span class="w"> </span>mike<span class="w"> </span>delete<span class="w"> </span>--push<span class="w"> </span>XX.YY
 </span></code></pre></div>
 <ol>
 <li>Re-run the docs workflow on <code>main</code> with "ref" set to the last good tag,
